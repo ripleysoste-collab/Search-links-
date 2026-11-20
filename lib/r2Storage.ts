@@ -21,16 +21,83 @@ const EXTENSION_CONTENT_TYPES: Record<string, string> = {
 let cachedClient: S3Client | null = null;
 let cachedSignature = '';
 
-function cleanEnv(value: string | undefined): string {
-  return (value || '').trim().replace(/^["']|["']$/g, '').trim();
+function cleanEnv(value: string | undefined, varName?: string): string {
+  let cleaned = (value || '').trim().replace(/^["']|["']$/g, '').trim();
+  if (varName && cleaned) {
+    cleaned = cleaned.replace(new RegExp(`^${varName}\\s*=\\s*`, 'i'), '').trim();
+  }
+  return cleaned;
+}
+
+function isPlaceholderValue(value: string): boolean {
+  return /^TU_[A-Z0-9_]+$/i.test(value.trim());
+}
+
+function normalizeR2Endpoint(rawEndpoint: string, rawAccountId: string): string {
+  let candidate = rawEndpoint;
+  if ((!candidate || isPlaceholderValue(candidate)) && rawAccountId && !isPlaceholderValue(rawAccountId)) {
+    candidate = `https://${rawAccountId}.r2.cloudflarestorage.com`;
+  }
+  if (!candidate || isPlaceholderValue(candidate)) return '';
+  if (!/^https?:\/\//i.test(candidate) && /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return '';
+    }
+    // Cloudflare R2 bucket Settings -> "S3 API" copies https://<account>.r2.cloudflarestorage.com/<bucket>
+    // S3Client expects ONLY the base origin without the bucket path.
+    return parsed.origin;
+  } catch {
+    return candidate.replace(/\/+$/, '');
+  }
+}
+
+function normalizeR2PublicBaseUrl(rawUrl: string): string {
+  if (!rawUrl || isPlaceholderValue(rawUrl)) return '';
+  let candidate = rawUrl;
+  if (!/^https?:\/\//i.test(candidate) && /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(candidate)) {
+    candidate = `https://${candidate}`;
+  }
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return '';
+    }
+    // Ignore private S3 API domain if pasted into R2_PUBLIC_BASE_URL by mistake
+    if (parsed.hostname.endsWith('.r2.cloudflarestorage.com')) {
+      return '';
+    }
+    return parsed.href.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
 }
 
 function getR2Env() {
-  const endpoint = cleanEnv(process.env.R2_ENDPOINT).replace(/\/+$/, '');
-  const accessKeyId = cleanEnv(process.env.R2_ACCESS_KEY_ID);
-  const secretAccessKey = cleanEnv(process.env.R2_SECRET_ACCESS_KEY);
-  const bucketName = cleanEnv(process.env.R2_BUCKET_NAME) || 'searchlink-media';
-  const publicBaseUrl = cleanEnv(process.env.R2_PUBLIC_BASE_URL).replace(/\/+$/, '');
+  const accountId = cleanEnv(process.env.R2_ACCOUNT_ID, 'R2_ACCOUNT_ID');
+  const endpoint = normalizeR2Endpoint(
+    cleanEnv(process.env.R2_ENDPOINT, 'R2_ENDPOINT'),
+    accountId,
+  );
+  const rawAccessKeyId = cleanEnv(process.env.R2_ACCESS_KEY_ID, 'R2_ACCESS_KEY_ID');
+  const rawSecretAccessKey = cleanEnv(
+    process.env.R2_SECRET_ACCESS_KEY,
+    'R2_SECRET_ACCESS_KEY',
+  );
+  const accessKeyId = isPlaceholderValue(rawAccessKeyId) ? '' : rawAccessKeyId;
+  const secretAccessKey = isPlaceholderValue(rawSecretAccessKey)
+    ? ''
+    : rawSecretAccessKey;
+  const rawBucket = cleanEnv(process.env.R2_BUCKET_NAME, 'R2_BUCKET_NAME')
+    .replace(/^\/+|\/+$/g, '');
+  const bucketName =
+    rawBucket && !isPlaceholderValue(rawBucket) ? rawBucket : 'searchlink-media';
+  const publicBaseUrl = normalizeR2PublicBaseUrl(
+    cleanEnv(process.env.R2_PUBLIC_BASE_URL, 'R2_PUBLIC_BASE_URL'),
+  );
 
   return {
     endpoint,

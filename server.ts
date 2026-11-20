@@ -33,7 +33,12 @@ import {
   type SupportedLocale,
 } from './lib/localeDetection.ts';
 import { fetchProxiedImage } from './lib/imageProxy.ts';
-import { isValidMediaKey, readImageFromR2 } from './lib/r2Storage.ts';
+import {
+  getMissingR2EnvNames,
+  isR2Configured,
+  isValidMediaKey,
+  readImageFromR2,
+} from './lib/r2Storage.ts';
 import {
   extractCoreRequestParams,
   getSearchLinkCoreManifest,
@@ -87,7 +92,6 @@ function isOriginAllowed(origin: string, allowList: string[]): boolean {
 async function startServer() {
   const app = express();
   app.set('trust proxy', 1);
-  app.use(express.json({ limit: '64kb' }));
 
   const allowedOrigins = parseAllowedOrigins();
   app.use('/api', (req, res, next) => {
@@ -112,12 +116,34 @@ async function startServer() {
     return next();
   });
 
+  // Skip small global JSON parser for routes that define their own larger body limits
+  const defaultJsonParser = express.json({ limit: '128kb' });
+  app.use((req, res, next) => {
+    if (
+      req.path === '/api/upload' ||
+      req.path === '/api/map-image' ||
+      req.path === '/api/jobs/map' ||
+      req.path === '/api/chat'
+    ) {
+      return next();
+    }
+    return defaultJsonParser(req, res, next);
+  });
+
   app.get('/api/health', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
+    const groqKey = (process.env.GROQ_API_KEY || '').trim();
     return res.json({
       ok: true,
       service: 'search-link-api',
       status: 'up',
+      configured: {
+        r2: isR2Configured(),
+        missingR2: getMissingR2EnvNames(),
+        gemini: Boolean(geminiKey && !/^TU_/i.test(geminiKey)),
+        groq: Boolean(groqKey && !/^TU_/i.test(groqKey)),
+      },
     });
   });
 
@@ -352,7 +378,7 @@ async function startServer() {
 
   app.post(
     '/api/jobs/map',
-    express.json({ type: 'application/json', limit: '512kb' }),
+    express.json({ type: 'application/json', limit: '1mb' }),
     async (req, res) => {
       try {
         const authUser = await verifySupabaseBearerUser(req.headers);
@@ -771,6 +797,28 @@ async function startServer() {
   </body>
 </html>`);
   });
+
+  app.use(
+    '/api',
+    (
+      err: { status?: number; statusCode?: number; type?: string; message?: string },
+      _req: express.Request,
+      res: express.Response,
+      _next: express.NextFunction,
+    ) => {
+      const status =
+        typeof err?.status === 'number'
+          ? err.status
+          : typeof err?.statusCode === 'number'
+            ? err.statusCode
+            : 400;
+      const message =
+        err?.type === 'entity.too.large'
+          ? 'La imagen o solicitud supera el tamaño máximo permitido.'
+          : err?.message || 'Error procesando la solicitud.';
+      return res.status(status).json({ error: message });
+    },
+  );
 
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');

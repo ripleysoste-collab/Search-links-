@@ -148,7 +148,7 @@ export async function processAndStoreUploadedImage(
   if (!isR2Configured()) {
     const missing = getMissingR2EnvNames();
     throw new Error(
-      `Faltan variables en Vercel (${missing.join(', ')}). Activa Production + Preview y haz Redeploy sin usar caché.`,
+      `Faltan variables de R2 en Render (${missing.join(', ')}). Revisa Environment en Render y guarda los cambios.`,
     );
   }
 

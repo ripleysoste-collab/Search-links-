@@ -1602,8 +1602,6 @@ export default function App() {
 
         if (controller.signal.aborted) return;
 
-        setShowMapBox(true);
-
         const queueItems = items
           .map((item, idx) => {
             const uploaded = uploadedPayloads[idx];
@@ -1623,6 +1621,8 @@ export default function App() {
           setBatchNotice(firstUploadError || t.app.uploadImageError);
           return;
         }
+
+        setShowMapBox(true);
 
         const currentUserId = authUserRef.current?.id;
         if (!currentUserId) return;
