@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conectando con Search Link…</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #f8fafc;
+        color: #0f172a;
+        padding: 24px;
+        text-align: center;
+      }
+      .card {
+        max-width: 360px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 20px;
+        padding: 24px;
+        box-shadow: 0 12px 32px -12px rgba(15, 23, 42, 0.14);
+      }
+      p { margin: 8px 0 0; font-size: 13px; color: #64748b; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <strong>Autenticación completada</strong>
+      <p id="status">Volviendo a Search Link…</p>
+    </div>
+    <script>
+      (function () {
+        var payload = {
+          type: 'SEARCHLINK_OAUTH_RESULT',
+          hash: window.location.hash || '',
+          search: window.location.search || '',
+        };
+        try {
+          if (typeof BroadcastChannel !== 'undefined') {
+            var ch = new BroadcastChannel('searchlink-oauth');
+            ch.postMessage(payload);
+            ch.close();
+          }
+        } catch (e) {}
+        if (window.opener && window.opener !== window) {
+          try {
+            window.opener.postMessage(payload, window.location.origin);
+          } catch (e) {}
+          try {
+            window.opener.postMessage(payload, '*');
+          } catch (e) {}
+          window.close();
+          setTimeout(function () {
+            var el = document.getElementById('status');
+            if (el) {
+              el.textContent = 'Ya puedes cerrar esta ventana y volver a Search Link.';
+            }
+          }, 400);
+        } else {
+          window.location.replace('/' + (window.location.search || '') + (window.location.hash || ''));
+        }
+      })();
+    </script>
+  </body>
+</html>
