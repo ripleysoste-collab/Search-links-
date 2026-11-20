@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -202,3 +203,38 @@ export async function readImageFromR2(key: string): Promise<StoredR2Image> {
     etag: result.ETag,
   };
 }
+
+export async function deleteImageFromR2(key: string): Promise<boolean> {
+  if (!key || !isValidMediaKey(key) || !isR2Configured()) {
+    return false;
+  }
+
+  try {
+    const client = getR2Client();
+    const bucketName = getR2BucketName();
+    await client.send(
+      new DeleteObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+      }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteImagesFromR2(keys: string[]): Promise<number> {
+  const uniqueKeys = Array.from(
+    new Set(keys.filter((k) => typeof k === 'string' && isValidMediaKey(k))),
+  );
+  if (uniqueKeys.length === 0 || !isR2Configured()) return 0;
+
+  let deletedCount = 0;
+  for (const key of uniqueKeys) {
+    const ok = await deleteImageFromR2(key);
+    if (ok) deletedCount++;
+  }
+  return deletedCount;
+}
+

@@ -6,6 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { extractImagesFromUrl } from './lib/extractor.ts';
 import { mapStoredImageWithGemini } from './lib/geminiMapper.ts';
 import {
+  cancelMappingJobForUser,
+  createAndStartMappingJob,
+  getLatestMappingJobForUser,
+  getMappingJobForUser,
+  type MappingQueueItemInput,
+} from './lib/mappingQueue.ts';
+import {
   checkAndConsumeGuestExtractQuota,
   checkFreeAccountImageQuota,
   FREE_PLAN_MAX_IMAGES,
@@ -342,6 +349,174 @@ async function startServer() {
       }
     },
   );
+
+  app.post(
+    '/api/jobs/map',
+    express.json({ type: 'application/json', limit: '512kb' }),
+    async (req, res) => {
+      try {
+        const authUser = await verifySupabaseBearerUser(req.headers);
+        if (!authUser) {
+          return res.status(401).json({
+            error: 'Inicia sesión con Google para iniciar la cola de mapeo.',
+          });
+        }
+
+        const body = (req.body ?? {}) as Record<string, unknown>;
+        const sourceType = body.sourceType === 'url' ? 'url' : 'files';
+        const sourceUrl =
+          typeof body.sourceUrl === 'string' && body.sourceUrl.trim()
+            ? body.sourceUrl.trim()
+            : null;
+        const serviceSlug =
+          typeof body.serviceSlug === 'string' ? body.serviceSlug.trim() : '';
+        const keyPrefix =
+          typeof body.keyPrefix === 'string' ? body.keyPrefix.trim() : '';
+        const keyHash =
+          typeof body.keyHash === 'string' ? body.keyHash.trim() : '';
+        const rawItems = Array.isArray(body.items) ? body.items : [];
+
+        if (!serviceSlug || !keyPrefix || !keyHash || rawItems.length === 0) {
+          return res.status(400).json({
+            error: 'Faltan datos válidos del lote para iniciar la cola de mapeo.',
+          });
+        }
+
+        const items: MappingQueueItemInput[] = [];
+        for (const entry of rawItems) {
+          if (!entry || typeof entry !== 'object') continue;
+          const item = entry as Record<string, unknown>;
+          const clientItemId =
+            typeof item.clientItemId === 'string' ? item.clientItemId.trim() : '';
+          const r2Key = typeof item.r2Key === 'string' ? item.r2Key.trim() : '';
+          const imageUrl =
+            typeof item.imageUrl === 'string' ? item.imageUrl.trim() : '';
+          if (!clientItemId || !r2Key || !imageUrl || !isValidMediaKey(r2Key)) {
+            continue;
+          }
+          items.push({
+            clientItemId,
+            r2Key,
+            imageUrl,
+            originalUrl:
+              typeof item.originalUrl === 'string' ? item.originalUrl.trim() : undefined,
+            savedPercent:
+              typeof item.savedPercent === 'number' && Number.isFinite(item.savedPercent)
+                ? Math.max(0, Math.min(99, Math.trunc(item.savedPercent)))
+                : 0,
+            compressedBytes:
+              typeof item.compressedBytes === 'number' &&
+              Number.isFinite(item.compressedBytes)
+                ? Math.max(0, Math.trunc(item.compressedBytes))
+                : 0,
+          });
+        }
+
+        if (items.length === 0) {
+          return res.status(400).json({
+            error: 'No hay imágenes válidas almacenadas en R2 para encolar.',
+          });
+        }
+
+        const maxAllowed = isAdminTestEmail(authUser.email)
+          ? 50
+          : FREE_PLAN_MAX_IMAGES;
+        if (items.length > maxAllowed) {
+          return res.status(429).json({
+            quotaExceeded: true,
+            error: `El lote excede el máximo permitido (${maxAllowed} imágenes).`,
+          });
+        }
+
+        const job = await createAndStartMappingJob({
+          userId: authUser.userId,
+          accessToken: authUser.accessToken,
+          sourceType,
+          sourceUrl,
+          serviceSlug,
+          keyPrefix,
+          keyHash,
+          items,
+        });
+
+        return res.status(202).json({ ok: true, job });
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : 'No se pudo iniciar la cola de mapeo.';
+        return res.status(400).json({ error: message });
+      }
+    },
+  );
+
+  app.get('/api/jobs/map/active', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({
+        error: 'Inicia sesión para consultar tu cola activa.',
+      });
+    }
+
+    const job = await getLatestMappingJobForUser(
+      authUser.userId,
+      authUser.accessToken,
+    );
+    return res.json({ ok: true, job });
+  });
+
+  app.get('/api/jobs/map/:jobId', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({
+        error: 'Inicia sesión para consultar el progreso del mapeo.',
+      });
+    }
+
+    const jobId = typeof req.params.jobId === 'string' ? req.params.jobId.trim() : '';
+    if (!jobId) {
+      return res.status(400).json({ error: 'Falta el ID del trabajo.' });
+    }
+
+    const job = await getMappingJobForUser(
+      jobId,
+      authUser.userId,
+      authUser.accessToken,
+    );
+    if (!job) {
+      return res.status(404).json({ error: 'Trabajo de mapeo no encontrado.' });
+    }
+
+    return res.json({ ok: true, job });
+  });
+
+  app.post('/api/jobs/map/:jobId/cancel', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({
+        error: 'Inicia sesión para cancelar el trabajo.',
+      });
+    }
+
+    const jobId = typeof req.params.jobId === 'string' ? req.params.jobId.trim() : '';
+    if (!jobId) {
+      return res.status(400).json({ error: 'Falta el ID del trabajo.' });
+    }
+
+    const job = await cancelMappingJobForUser(
+      jobId,
+      authUser.userId,
+      authUser.accessToken,
+    );
+    if (!job) {
+      return res.status(404).json({ error: 'Trabajo de mapeo no encontrado.' });
+    }
+
+    return res.json({ ok: true, job });
+  });
 
   app.post(
     '/api/chat',

@@ -410,6 +410,16 @@ export function markFreeAccountImageConsumed(
   tracker.recentKeys.add(uniqueKey);
 }
 
+export function unmarkFreeAccountImageConsumed(
+  userId: string,
+  uniqueKey: string,
+): void {
+  if (!userId || !uniqueKey) return;
+  const tracker = accountImageMemory.get(userId);
+  if (!tracker) return;
+  tracker.recentKeys.delete(uniqueKey);
+}
+
 export function getCurrentMonthKey(): string {
   return new Date().toISOString().slice(0, 7); // YYYY-MM
 }

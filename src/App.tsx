@@ -31,13 +31,22 @@ import { resolveApiUrl } from './lib/apiConfig';
 import { useI18n } from './lib/i18n';
 import {
   compressImageToWebp,
-  mapUploadedImageWithAi,
   renderImageBlobFromUrl,
   uploadCompressedImage,
   type CompressedImageResult,
   type MappedImageMetadata,
   type UploadedCompressedImage,
 } from './lib/imageCompression';
+import {
+  clearPendingJobTracking,
+  fetchActiveMappingJob,
+  fetchMappingJobStatus,
+  readPendingJobCredentials,
+  readUnacknowledgedJobId,
+  savePendingJobCredentials,
+  startBackgroundMappingJob,
+  type MappingQueueJobClient,
+} from './lib/mappingQueueClient';
 import {
   buildCoreServiceEndpointUrl,
   generateCoreApiKey,
@@ -65,11 +74,10 @@ const UPLOAD_START_DELAY_MS = 1000;
 const RECEIVE_START_DELAY_MS = 1000;
 const MAP_START_DELAY_MS = 1800;
 const UPLOAD_CONCURRENCY = 3;
-const MAP_CONCURRENCY = 2;
 const MIN_RENDER_STEP_MS = 230;
 const MIN_TILE_STEP_MS = 260;
 const MIN_RECEIVE_STEP_MS = 230;
-const MIN_MAP_STEP_MS = 230;
+const JOB_POLL_INTERVAL_MS = 1800;
 
 type BatchImageSource =
   | { kind: 'file'; file: File }
@@ -145,6 +153,8 @@ export default function App() {
   const extractAbortRef = useRef<AbortController | null>(null);
   const compressionAbortRef = useRef<AbortController | null>(null);
   const compressionTimerRef = useRef<number | null>(null);
+  const activeJobIdRef = useRef<string | null>(null);
+  const jobPollTimerRef = useRef<number | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const shouldReduceMotion = useReducedMotion();
   const { t } = useI18n();
@@ -166,6 +176,11 @@ export default function App() {
       window.clearTimeout(compressionTimerRef.current);
       compressionTimerRef.current = null;
     }
+    if (jobPollTimerRef.current !== null) {
+      window.clearTimeout(jobPollTimerRef.current);
+      jobPollTimerRef.current = null;
+    }
+    activeJobIdRef.current = null;
     compressionAbortRef.current?.abort();
     compressionAbortRef.current = null;
   };
@@ -357,12 +372,352 @@ export default function App() {
           // Ignore storage quota errors
         }
       }
+
+      // Auto-resume any background mapping job running or just completed on Render
+      if (!activeJobIdRef.current) {
+        try {
+          const activeJob = await fetchActiveMappingJob();
+          if (!active || !activeJob || activeJobIdRef.current) return;
+
+          const pendingTrackedId = readUnacknowledgedJobId(authUser.id);
+          const isRunning =
+            activeJob.status === 'running' ||
+            activeJob.status === 'cooling_down';
+          const shouldRestoreFinished =
+            pendingTrackedId === activeJob.id &&
+            (activeJob.status === 'completed' ||
+              activeJob.status === 'failed_rolled_back');
+
+          if (isRunning || shouldRestoreFinished) {
+            hydrateStateFromQueueJob(activeJob);
+            if (isRunning) {
+              activeJobIdRef.current = activeJob.id;
+              const controller = new AbortController();
+              compressionAbortRef.current = controller;
+              void monitorBackgroundMappingJob(
+                activeJob,
+                controller.signal,
+                authUser.id,
+              );
+            } else {
+              await finalizeCompletedQueueJob(activeJob, authUser.id);
+            }
+          }
+        } catch {
+          // Ignore non-critical resume errors
+        }
+      }
     })();
 
     return () => {
       active = false;
     };
   }, [authUser]);
+
+  const applyQueueJobProgress = (job: MappingQueueJobClient) => {
+    const nextMapStatuses: Record<string, ImageMapStatus> = {};
+    const nextMappedResults: Record<string, MappedImageMetadata> = {};
+    const nextCompressionResults: Record<string, CompressedImageMeta> = {};
+
+    for (const item of job.items) {
+      if (item.status === 'mapped' && item.mapped) {
+        nextMapStatuses[item.clientItemId] = 'mapped';
+        nextMappedResults[item.clientItemId] = item.mapped;
+      } else if (item.status === 'failed') {
+        nextMapStatuses[item.clientItemId] = 'error';
+      } else if (item.status === 'processing') {
+        nextMapStatuses[item.clientItemId] = 'mapping';
+      } else {
+        nextMapStatuses[item.clientItemId] = 'waiting';
+      }
+
+      if (!item.r2Deleted) {
+        nextCompressionResults[item.clientItemId] = {
+          url: item.imageUrl,
+          cleanUrl: item.imageUrl,
+          savedPercent: item.savedPercent,
+          compressedBytes: item.compressedBytes,
+        };
+      }
+    }
+
+    setMapStatuses(nextMapStatuses);
+    setMappedResults(nextMappedResults);
+    setCompressionResults((prev) => ({
+      ...prev,
+      ...nextCompressionResults,
+    }));
+
+    if (job.status === 'cooling_down' && job.cooldownUntil) {
+      const secs = Math.max(
+        1,
+        Math.ceil((job.cooldownUntil - Date.now()) / 1000),
+      );
+      setBatchNotice(
+        `Cola en segundo plano (${job.mappedCount}/${job.totalItems}): pausa de ${secs}s para evitar saturación 503...`,
+      );
+    } else if (job.notice) {
+      setBatchNotice(job.notice);
+    } else if (job.status === 'running') {
+      setBatchNotice(
+        `Mapeando en segundo plano (${job.mappedCount}/${job.totalItems}) · Puedes salir y volver cuando quieras.`,
+      );
+    }
+  };
+
+  const hydrateStateFromQueueJob = (job: MappingQueueJobClient) => {
+    const hydratedImages: CatalogImageItem[] = job.items.map((item, idx) => ({
+      id: item.clientItemId,
+      url: item.imageUrl,
+      cleanUrl: item.imageUrl,
+      sourcePageUrl: item.originalUrl,
+      alt: item.mapped?.nombre || t.app.imageFallbackAlt(idx + 1),
+    }));
+
+    const compStatuses: Record<string, ImageCompressionStatus> = {};
+    const upStatuses: Record<string, ImageUploadStatus> = {};
+    const recStatuses: Record<string, ImageReceiveStatus> = {};
+
+    for (const item of job.items) {
+      compStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'done';
+      upStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'done';
+      recStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'received';
+    }
+
+    setHasSearched(true);
+    setIsReadOnlyReplay(false);
+    setIsFileUploadFlow(job.sourceType === 'files');
+    setCatalogImages(hydratedImages);
+    setCatalogVersion((prev) => prev + 1);
+    setShowCompressionBox(true);
+    setShowUploadBox(true);
+    setShowReceiveBox(true);
+    setShowMapBox(true);
+    setCompressionStatuses(compStatuses);
+    setUploadStatuses(upStatuses);
+    setReceiveStatuses(recStatuses);
+    applyQueueJobProgress(job);
+  };
+
+  const finalizeCompletedQueueJob = async (
+    job: MappingQueueJobClient,
+    userId: string,
+    mintedCredentials?: {
+      rawKey: string;
+      keyPrefix: string;
+      keyHash: string;
+      endpointUrl: string;
+    },
+  ) => {
+    activeJobIdRef.current = null;
+    applyQueueJobProgress(job);
+
+    if (job.status === 'failed_rolled_back' || job.planBRolledBack) {
+      setBatchNotice(
+        job.notice ||
+          'Plan B activado: el mapeo falló definitivamente y se eliminaron las imágenes de R2.',
+      );
+      clearPendingJobTracking(userId, job.id);
+      return;
+    }
+
+    const mappedItems = job.items
+      .filter((item) => item.status === 'mapped' && item.mapped)
+      .map((item) => ({
+        ...item.mapped!,
+        r2Key: item.r2Key,
+        savedPercent: item.savedPercent,
+      }));
+
+    if (mappedItems.length === 0) {
+      clearPendingJobTracking(userId, job.id);
+      return;
+    }
+
+    const cachedCreds = readPendingJobCredentials(userId, job.id);
+    const endpointUrl =
+      mintedCredentials?.endpointUrl ||
+      cachedCreds?.endpointUrl ||
+      buildCoreServiceEndpointUrl(job.serviceSlug);
+    const displayKey =
+      mintedCredentials?.rawKey ||
+      cachedCreds?.apiKey ||
+      'sl_core_...';
+    const keyPrefix =
+      mintedCredentials?.keyPrefix || cachedCreds?.keyPrefix || '';
+
+    const firstProductName =
+      mappedItems[0]?.nombre?.trim() || t.common.productFallback;
+    const defaultServiceName =
+      job.serviceName?.trim() ||
+      (/^(?:servicio|service|serviço)\s+/i.test(firstProductName)
+        ? firstProductName
+        : t.app.serviceDefaultPrefix(firstProductName));
+
+    if (isRawCoreApiKey(displayKey)) {
+      setActiveServiceCredentials({
+        serviceName: defaultServiceName,
+        apiKey: displayKey,
+        endpointUrl,
+        slug: job.serviceSlug,
+      });
+    }
+
+    const snapshotImages: CatalogImageItem[] = job.items.map((item, idx) => ({
+      id: item.clientItemId,
+      url: item.imageUrl,
+      cleanUrl: item.imageUrl,
+      sourcePageUrl: item.originalUrl,
+      alt: item.mapped?.nombre || t.app.imageFallbackAlt(idx + 1),
+    }));
+
+    const serviceSnapshot: OrganizationServiceSnapshot = {
+      images: snapshotImages,
+      compressionStatuses: Object.fromEntries(
+        job.items.map((i) => [i.clientItemId, i.r2Deleted ? 'error' : 'done']),
+      ),
+      uploadStatuses: Object.fromEntries(
+        job.items.map((i) => [i.clientItemId, i.r2Deleted ? 'error' : 'done']),
+      ),
+      receiveStatuses: Object.fromEntries(
+        job.items.map((i) => [
+          i.clientItemId,
+          i.r2Deleted ? 'error' : 'received',
+        ]),
+      ),
+      mapStatuses: Object.fromEntries(
+        job.items.map((i) => [
+          i.clientItemId,
+          i.status === 'mapped' ? 'mapped' : 'error',
+        ]),
+      ),
+      mappedResults: Object.fromEntries(
+        job.items
+          .filter((i) => i.status === 'mapped' && i.mapped)
+          .map((i) => [i.clientItemId, i.mapped!]),
+      ),
+      compressionResults: Object.fromEntries(
+        job.items
+          .filter((i) => !i.r2Deleted)
+          .map((i) => [
+            i.clientItemId,
+            {
+              url: i.imageUrl,
+              cleanUrl: itemSafeUrl(i.imageUrl),
+              savedPercent: i.savedPercent,
+              compressedBytes: i.compressedBytes,
+            },
+          ]),
+      ),
+    };
+
+    function itemSafeUrl(u: string) {
+      return u;
+    }
+
+    let resolvedServiceId = job.serviceId;
+    if (!resolvedServiceId && mintedCredentials) {
+      const coreSave = await createCoreServiceInSupabase({
+        publicSlug: job.serviceSlug,
+        nombre: defaultServiceName,
+        sourceType: job.sourceType,
+        sourceUrl: job.sourceUrl,
+        keyPrefix: mintedCredentials.keyPrefix,
+        keyHash: mintedCredentials.keyHash,
+        snapshotJson: serviceSnapshot,
+        items: mappedItems,
+      });
+      if (coreSave.saved && coreSave.serviceId) {
+        resolvedServiceId = coreSave.serviceId;
+      }
+    }
+
+    const finalServiceId =
+      resolvedServiceId || `srv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const newService: OrganizationServiceItem = {
+      id: finalServiceId,
+      slug: job.serviceSlug,
+      name: defaultServiceName,
+      apiKey: displayKey,
+      keyPrefix: keyPrefix || undefined,
+      endpointUrl,
+      isActive: true,
+      requestsCount: 0,
+      itemCount: mappedItems.length,
+      createdAt: job.createdAt || new Date().toISOString(),
+      products: mappedItems.map((item, idx) => ({
+        id: `prod-${Date.now()}-${idx}`,
+        nombre: item.nombre,
+        categoria: item.categoria,
+        descripcion: item.descripcion,
+        url: item.url,
+      })),
+      snapshot: serviceSnapshot,
+    };
+
+    setOrgServices((prev) => {
+      const filtered = prev.filter(
+        (srv) => srv.id !== finalServiceId && srv.slug !== job.serviceSlug,
+      );
+      const updated = [newService, ...filtered];
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${userId}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage errors
+      }
+      return updated;
+    });
+
+    if (!job.notice) {
+      setBatchNotice(t.app.coreSavedNotice);
+    }
+    clearPendingJobTracking(userId, job.id);
+  };
+
+  const monitorBackgroundMappingJob = async (
+    initialJob: MappingQueueJobClient,
+    signal: AbortSignal,
+    userId: string,
+    mintedCredentials?: {
+      rawKey: string;
+      keyPrefix: string;
+      keyHash: string;
+      endpointUrl: string;
+    },
+  ) => {
+    let latestJob = initialJob;
+    applyQueueJobProgress(latestJob);
+
+    while (
+      !signal.aborted &&
+      (latestJob.status === 'running' || latestJob.status === 'cooling_down')
+    ) {
+      await new Promise<void>((resolve) => {
+        jobPollTimerRef.current = window.setTimeout(() => {
+          jobPollTimerRef.current = null;
+          resolve();
+        }, JOB_POLL_INTERVAL_MS);
+      });
+
+      if (signal.aborted) return;
+
+      try {
+        const fetched = await fetchMappingJobStatus(latestJob.id, signal);
+        if (!fetched) break;
+        latestJob = fetched;
+        applyQueueJobProgress(latestJob);
+      } catch {
+        // Transient network hiccup while polling; keep retrying while Render continues
+      }
+    }
+
+    if (signal.aborted) return;
+    await finalizeCompletedQueueJob(latestJob, userId, mintedCredentials);
+  };
 
   const handleSaveOrgProfile = (next: OrganizationProfile) => {
     setOrgProfile(next);
@@ -1249,252 +1604,82 @@ export default function App() {
 
         setShowMapBox(true);
 
-        type MapTaskResult =
-          | { ok: true; data: MappedImageMetadata }
-          | { ok: false; aborted: boolean; errorMessage?: string };
+        const queueItems = items
+          .map((item, idx) => {
+            const uploaded = uploadedPayloads[idx];
+            if (!uploaded) return null;
+            return {
+              clientItemId: item.id,
+              r2Key: uploaded.key,
+              imageUrl: uploaded.url,
+              originalUrl: item.sourcePageUrl,
+              savedPercent: uploaded.savedPercent,
+              compressedBytes: uploaded.compressedBytes,
+            };
+          })
+          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
-        const mapResolvers: Array<(res: MapTaskResult) => void> = [];
-        const mapPromises: Array<Promise<MapTaskResult>> = uploadedPayloads.map(
-          (uploaded, idx) => {
-            if (!uploaded) {
-              return Promise.resolve({ ok: false, aborted: false });
-            }
-            return new Promise<MapTaskResult>((resolve) => {
-              mapResolvers[idx] = resolve;
-            });
-          },
-        );
-
-        let mapCursor = 0;
-        const mapWorkerCount = Math.min(MAP_CONCURRENCY, uploadedPayloads.length);
-        for (let w = 0; w < mapWorkerCount; w++) {
-          void (async () => {
-            if (w > 0) {
-              await new Promise<void>((resolve) =>
-                window.setTimeout(resolve, w * 180),
-              );
-            }
-            while (
-              mapCursor < uploadedPayloads.length &&
-              !controller.signal.aborted
-            ) {
-              const index = mapCursor++;
-              const uploaded = uploadedPayloads[index];
-              if (!uploaded) continue;
-
-              try {
-                const data = await mapUploadedImageWithAi(
-                  { key: uploaded.key, imageUrl: uploaded.url },
-                  controller.signal,
-                );
-                mapResolvers[index]({ ok: true, data });
-              } catch (err) {
-                const aborted =
-                  controller.signal.aborted ||
-                  (err instanceof DOMException && err.name === 'AbortError');
-                const errorMessage =
-                  err instanceof Error ? err.message : t.app.mapImageError;
-                mapResolvers[index]({ ok: false, aborted, errorMessage });
-              }
-            }
-          })();
+        if (queueItems.length === 0) {
+          setBatchNotice(firstUploadError || t.app.uploadImageError);
+          return;
         }
 
-        let firstMapError: string | null = null;
-        const collectedMappedItems: Array<
-          MappedImageMetadata & { r2Key?: string; savedPercent?: number }
-        > = [];
-        const mappedPayloads: Array<MappedImageMetadata | null> = new Array(
-          items.length,
-        ).fill(null);
+        const currentUserId = authUserRef.current?.id;
+        if (!currentUserId) return;
 
-        for (let i = 0; i < items.length; i++) {
-          if (controller.signal.aborted) return;
-          const item = items[i];
+        const serviceSlug = generateCoreServiceSlug();
+        const mintedKey = await generateCoreApiKey();
+        const endpointUrl = buildCoreServiceEndpointUrl(serviceSlug);
 
-          setMapStatuses((prev) => ({
-            ...prev,
-            [item.id]: 'mapping',
-          }));
-
-          const stepBeat = new Promise<void>((resolve) =>
-            window.setTimeout(resolve, MIN_MAP_STEP_MS),
+        try {
+          const startedJob = await startBackgroundMappingJob(
+            {
+              sourceType: originPageUrl ? 'url' : 'files',
+              sourceUrl: originPageUrl,
+              serviceSlug,
+              keyPrefix: mintedKey.keyPrefix,
+              keyHash: mintedKey.keyHash,
+              items: queueItems,
+            },
+            controller.signal,
           );
 
-          const [mapResult] = await Promise.all([mapPromises[i], stepBeat]);
-          if (controller.signal.aborted) return;
-
-          if (mapResult.ok) {
-            mappedPayloads[i] = mapResult.data;
-            collectedMappedItems.push({
-              ...mapResult.data,
-              r2Key: uploadedPayloads[i]?.key,
-              savedPercent: uploadedPayloads[i]?.savedPercent ?? 0,
-            });
-            setMappedResults((prev) => ({
-              ...prev,
-              [item.id]: mapResult.data,
-            }));
-            setMapStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'mapped',
-            }));
-          } else if (!mapResult.aborted) {
-            if (!firstMapError && mapResult.errorMessage) {
-              firstMapError = mapResult.errorMessage;
-              setBatchNotice(mapResult.errorMessage);
-            }
-            setMapStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'error',
-            }));
-          }
-        }
-
-        if (collectedMappedItems.length > 0 && !controller.signal.aborted) {
-          const firstProductName =
-            collectedMappedItems[0]?.nombre?.trim() || t.common.productFallback;
-          const defaultServiceName = /^(?:servicio|service|serviço)\s+/i.test(
-            firstProductName,
-          )
-            ? firstProductName
-            : t.app.serviceDefaultPrefix(firstProductName);
-
-          const snapshotImages: CatalogImageItem[] = items.map((item, idx) => {
-            const uploaded = uploadedPayloads[idx];
-            const permanentUrl =
-              uploaded?.url || (!item.url.startsWith('blob:') ? item.url : '');
-            return {
-              ...item,
-              url: permanentUrl || item.url,
-              cleanUrl: uploaded?.url ?? item.cleanUrl,
-            };
-          });
-
-          const snapshotCompressionStatuses: Record<string, ImageCompressionStatus> = {};
-          const snapshotUploadStatuses: Record<string, ImageUploadStatus> = {};
-          const snapshotReceiveStatuses: Record<string, ImageReceiveStatus> = {};
-          const snapshotMapStatuses: Record<string, ImageMapStatus> = {};
-          const snapshotMappedResults: Record<string, MappedImageMetadata> = {};
-          const snapshotCompressionResults: Record<string, CompressedImageMeta> = {};
-
-          items.forEach((item, idx) => {
-            const compressed = compressedPayloads[idx];
-            const uploaded = uploadedPayloads[idx];
-            const mapped = mappedPayloads[idx];
-
-            snapshotCompressionStatuses[item.id] = compressed ? 'done' : 'error';
-            snapshotUploadStatuses[item.id] = uploaded ? 'done' : 'error';
-            snapshotReceiveStatuses[item.id] = uploaded ? 'received' : 'error';
-            snapshotMapStatuses[item.id] = mapped ? 'mapped' : 'error';
-
-            if (uploaded) {
-              snapshotCompressionResults[item.id] = {
-                url: uploaded.url,
-                cleanUrl: uploaded.url,
-                savedPercent: uploaded.savedPercent,
-                compressedBytes: uploaded.compressedBytes,
-              };
-            }
-
-            if (mapped) {
-              snapshotMappedResults[item.id] = mapped;
-            }
-          });
-
-          const serviceSnapshot: OrganizationServiceSnapshot = {
-            images: snapshotImages,
-            compressionStatuses: snapshotCompressionStatuses,
-            uploadStatuses: snapshotUploadStatuses,
-            receiveStatuses: snapshotReceiveStatuses,
-            mapStatuses: snapshotMapStatuses,
-            mappedResults: snapshotMappedResults,
-            compressionResults: snapshotCompressionResults,
-          };
-
-          const serviceSlug = generateCoreServiceSlug();
-          const mintedKey = await generateCoreApiKey();
-          const endpointUrl = buildCoreServiceEndpointUrl(serviceSlug);
-          const tempServiceId = `srv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-          setActiveServiceCredentials({
-            serviceName: defaultServiceName,
-            apiKey: mintedKey.rawKey,
-            endpointUrl,
+          activeJobIdRef.current = startedJob.id;
+          savePendingJobCredentials(currentUserId, {
+            jobId: startedJob.id,
             slug: serviceSlug,
-          });
-
-          const newService: OrganizationServiceItem = {
-            id: tempServiceId,
-            slug: serviceSlug,
-            name: defaultServiceName,
             apiKey: mintedKey.rawKey,
             keyPrefix: mintedKey.keyPrefix,
             endpointUrl,
-            isActive: true,
-            requestsCount: 0,
-            itemCount: collectedMappedItems.length,
-            createdAt: new Date().toISOString(),
-            products: collectedMappedItems.map((item, idx) => ({
-              id: `prod-${Date.now()}-${idx}`,
-              nombre: item.nombre,
-              categoria: item.categoria,
-              descripcion: item.descripcion,
-              url: item.url,
-            })),
-            snapshot: serviceSnapshot,
-          };
-
-          setOrgServices((prev) => {
-            const updated = [newService, ...prev];
-            if (authUserRef.current) {
-              try {
-                window.localStorage.setItem(
-                  `searchlink_services_${authUserRef.current.id}`,
-                  JSON.stringify(updated),
-                );
-              } catch {
-                // Ignore storage quota errors
-              }
-            }
-            return updated;
           });
 
-          if (authUserRef.current) {
-            const coreSave = await createCoreServiceInSupabase({
-              publicSlug: serviceSlug,
-              nombre: defaultServiceName,
-              sourceType: originPageUrl ? 'url' : 'files',
-              sourceUrl: originPageUrl,
+          await monitorBackgroundMappingJob(
+            startedJob,
+            controller.signal,
+            currentUserId,
+            {
+              rawKey: mintedKey.rawKey,
               keyPrefix: mintedKey.keyPrefix,
               keyHash: mintedKey.keyHash,
-              snapshotJson: serviceSnapshot,
-              items: collectedMappedItems,
-            });
-
-            if (coreSave.saved && coreSave.serviceId) {
-              const savedUuid = coreSave.serviceId;
-              setOrgServices((prev) => {
-                const synced = prev.map((srv) =>
-                  srv.id === tempServiceId ? { ...srv, id: savedUuid } : srv,
-                );
-                if (authUserRef.current) {
-                  try {
-                    window.localStorage.setItem(
-                      `searchlink_services_${authUserRef.current.id}`,
-                      JSON.stringify(synced),
-                    );
-                  } catch {
-                    // Ignore storage quota errors
-                  }
-                }
-                return synced;
-              });
-              if (!firstMapError) {
-                setBatchNotice(t.app.coreSavedNotice);
-              }
-            }
+              endpointUrl,
+            },
+          );
+        } catch (err) {
+          if (
+            controller.signal.aborted ||
+            (err instanceof DOMException && err.name === 'AbortError')
+          ) {
+            return;
           }
+          const msg = err instanceof Error ? err.message : t.app.mapImageError;
+          setBatchNotice(msg);
+          setMapStatuses((prev) => {
+            const next = { ...prev };
+            for (const qItem of queueItems) {
+              next[qItem.clientItemId] = 'error';
+            }
+            return next;
+          });
         }
       })();
     }, COMPRESSION_START_DELAY_MS);

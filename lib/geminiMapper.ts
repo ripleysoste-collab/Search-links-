@@ -48,16 +48,30 @@ function sanitizeStringArray(value: unknown): string[] {
   return out;
 }
 
+export type GeminiErrorKind = 'transient' | 'fatal' | 'auth';
+
+export class GeminiMapError extends Error {
+  readonly kind: GeminiErrorKind;
+
+  constructor(message: string, kind: GeminiErrorKind) {
+    super(message);
+    this.name = 'GeminiMapError';
+    this.kind = kind;
+  }
+}
+
 export async function mapStoredImageWithGemini(options: {
   key?: string;
   imageUrl: string;
   dataBase64?: string;
   mimeType?: string;
+  maxAttempts?: number;
 }): Promise<MappedImageMetadata> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
-    throw new Error(
-      'Falta GEMINI_API_KEY en el servidor (agrégalo en Settings > Secrets o en las variables de Vercel).',
+    throw new GeminiMapError(
+      'Falta GEMINI_API_KEY en el servidor (agrégalo en las variables de entorno de Render).',
+      'auth',
     );
   }
 
@@ -65,9 +79,16 @@ export async function mapStoredImageWithGemini(options: {
   let resolvedMimeType = 'image/webp';
 
   if (options.key && isValidMediaKey(options.key)) {
-    const stored = await readImageFromR2(options.key);
-    imageBase64 = stored.buffer.toString('base64');
-    resolvedMimeType = stored.contentType || 'image/webp';
+    try {
+      const stored = await readImageFromR2(options.key);
+      imageBase64 = stored.buffer.toString('base64');
+      resolvedMimeType = stored.contentType || 'image/webp';
+    } catch (err) {
+      throw new GeminiMapError(
+        err instanceof Error ? err.message : 'No se pudo leer la imagen desde R2.',
+        'fatal',
+      );
+    }
   } else if (options.dataBase64) {
     const trimmed = options.dataBase64.trim();
     const commaIdx = trimmed.indexOf(',');
@@ -79,11 +100,11 @@ export async function mapStoredImageWithGemini(options: {
       resolvedMimeType = options.mimeType;
     }
   } else {
-    throw new Error('Se requiere una imagen guardada válida para mapear.');
+    throw new GeminiMapError('Se requiere una imagen guardada válida para mapear.', 'fatal');
   }
 
   if (!imageBase64) {
-    throw new Error('La imagen para mapear está vacía.');
+    throw new GeminiMapError('La imagen para mapear está vacía.', 'fatal');
   }
 
   const ai = new GoogleGenAI({
@@ -114,12 +135,17 @@ export async function mapStoredImageWithGemini(options: {
     '  • "categoria": "Categoría · Subcategoría" precisa (ej. "Calzado · Tenis urbanos", "Alimentos · Hamburguesas").\n' +
     '  • "descripcion": 3 a 4 oraciones densas, claras y sin relleno repetitivo en español que integren colores, estructura, conteo exacto de elementos/ingredientes, materiales y tamaño mínimo estimado para responder dudas de clientes al instante.';
 
-  const MAX_GEMINI_ATTEMPTS = 4;
+  const MAX_GEMINI_ATTEMPTS =
+    typeof options.maxAttempts === 'number' && options.maxAttempts >= 1
+      ? Math.min(6, Math.trunc(options.maxAttempts))
+      : 4;
 
   const isTransientError = (msg: string): boolean => {
     const upper = msg.toUpperCase();
     return (
       upper.includes('503') ||
+      upper.includes('502') ||
+      upper.includes('504') ||
       upper.includes('UNAVAILABLE') ||
       upper.includes('OVERLOADED') ||
       upper.includes('HIGH DEMAND') ||
@@ -314,8 +340,9 @@ export async function mapStoredImageWithGemini(options: {
         message.includes('PERMISSION_DENIED') ||
         message.includes('403')
       ) {
-        throw new Error(
-          'La clave GEMINI_API_KEY fue rechazada o falta en Settings > Secrets.',
+        throw new GeminiMapError(
+          'La clave GEMINI_API_KEY fue rechazada o falta en el servidor.',
+          'auth',
         );
       }
 
@@ -328,18 +355,26 @@ export async function mapStoredImageWithGemini(options: {
       }
 
       if (message.includes('503') || message.toUpperCase().includes('UNAVAILABLE')) {
-        throw new Error(
-          'El servidor de Gemini tuvo saturación temporal (503) tras varios reintentos.',
+        throw new GeminiMapError(
+          'El servidor de Gemini tuvo saturación temporal (503).',
+          'transient',
         );
       }
       if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
-        throw new Error(
-          'Se alcanzó el límite temporal gratuito de Gemini. Intenta en unos segundos.',
+        throw new GeminiMapError(
+          'Se alcanzó el límite temporal de Gemini (429).',
+          'transient',
         );
       }
-      throw new Error(`Error al mapear con Gemini: ${message.slice(0, 120)}`);
+      if (transient) {
+        throw new GeminiMapError(
+          `Saturación o corte temporal al consultar Gemini: ${message.slice(0, 100)}`,
+          'transient',
+        );
+      }
+      throw new GeminiMapError(`Error al mapear con Gemini: ${message.slice(0, 120)}`, 'fatal');
     }
   }
 
-  throw new Error('No se pudo completar el mapeo con Gemini.');
+  throw new GeminiMapError('No se pudo completar el mapeo con Gemini.', 'transient');
 }
