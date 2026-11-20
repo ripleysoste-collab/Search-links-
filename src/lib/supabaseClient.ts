@@ -5,13 +5,36 @@ const DEFAULT_SUPABASE_URL = 'https://nhofuamltqglrgfjucof.supabase.co';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY =
   'sb_publishable_wKhXyZ7s3CtT4NcU8Nx8EQ_T9TZsxFI';
 
-const supabaseUrl = (
-  import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL
-).trim();
+function normalizeSupabaseClientUrl(raw: string | undefined): string {
+  let cleaned = (raw || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/^(?:VITE_)?SUPABASE_URL\s*=\s*/i, '')
+    .trim();
+  if (!cleaned) return DEFAULT_SUPABASE_URL;
+  if (!/^https?:\/\//i.test(cleaned) && /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(cleaned)) {
+    cleaned = `https://${cleaned}`;
+  }
+  try {
+    const parsed = new URL(cleaned);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+  } catch {
+    // Fall back to default URL
+  }
+  return DEFAULT_SUPABASE_URL;
+}
+
+const supabaseUrl = normalizeSupabaseClientUrl(import.meta.env.VITE_SUPABASE_URL);
 const supabasePublishableKey = (
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   DEFAULT_SUPABASE_PUBLISHABLE_KEY
-).trim();
+)
+  .trim()
+  .replace(/^["']|["']$/g, '')
+  .replace(/^(?:VITE_)?SUPABASE_(?:PUBLISHABLE|ANON)_KEY\s*=\s*/i, '')
+  .trim() || DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
 export const isSupabaseClientConfigured = Boolean(
   supabaseUrl && supabasePublishableKey,

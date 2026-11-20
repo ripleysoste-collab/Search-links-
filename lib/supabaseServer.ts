@@ -20,15 +20,38 @@ function cleanEnv(value: string | undefined): string {
   return (value || '').trim().replace(/^["']|["']$/g, '').trim();
 }
 
+function normalizeSupabaseUrl(raw: string | undefined): string {
+  let cleaned = cleanEnv(raw).replace(/^(?:VITE_)?SUPABASE_URL\s*=\s*/i, '').trim();
+  if (!cleaned) return '';
+  if (!/^https?:\/\//i.test(cleaned) && /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(cleaned)) {
+    cleaned = `https://${cleaned}`;
+  }
+  try {
+    const parsed = new URL(cleaned);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+  } catch {
+    // Fall back to default below
+  }
+  return '';
+}
+
+function normalizeSupabaseKey(raw: string | undefined): string {
+  return cleanEnv(raw)
+    .replace(/^(?:VITE_)?SUPABASE_(?:PUBLISHABLE|ANON)_KEY\s*=\s*/i, '')
+    .trim();
+}
+
 export function getSupabaseServerConfig(): { url: string; key: string } {
   const url =
-    cleanEnv(process.env.SUPABASE_URL) ||
-    cleanEnv(process.env.VITE_SUPABASE_URL) ||
+    normalizeSupabaseUrl(process.env.SUPABASE_URL) ||
+    normalizeSupabaseUrl(process.env.VITE_SUPABASE_URL) ||
     DEFAULT_SUPABASE_URL;
   const key =
-    cleanEnv(process.env.SUPABASE_PUBLISHABLE_KEY) ||
-    cleanEnv(process.env.SUPABASE_ANON_KEY) ||
-    cleanEnv(process.env.VITE_SUPABASE_PUBLISHABLE_KEY) ||
+    normalizeSupabaseKey(process.env.SUPABASE_PUBLISHABLE_KEY) ||
+    normalizeSupabaseKey(process.env.SUPABASE_ANON_KEY) ||
+    normalizeSupabaseKey(process.env.VITE_SUPABASE_PUBLISHABLE_KEY) ||
     DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
   return { url, key };
