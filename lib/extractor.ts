@@ -34,6 +34,7 @@ interface RawCandidate {
 
 const MIN_DIMENSION_PX = 200;
 const FALLBACK_MIN_DIMENSION_PX = 120;
+const MAX_ASPECT_RATIO = 3.0;
 const MAX_HTML_BYTES = 4 * 1024 * 1024;
 const MAX_JS_BUNDLE_BYTES = 1_500_000;
 const MAX_PROBE_CANDIDATES = 80;
@@ -69,7 +70,7 @@ const BROWSER_HEADER_PROFILES: Record<string, string>[] = [
 
 const JUNK_EXTENSIONS = /\.(svg|ico|cur|woff2?|ttf|eot|mp4|webm|mov|mp3|wav|pdf|css|js|mjs|json|xml)(\?|#|$)/i;
 const JUNK_KEYWORDS =
-  /(^|[^a-z])(logo|icon|icono|favicon|sprite|spacer|pixel|1x1|tracking|analytics|telemetry|spinner|loader|loading|placeholder|emoji|doubleclick|adsense|blank|transparent|avatar|badge|payment|visa|mastercard|paypal|amex|apple-pay|google-pay)([^a-z]|$)/i;
+  /(^|[^a-z])(logo|logotipo|icon|icono|favicon|sprite|spacer|pixel|1x1|tracking|analytics|telemetry|spinner|loader|loading|placeholder|emoji|doubleclick|adsense|blank|transparent|avatar|badge|trust-?seal|payment|visa|mastercard|paypal|amex|diners|elo|boleto|pix|nequi|daviplata|bancolombia|yape|plin|efecty|oxxo|pse|mercado-?pago|apple-?pay|google-?pay|app-?store|google-?play|play-?store|qr-?code|whatsapp-?(?:btn|button|icon)|facebook-?icon|instagram-?icon)([^a-z]|$)/i;
 const IMAGE_EXT_REGEX = /\.(jpe?g|png|webp|avif|gif)(\?|#|$)/i;
 
 const KNOWN_IMAGE_CDN_HOSTS = [
@@ -85,6 +86,14 @@ const KNOWN_IMAGE_CDN_HOSTS = [
   'images.ctfassets.net',
   'cdn.sanity.io',
   'imgix.net',
+  'assets.olaclick.app',
+  'olaclick.app',
+  'cdn.tiendanube.com',
+  'acdn.mitiendanube.com',
+  'cdn.webflow.com',
+  'website-files.com',
+  'images.rappi.com',
+  'cdn.builder.io',
 ];
 
 const CATALOG_LINK_KEYWORDS =
@@ -105,6 +114,50 @@ const TRACKING_QUERY_PARAMS = new Set([
   'gclid',
   'mc_cid',
   'mc_eid',
+]);
+
+const RESIZE_QUERY_PARAMS = new Set([
+  'w',
+  'width',
+  'h',
+  'height',
+  'maxwidth',
+  'maxheight',
+  'mw',
+  'mh',
+  'q',
+  'quality',
+  'fit',
+  'crop',
+  'auto',
+  'format',
+  'fm',
+  'dpr',
+  'resize',
+  'size',
+  'imwidth',
+  'sw',
+  'sh',
+  'sm',
+  'upscale',
+  'sharpen',
+  'blur',
+]);
+
+const SIGNED_QUERY_PARAMS = new Set([
+  'signature',
+  'sig',
+  'token',
+  'hash',
+  'hmac',
+  'x-amz-signature',
+  'x-amz-credential',
+  'googleaccessid',
+  'policy',
+  'key-pair-id',
+  'auth',
+  'st',
+  'sp',
 ]);
 
 function normalizeCandidateString(raw: string): string {
@@ -265,6 +318,281 @@ function isJunkCandidateUrl(url: string): boolean {
   }
 }
 
+function isSignedUrl(parsed: URL): boolean {
+  for (const key of parsed.searchParams.keys()) {
+    if (SIGNED_QUERY_PARAMS.has(key.toLowerCase())) {
+      return true;
+    }
+  }
+  if (parsed.hostname.includes('cloudinary.com') && /\/s--[^/]+--\//.test(parsed.pathname)) {
+    return true;
+  }
+  return false;
+}
+
+function computeCanonicalImageKey(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    let pathname = parsed.pathname;
+
+    // Normalize WordPress Photon CDN hosts (i0.wp.com/domain.com/...)
+    if (/^i[0-3]\.wp\.com$/i.test(host) && pathname.length > 2) {
+      pathname = pathname.replace(/^\/+/, '');
+    }
+
+    // Wix: static.wixstatic.com/media/<assetId>/v1/fill/... -> media/<assetId>
+    if (host.endsWith('wixstatic.com')) {
+      const wixMatch = pathname.match(/^\/media\/([^/]+)/i);
+      if (wixMatch?.[1]) {
+        return `wixstatic.com/media/${wixMatch[1].toLowerCase()}`;
+      }
+    }
+
+    // Cloudinary: strip transformation chain between /upload/ and asset path
+    if (host.includes('cloudinary.com') && pathname.includes('/image/upload/')) {
+      const parts = pathname.split('/image/upload/');
+      if (parts.length === 2) {
+        const restSegments = parts[1].split('/');
+        while (
+          restSegments.length > 1 &&
+          !restSegments[0].match(/^v\d+$/) &&
+          /(?:^|,)(?:w|h|c|q|f|dpr|g|ar|e|bo|t)_/i.test(restSegments[0])
+        ) {
+          restSegments.shift();
+        }
+        pathname = `${parts[0]}/image/upload/${restSegments.join('/')}`;
+      }
+    }
+
+    // MercadoLibre: collapse -I/-S/-V/-F/-O size suffixes and jpg/webp mirrors
+    if (host.endsWith('mlstatic.com')) {
+      pathname = pathname.replace(/-[A-Z](?=\.(?:jpe?g|png|webp|avif)$)/i, '');
+      pathname = pathname.replace(/\.(?:jpe?g|webp|avif)$/i, '.jpg');
+    }
+
+    // WordPress WebP mirrors (.jpg.webp / .png.webp -> .jpg / .png)
+    pathname = pathname.replace(/\.(jpe?g|png)\.webp$/i, '.$1');
+
+    // WordPress/WooCommerce size suffixes (-300x300, -1024x1024, -scaled)
+    pathname = pathname.replace(
+      /(?:-\d{2,4}x\d{2,4}|-scaled)(?=\.(?:jpe?g|png|webp|avif)$)/i,
+      '',
+    );
+
+    // Shopify size suffixes (_300x300, _1200x, _medium, _grande, _master, etc.)
+    pathname = pathname.replace(
+      /_(?:\d+x\d*|\d*x\d+|pico|icon|thumb|small|compact|medium|large|grande|master)(?=\.(?:jpe?g|png|webp|avif)$)/i,
+      '',
+    );
+
+    const remainingParams = new URLSearchParams();
+    for (const [key, value] of Array.from(parsed.searchParams.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0]),
+    )) {
+      const lower = key.toLowerCase();
+      if (TRACKING_QUERY_PARAMS.has(lower) || RESIZE_QUERY_PARAMS.has(lower)) {
+        continue;
+      }
+      remainingParams.append(key, value);
+    }
+
+    const query = remainingParams.toString();
+    return `${host}${pathname.toLowerCase()}${query ? `?${query}` : ''}`;
+  } catch {
+    return rawUrl.toLowerCase();
+  }
+}
+
+function estimateUrlResolutionScore(rawUrl: string): number {
+  let score = 1500;
+  try {
+    const parsed = new URL(rawUrl);
+    const pathname = parsed.pathname;
+
+    // Check explicit resize query params
+    for (const key of ['w', 'width', 'imwidth']) {
+      const val = parsed.searchParams.get(key);
+      if (val && /^\d+$/.test(val)) {
+        score = Math.min(score, parseInt(val, 10));
+      }
+    }
+
+    const resizeParam = parsed.searchParams.get('resize') || parsed.searchParams.get('size');
+    if (resizeParam) {
+      const nums = resizeParam.match(/\d+/g)?.map((n) => parseInt(n, 10)) ?? [];
+      if (nums.length > 0) {
+        score = Math.min(score, Math.max(...nums));
+      }
+    }
+
+    // WordPress suffix: -300x300.jpg
+    const wpMatch = pathname.match(/-(\d{2,4})x(\d{2,4})\.(?:jpe?g|png|webp|avif)$/i);
+    if (wpMatch) {
+      score = Math.max(parseInt(wpMatch[1], 10), parseInt(wpMatch[2], 10));
+    }
+
+    // Shopify suffix
+    const shopifyNum = pathname.match(/_(\d+)x(\d*)\.(?:jpe?g|png|webp|avif)$/i);
+    if (shopifyNum) {
+      const w = parseInt(shopifyNum[1], 10);
+      const h = shopifyNum[2] ? parseInt(shopifyNum[2], 10) : w;
+      score = Math.max(w, h);
+    } else if (/_(pico|icon|thumb)\./i.test(pathname)) {
+      score = 64;
+    } else if (/_(small|compact)\./i.test(pathname)) {
+      score = 160;
+    } else if (/_medium\./i.test(pathname)) {
+      score = 240;
+    } else if (/_large\./i.test(pathname)) {
+      score = 480;
+    } else if (/_grande\./i.test(pathname)) {
+      score = 600;
+    } else if (/_master\./i.test(pathname)) {
+      score = 1800;
+    }
+
+    // Cloudinary transform w_300
+    const cldW = pathname.match(/(?:^|[,/])w_(\d+)/i);
+    if (cldW) {
+      score = parseInt(cldW[1], 10);
+    }
+
+    // Wix fill w_240
+    if (parsed.hostname.endsWith('wixstatic.com')) {
+      const wixW = pathname.match(/\/w_(\d+)/i);
+      if (wixW) {
+        score = parseInt(wixW[1], 10);
+      } else if (/^\/media\/[^/]+$/i.test(pathname)) {
+        score = 1800;
+      }
+    }
+
+    // MercadoLibre suffixes
+    if (parsed.hostname.endsWith('mlstatic.com')) {
+      if (/-O\.(?:jpe?g|png|webp)$/i.test(pathname)) score = 1600;
+      else if (/-F\.(?:jpe?g|png|webp)$/i.test(pathname)) score = 1200;
+      else if (/-I\.(?:jpe?g|png|webp)$/i.test(pathname)) score = 200;
+      else if (/-S\.(?:jpe?g|png|webp)$/i.test(pathname)) score = 120;
+    }
+
+    if (/\.avif(\?|#|$)/i.test(rawUrl)) {
+      score -= 10;
+    }
+    if (parsed.protocol === 'https:') {
+      score += 1;
+    }
+  } catch {
+    return 0;
+  }
+  return score;
+}
+
+function tryUpgradeUrlToHd(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl);
+    if (isSignedUrl(parsed)) return null;
+
+    let changed = false;
+    const host = parsed.hostname.toLowerCase();
+
+    // 1. Wix full original media asset
+    if (host.endsWith('wixstatic.com')) {
+      const wixMatch = parsed.pathname.match(/^(\/media\/[^/]+)\/v1\/(?:fill|fit|crop)\/.+$/i);
+      if (wixMatch?.[1]) {
+        parsed.pathname = wixMatch[1];
+        parsed.search = '';
+        return parsed.href;
+      }
+    }
+
+    // 2. MercadoLibre thumbnail -> original (-O)
+    if (host.endsWith('mlstatic.com')) {
+      const upgradedMl = parsed.pathname.replace(
+        /-(?:I|S|V)(\.(?:jpe?g|png|webp))$/i,
+        '-O$1',
+      );
+      if (upgradedMl !== parsed.pathname) {
+        parsed.pathname = upgradedMl;
+        changed = true;
+      }
+    }
+
+    // 3. WordPress / WooCommerce cropped filename (-300x300.jpg -> .jpg)
+    const wpCropped = parsed.pathname.match(
+      /^(.+?)-(\d{2,4})x(\d{2,4})(\.(?:jpe?g|png|webp))$/i,
+    );
+    if (wpCropped) {
+      const w = parseInt(wpCropped[2], 10);
+      const h = parseInt(wpCropped[3], 10);
+      if (Math.max(w, h) < 800) {
+        parsed.pathname = `${wpCropped[1]}${wpCropped[4]}`;
+        changed = true;
+      }
+    }
+
+    // 4. Shopify size suffix (_300x300.jpg / _medium.jpg -> .jpg)
+    if (
+      host.includes('shopify.com') ||
+      parsed.pathname.includes('/cdn/shop/') ||
+      parsed.pathname.includes('/s/files/')
+    ) {
+      const shopifySize = parsed.pathname.match(
+        /^(.+?)_(?:(\d+)x(\d*)|(\d*)x(\d+)|pico|icon|thumb|small|compact|medium|large|grande)(\.(?:jpe?g|png|webp))$/i,
+      );
+      if (shopifySize) {
+        const w = shopifySize[2] ? parseInt(shopifySize[2], 10) : 0;
+        const h = shopifySize[5] ? parseInt(shopifySize[5], 10) : 0;
+        if (Math.max(w, h) < 800) {
+          parsed.pathname = `${shopifySize[1]}${shopifySize[6]}`;
+          changed = true;
+        }
+      }
+    }
+
+    // 5. Cloudinary small width transform
+    if (host.includes('cloudinary.com') && parsed.pathname.includes('/image/upload/')) {
+      const upgradedCld = parsed.pathname.replace(/(\b|,)w_(\d+)(\b|,)/gi, (full, pre, num, post) => {
+        const val = parseInt(num, 10);
+        if (val > 0 && val < 900) {
+          changed = true;
+          return `${pre}w_1200${post}`;
+        }
+        return full;
+      });
+      if (upgradedCld !== parsed.pathname) {
+        parsed.pathname = upgradedCld;
+      }
+    }
+
+    // 6. Query-string width parameters (Shopify ?width=300, Unsplash ?w=400, Imgix, Sanity, WordPress)
+    for (const key of ['w', 'width', 'imwidth']) {
+      const val = parsed.searchParams.get(key);
+      if (val && /^\d+$/.test(val)) {
+        const num = parseInt(val, 10);
+        if (num > 0 && num < 900) {
+          parsed.searchParams.set(key, '1200');
+          if (parsed.searchParams.has('h') || parsed.searchParams.has('height')) {
+            parsed.searchParams.delete('h');
+            parsed.searchParams.delete('height');
+          }
+          changed = true;
+        }
+      }
+    }
+
+    return changed && parsed.href !== rawUrl ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function isCatalogFriendlyDimensions(width: number, height: number, minSide: number): boolean {
+  if (width < minSide || height < minSide) return false;
+  const aspect = Math.max(width / height, height / width);
+  return aspect <= MAX_ASPECT_RATIO;
+}
+
 function buildCleanDisplayUrl(rawUrl: string): string {
   try {
     const parsed = new URL(rawUrl);
@@ -391,38 +719,71 @@ function collectJsonTreeImages(
   }
 }
 
-function extractNearestHeading($el: cheerio.Cheerio<any>): { alt: string; isProductContext: boolean } {
+function extractNearestHeading(
+  $: cheerio.CheerioAPI,
+  $el: cheerio.Cheerio<any>,
+): {
+  alt: string;
+  isProductContext: boolean;
+  isChromeOrBanner: boolean;
+} {
   const ownAlt = ($el.attr('alt') || $el.attr('title') || $el.attr('aria-label') || '').trim();
+  const imgClassAndId = `${$el.attr('class') || ''} ${$el.attr('id') || ''}`.toLowerCase();
 
-  const container = $el.closest('figure, article, li, a, div, section');
-  const containerClass = (container.attr('class') || '').toLowerCase();
-  const containerText = container.text().replace(/\s+/g, ' ').trim();
-  const hasPriceSignal = /[$€£]\s?\d|\d+[.,]\d{2}\s?(?:usd|mxn|cop|eur|ars|pen|clp|brl)?/i.test(
-    containerText.slice(0, 260),
-  );
-  const isProductClass =
-    /(product|producto|item|card|catalog|woo|shopify|grid-item)/i.test(containerClass) ||
-    Boolean($el.attr('itemprop') === 'image');
-  const isHeroOrBanner = /(hero|banner|slider|carousel-bg|footer|header|nav)/i.test(
-    `${($el.attr('class') || '').toLowerCase()} ${containerClass}`,
-  );
-
+  let isProductClass = $el.attr('itemprop') === 'image';
+  let hasPriceSignal = false;
+  let isChromeOrBanner =
+    /(hero|banner|slider|carousel-bg|logo|brand-mark|payment|trust|badge|social)/i.test(imgClassAndId);
   let alt = ownAlt.slice(0, 90);
-  if (alt.length < 2 && container.length > 0) {
-    const nearby = container
-      .find('figcaption, h1, h2, h3, h4, [class*="title"], [class*="name"]')
-      .first()
-      .text()
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (nearby.length >= 2 && nearby.length <= 90) {
-      alt = nearby;
+
+  const ancestors = $el.parents().slice(0, 5);
+  ancestors.each((idx, node) => {
+    const $anc = $(node);
+    const tagName = (node as { tagName?: string }).tagName?.toLowerCase() || '';
+    const ancMeta = `${tagName} ${$anc.attr('class') || ''} ${$anc.attr('id') || ''}`.toLowerCase();
+
+    if (
+      tagName === 'footer' ||
+      tagName === 'nav' ||
+      /(footer|navbar|site-header|announcement|payment-?method|social-?link|trust-?badge|partner-?logo|client-?logo|hero-?banner|promo-?banner)/i.test(
+        ancMeta,
+      )
+    ) {
+      isChromeOrBanner = true;
     }
-  }
+
+    if (
+      idx <= 3 &&
+      /(product|producto|item|card|catalog|woo|shopify|grid-item|menu-?item|dish|platillo|food)/i.test(
+        ancMeta,
+      )
+    ) {
+      isProductClass = true;
+    }
+
+    if (idx <= 3 && !hasPriceSignal) {
+      const snippet = $anc.text().replace(/\s+/g, ' ').trim().slice(0, 260);
+      if (/[$€£]\s?\d|\d+[.,]\d{2}\s?(?:usd|mxn|cop|eur|ars|pen|clp|brl)?/i.test(snippet)) {
+        hasPriceSignal = true;
+      }
+      if (alt.length < 2) {
+        const nearby = $anc
+          .find('figcaption, h1, h2, h3, h4, [class*="title"], [class*="name"]')
+          .first()
+          .text()
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (nearby.length >= 2 && nearby.length <= 90) {
+          alt = nearby;
+        }
+      }
+    }
+  });
 
   return {
     alt,
-    isProductContext: (hasPriceSignal || isProductClass) && !isHeroOrBanner,
+    isProductContext: (hasPriceSignal || isProductClass) && !isChromeOrBanner,
+    isChromeOrBanner,
   };
 }
 
@@ -512,7 +873,16 @@ function collectCandidatesFromHtml(
   $('img').each((_, el) => {
     imgCount++;
     const $el = $(el);
-    const { alt, isProductContext } = extractNearestHeading($el);
+
+    // Skip tiny icons or extreme banner strips declared directly in HTML attributes
+    const attrW = parseInt($el.attr('width') || '', 10);
+    const attrH = parseInt($el.attr('height') || '', 10);
+    if (Number.isFinite(attrW) && Number.isFinite(attrH) && attrW > 0 && attrH > 0) {
+      if (attrW <= 64 || attrH <= 64) return;
+      if (Math.max(attrW / attrH, attrH / attrW) > 3.8) return;
+    }
+
+    const { alt, isProductContext, isChromeOrBanner } = extractNearestHeading($, $el);
     const preferredUrls = [
       pickBestSrcsetCandidate($el.attr('data-srcset'), pageUrl),
       pickBestSrcsetCandidate($el.attr('srcset'), pageUrl),
@@ -537,7 +907,7 @@ function collectCandidatesFromHtml(
       rawCandidates.push({
         url: chosen,
         alt,
-        priority: isProductContext ? 0 : 1,
+        priority: isChromeOrBanner ? 5 : isProductContext ? 0 : 1,
         sourcePageUrl: pageUrl,
       });
     }
@@ -579,7 +949,7 @@ function collectCandidatesFromHtml(
     }
   });
 
-  // 4. OpenGraph & Twitter Card meta images
+  // 4. OpenGraph & Twitter Card meta images (low priority so catalog photos fill slots first)
   const metaTitle = (
     $('meta[property="og:title"]').attr('content') ||
     $('title').text() ||
@@ -598,7 +968,7 @@ function collectCandidatesFromHtml(
         rawCandidates.push({
           url: resolved,
           alt: metaTitle.slice(0, 90),
-          priority: 3,
+          priority: 4,
           sourcePageUrl: pageUrl,
         });
       }
@@ -1097,6 +1467,23 @@ async function probeImageDimensions(
   }
 }
 
+async function probeCandidateWithHdUpgrade(
+  candidateUrl: string,
+  refererUrl: string,
+): Promise<{ resolvedUrl: string; dims: { width: number; height: number } } | null> {
+  const hdUrl = tryUpgradeUrlToHd(candidateUrl);
+  if (hdUrl && hdUrl !== candidateUrl) {
+    const hdDims = await probeImageDimensions(hdUrl, refererUrl);
+    if (hdDims && isCatalogFriendlyDimensions(hdDims.width, hdDims.height, FALLBACK_MIN_DIMENSION_PX)) {
+      return { resolvedUrl: hdUrl, dims: hdDims };
+    }
+  }
+
+  const baseDims = await probeImageDimensions(candidateUrl, refererUrl);
+  if (!baseDims) return null;
+  return { resolvedUrl: candidateUrl, dims: baseDims };
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -1200,17 +1587,25 @@ export async function extractImagesFromUrl(
     await Promise.allSettled(parallelExtraTasks);
   }
 
-  // Deduplicate before probing
+  // Canonical deduplication: collapse same-image size/format variants and keep highest-res URL
   const dedupedMap = new Map<string, RawCandidate>();
   const addToDeduped = (items: RawCandidate[]) => {
     for (const item of items) {
       if (isJunkCandidateUrl(item.url)) continue;
-      const existing = dedupedMap.get(item.url);
+      const canonicalKey = computeCanonicalImageKey(item.url);
+      const existing = dedupedMap.get(canonicalKey);
       if (!existing) {
-        dedupedMap.set(item.url, item);
+        dedupedMap.set(canonicalKey, item);
       } else {
         if (!existing.alt && item.alt) existing.alt = item.alt;
         if (item.priority < existing.priority) existing.priority = item.priority;
+
+        const incomingRes = estimateUrlResolutionScore(item.url);
+        const existingRes = estimateUrlResolutionScore(existing.url);
+        if (incomingRes > existingRes) {
+          existing.url = item.url;
+          existing.sourcePageUrl = item.sourcePageUrl;
+        }
       }
     }
   };
@@ -1227,34 +1622,66 @@ export async function extractImagesFromUrl(
   }
 
   const orderedCandidates = Array.from(dedupedMap.values())
-    .sort((a, b) => a.priority - b.priority)
+    .sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      return estimateUrlResolutionScore(b.url) - estimateUrlResolutionScore(a.url);
+    })
     .slice(0, probeCap);
 
-  // Wave-based dimension probing with early stop once targetMaxResults are verified
+  // Wave-based dimension probing with safe HD upgrade + aspect ratio filtering
   const validItems: ExtractedCatalogImage[] = [];
   const mediumFallbackItems: ExtractedCatalogImage[] = [];
+  const emittedCanonicalKeys = new Set<string>();
 
   const toExtractedItem = (
     candidate: RawCandidate,
+    resolvedUrl: string,
     dims: { width: number; height: number },
     index: number,
   ): ExtractedCatalogImage => {
-    const cleanUrl = buildCleanDisplayUrl(candidate.url);
+    const cleanUrl = buildCleanDisplayUrl(resolvedUrl);
     const proxyParams = new URLSearchParams({
-      url: candidate.url,
+      url: resolvedUrl,
       ref: candidate.sourcePageUrl,
     });
 
     return {
-      id: `ext-${index + 1}-${Buffer.from(candidate.url).toString('base64url').slice(0, 10)}`,
+      id: `ext-${index + 1}-${Buffer.from(resolvedUrl).toString('base64url').slice(0, 10)}`,
       url: `/api/image-proxy?${proxyParams.toString()}`,
-      originalUrl: candidate.url,
+      originalUrl: resolvedUrl,
       cleanUrl,
-      sourcePageUrl: candidate.url,
-      alt: candidate.alt || deriveTitleFromUrl(candidate.url),
+      sourcePageUrl: resolvedUrl,
+      alt: candidate.alt || deriveTitleFromUrl(resolvedUrl),
       width: dims.width,
       height: dims.height,
     };
+  };
+
+  const pushVerifiedEntry = (
+    candidate: RawCandidate,
+    resolvedUrl: string,
+    dims: { width: number; height: number },
+  ): boolean => {
+    const finalCanonicalKey = computeCanonicalImageKey(resolvedUrl);
+    if (emittedCanonicalKeys.has(finalCanonicalKey)) return false;
+
+    if (isCatalogFriendlyDimensions(dims.width, dims.height, MIN_DIMENSION_PX)) {
+      emittedCanonicalKeys.add(finalCanonicalKey);
+      validItems.push(toExtractedItem(candidate, resolvedUrl, dims, validItems.length));
+      return true;
+    }
+
+    if (
+      isCatalogFriendlyDimensions(dims.width, dims.height, FALLBACK_MIN_DIMENSION_PX) &&
+      mediumFallbackItems.length < targetMaxResults
+    ) {
+      emittedCanonicalKeys.add(finalCanonicalKey);
+      mediumFallbackItems.push(
+        toExtractedItem(candidate, resolvedUrl, dims, mediumFallbackItems.length),
+      );
+    }
+
+    return false;
   };
 
   for (
@@ -1264,51 +1691,35 @@ export async function extractImagesFromUrl(
   ) {
     const wave = orderedCandidates.slice(i, i + PROBE_WAVE_SIZE);
     const probed = await mapWithConcurrency(wave, PROBE_CONCURRENCY, async (candidate) => {
-      const dims = await probeImageDimensions(candidate.url, candidate.sourcePageUrl);
-      if (!dims) return null;
-      return { candidate, dims };
+      const result = await probeCandidateWithHdUpgrade(candidate.url, candidate.sourcePageUrl);
+      if (!result) return null;
+      return { candidate, ...result };
     });
 
     for (const entry of probed) {
       if (!entry) continue;
-      const { candidate, dims } = entry;
-      if (dims.width >= MIN_DIMENSION_PX && dims.height >= MIN_DIMENSION_PX) {
-        validItems.push(toExtractedItem(candidate, dims, validItems.length));
-        if (validItems.length >= targetMaxResults) break;
-      } else if (
-        dims.width >= FALLBACK_MIN_DIMENSION_PX &&
-        dims.height >= FALLBACK_MIN_DIMENSION_PX &&
-        mediumFallbackItems.length < targetMaxResults
-      ) {
-        mediumFallbackItems.push(toExtractedItem(candidate, dims, mediumFallbackItems.length));
-      }
+      pushVerifiedEntry(entry.candidate, entry.resolvedUrl, entry.dims);
+      if (validItems.length >= targetMaxResults) break;
     }
   }
 
-  // Last-resort JS fallback if 0 images >= 200x200 were found
+  // Last-resort JS fallback if 0 images >= 200x200 passed aspect-ratio + catalog checks
   if (validItems.length === 0 && !usedJsFallback) {
     const jsFallback = await tryJsRenderedFallback(finalUrl);
     if (jsFallback.candidates.length > 0) {
       usedJsFallback = jsFallback.usedJsFallback;
-      const fallbackOnly = jsFallback.candidates.filter((c) => !dedupedMap.has(c.url)).slice(0, 32);
+      const fallbackOnly = jsFallback.candidates
+        .filter((c) => !dedupedMap.has(computeCanonicalImageKey(c.url)))
+        .slice(0, 32);
       const probed = await mapWithConcurrency(fallbackOnly, PROBE_CONCURRENCY, async (candidate) => {
-        const dims = await probeImageDimensions(candidate.url, candidate.sourcePageUrl);
-        if (!dims) return null;
-        return { candidate, dims };
+        const result = await probeCandidateWithHdUpgrade(candidate.url, candidate.sourcePageUrl);
+        if (!result) return null;
+        return { candidate, ...result };
       });
       for (const entry of probed) {
         if (!entry) continue;
-        const { candidate, dims } = entry;
-        if (dims.width >= MIN_DIMENSION_PX && dims.height >= MIN_DIMENSION_PX) {
-          validItems.push(toExtractedItem(candidate, dims, validItems.length));
-          if (validItems.length >= targetMaxResults) break;
-        } else if (
-          dims.width >= FALLBACK_MIN_DIMENSION_PX &&
-          dims.height >= FALLBACK_MIN_DIMENSION_PX &&
-          mediumFallbackItems.length < targetMaxResults
-        ) {
-          mediumFallbackItems.push(toExtractedItem(candidate, dims, mediumFallbackItems.length));
-        }
+        pushVerifiedEntry(entry.candidate, entry.resolvedUrl, entry.dims);
+        if (validItems.length >= targetMaxResults) break;
       }
     }
   }

@@ -559,7 +559,19 @@ export function MobileCatalogCarousel({
     }
   };
 
-  const mobileCols = images.length <= 1 ? 1 : images.length <= 4 ? 2 : 3;
+  const isDenseMobileGrid = images.length > 12;
+  const mobileCols =
+    images.length <= 1 ? 1 : images.length <= 4 ? 2 : isDenseMobileGrid ? 4 : 3;
+  const unifiedMobileCols =
+    images.length <= 1
+      ? 1
+      : images.length <= 4
+        ? 2
+        : images.length <= 12
+          ? 3
+          : images.length <= 20
+            ? 4
+            : 5;
   const mobileRows = Math.max(1, Math.ceil(images.length / mobileCols));
 
   return (
@@ -591,16 +603,26 @@ export function MobileCatalogCarousel({
 
                 <section
                   aria-label={t.pipeline.stageImagesTitle}
-                  className="h-[min(41dvh,300px)] min-h-[245px] w-full rounded-[18px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_14px_38px_-12px_rgba(15,23,42,0.11),0_4px_12px_-4px_rgba(37,99,235,0.06)] p-2 overflow-hidden"
+                  className={`h-[min(41dvh,300px)] min-h-[245px] w-full rounded-[18px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_14px_38px_-12px_rgba(15,23,42,0.11),0_4px_12px_-4px_rgba(37,99,235,0.06)] p-2 ${
+                    isDenseMobileGrid && !isExtracting
+                      ? 'overflow-y-auto overscroll-contain'
+                      : 'overflow-hidden'
+                  }`}
                 >
                   {isExtracting ? (
                     <ExtractingPlaceholder />
                   ) : (
                     <div
-                      className="w-full h-full grid gap-1"
+                      className={
+                        isDenseMobileGrid
+                          ? 'w-full grid gap-1.5 content-start'
+                          : 'w-full h-full grid gap-1'
+                      }
                       style={{
                         gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))`,
-                        gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))`,
+                        ...(isDenseMobileGrid
+                          ? {}
+                          : { gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))` }),
                       }}
                     >
                       {images.map((item) => {
@@ -612,7 +634,9 @@ export function MobileCatalogCarousel({
                             type="button"
                             onClick={() => setFullscreenImage(item)}
                             aria-label={t.pipeline.viewProductAria(item.alt)}
-                            className="relative w-full h-full overflow-hidden rounded-lg bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                            className={`relative w-full ${
+                              isDenseMobileGrid ? 'aspect-square' : 'h-full'
+                            } overflow-hidden rounded-lg bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60`}
                           >
                             {hasError ? (
                               <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
@@ -655,13 +679,21 @@ export function MobileCatalogCarousel({
 
                 <section
                   aria-label={t.pipeline.stageMetadataTitle}
-                  className="h-[min(41dvh,300px)] min-h-[245px] w-full rounded-[18px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_14px_38px_-12px_rgba(15,23,42,0.11),0_4px_12px_-4px_rgba(37,99,235,0.06)] px-2.5 py-1.5"
+                  className={`h-[min(41dvh,300px)] min-h-[245px] w-full rounded-[18px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_14px_38px_-12px_rgba(15,23,42,0.11),0_4px_12px_-4px_rgba(37,99,235,0.06)] px-2.5 py-1.5 ${
+                    isDenseMobileGrid ? 'overflow-y-auto overscroll-contain' : 'overflow-hidden'
+                  }`}
                 >
-                  <div className="w-full h-full flex flex-col divide-y divide-slate-100/85 select-none overflow-hidden">
+                  <div
+                    className={`w-full flex flex-col divide-y divide-slate-100/85 select-none ${
+                      isDenseMobileGrid ? '' : 'h-full overflow-hidden'
+                    }`}
+                  >
                     {images.map((item) => (
                       <div
                         key={`mobile-url-${item.id}`}
-                        className="flex-1 max-h-7 flex items-center gap-1.5 px-0.5 min-w-0"
+                        className={`${
+                          isDenseMobileGrid ? 'h-7 shrink-0' : 'flex-1 max-h-7'
+                        } flex items-center gap-1.5 px-0.5 min-w-0`}
                       >
                         <Eye
                           className="w-2.5 h-2.5 text-blue-500/70 shrink-0"
@@ -764,13 +796,23 @@ export function MobileCatalogCarousel({
 
                     <section
                       aria-label={t.pipeline.stageImagesTitle}
-                      className="h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(37,99,235,0.06)] p-2.5 overflow-hidden"
+                      className={`h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(37,99,235,0.06)] p-2.5 ${
+                        isDenseMobileGrid
+                          ? 'overflow-y-auto overscroll-contain'
+                          : 'overflow-hidden'
+                      }`}
                     >
                       <div
-                        className="w-full h-full grid gap-1.5"
+                        className={
+                          isDenseMobileGrid
+                            ? 'w-full grid gap-1.5 content-start'
+                            : 'w-full h-full grid gap-1.5'
+                        }
                         style={{
                           gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))`,
-                          gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))`,
+                          ...(isDenseMobileGrid
+                            ? {}
+                            : { gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))` }),
                         }}
                       >
                         {images.map((item) => {
@@ -782,7 +824,9 @@ export function MobileCatalogCarousel({
                               type="button"
                               onClick={() => setFullscreenImage(item)}
                               aria-label={t.pipeline.viewProductAria(item.alt)}
-                              className="relative w-full h-full overflow-hidden rounded-xl bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                              className={`relative w-full ${
+                                isDenseMobileGrid ? 'aspect-square' : 'h-full'
+                              } overflow-hidden rounded-xl bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60`}
                             >
                               {hasError ? (
                                 <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
@@ -822,13 +866,23 @@ export function MobileCatalogCarousel({
 
                     <section
                       aria-label={t.pipeline.stageCompressingTitle}
-                      className="h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(16,185,129,0.08)] p-2.5 overflow-hidden"
+                      className={`h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(16,185,129,0.08)] p-2.5 ${
+                        isDenseMobileGrid
+                          ? 'overflow-y-auto overscroll-contain'
+                          : 'overflow-hidden'
+                      }`}
                     >
                       <div
-                        className="w-full h-full grid gap-1.5"
+                        className={
+                          isDenseMobileGrid
+                            ? 'w-full grid gap-1.5 content-start'
+                            : 'w-full h-full grid gap-1.5'
+                        }
                         style={{
                           gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))`,
-                          gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))`,
+                          ...(isDenseMobileGrid
+                            ? {}
+                            : { gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))` }),
                         }}
                       >
                         {images.map((item) => {
@@ -838,7 +892,9 @@ export function MobileCatalogCarousel({
                           return (
                             <div
                               key={`comp-right-tile-${item.id}`}
-                              className={`relative w-full h-full overflow-hidden rounded-xl ring-1 ring-inset transition-colors duration-200 flex items-center justify-center ${
+                              className={`relative w-full ${
+                                isDenseMobileGrid ? 'aspect-square' : 'h-full'
+                              } overflow-hidden rounded-xl ring-1 ring-inset transition-colors duration-200 flex items-center justify-center ${
                                 status === 'done'
                                   ? 'bg-emerald-50/70 ring-emerald-200/70'
                                   : status === 'error'
@@ -932,13 +988,23 @@ export function MobileCatalogCarousel({
 
                       <section
                         aria-label={t.pipeline.stageUploadingTitle}
-                        className="h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(16,185,129,0.08)] p-2.5 overflow-hidden"
+                        className={`h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(16,185,129,0.08)] p-2.5 ${
+                          isDenseMobileGrid
+                            ? 'overflow-y-auto overscroll-contain'
+                            : 'overflow-hidden'
+                        }`}
                       >
                         <div
-                          className="w-full h-full grid gap-1.5"
+                          className={
+                            isDenseMobileGrid
+                              ? 'w-full grid gap-1.5 content-start'
+                              : 'w-full h-full grid gap-1.5'
+                          }
                           style={{
                             gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))`,
-                            gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))`,
+                            ...(isDenseMobileGrid
+                              ? {}
+                              : { gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))` }),
                           }}
                         >
                           {images.map((item) => {
@@ -951,7 +1017,9 @@ export function MobileCatalogCarousel({
                                 type="button"
                                 onClick={() => setFullscreenImage(item)}
                                 aria-label={`Ver ${item.alt}`}
-                                className="relative w-full h-full overflow-hidden rounded-xl bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60"
+                                className={`relative w-full ${
+                                  isDenseMobileGrid ? 'aspect-square' : 'h-full'
+                                } overflow-hidden rounded-xl bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60`}
                               >
                                 {hasError ? (
                                   <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
@@ -1480,7 +1548,11 @@ export function MobileCatalogCarousel({
 
               <section
                 aria-label={t.pipeline.stageImagesTitle}
-                className="h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(37,99,235,0.06)] p-2.5 overflow-hidden"
+                className={`h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(37,99,235,0.06)] p-2.5 ${
+                  isDenseMobileGrid && !isExtracting
+                    ? 'overflow-y-auto overscroll-contain'
+                    : 'overflow-hidden'
+                }`}
               >
                 {isExtracting ? (
                   <ExtractingPlaceholder />
@@ -1491,10 +1563,16 @@ export function MobileCatalogCarousel({
                   </div>
                 ) : (
                   <div
-                    className="w-full h-full grid gap-1.5"
+                    className={
+                      isDenseMobileGrid
+                        ? 'w-full grid gap-1.5 content-start'
+                        : 'w-full h-full grid gap-1.5'
+                    }
                     style={{
-                      gridTemplateColumns: `repeat(${mobileCols}, minmax(0, 1fr))`,
-                      gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))`,
+                      gridTemplateColumns: `repeat(${unifiedMobileCols}, minmax(0, 1fr))`,
+                      ...(isDenseMobileGrid
+                        ? {}
+                        : { gridTemplateRows: `repeat(${mobileRows}, minmax(0, 1fr))` }),
                     }}
                   >
                     {images.map((item) => {
@@ -1506,7 +1584,9 @@ export function MobileCatalogCarousel({
                           type="button"
                           onClick={() => setFullscreenImage(item)}
                           aria-label={t.pipeline.viewProductAria(item.alt)}
-                          className="relative w-full h-full overflow-hidden rounded-xl bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
+                          className={`relative w-full ${
+                            isDenseMobileGrid ? 'aspect-square' : 'h-full'
+                          } overflow-hidden rounded-xl bg-slate-50 ring-1 ring-inset ring-black/[0.04] active:scale-[0.96] transition-transform duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60`}
                         >
                           {hasError ? (
                             <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
