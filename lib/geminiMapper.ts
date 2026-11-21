@@ -177,7 +177,7 @@ export async function mapStoredImageWithGemini(options: {
           systemInstruction:
             'Eres un auditor visual y catalogador experto en e-commerce, gastronomía y retail. Primero inspeccionas y cuentas cada componente, capa, color, textura, geometría y proporción visual de forma milimétrica; luego redactas el nombre, categoría y descripción comercial exactamente fieles a esa auditoría. Nunca inventes precios, tallas impresas ni marcas no legibles. Responde exclusivamente JSON válido en español.',
           thinkingConfig: {
-            thinkingLevel: ThinkingLevel.MEDIUM,
+            thinkingLevel: ThinkingLevel.LOW,
           },
           responseMimeType: 'application/json',
           responseSchema: {

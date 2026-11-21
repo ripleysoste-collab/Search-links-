@@ -5,16 +5,43 @@ import {
   mapStoredImageWithGemini,
   type MappedImageMetadata,
 } from './geminiMapper.ts';
-import { unmarkFreeAccountImageConsumed } from './planLimits.ts';
-import { deleteImageFromR2, deleteImagesFromR2 } from './r2Storage.ts';
-import { getSupabaseServerConfig } from './supabaseServer.ts';
+import { fetchProxiedImage } from './imageProxy.ts';
+import {
+  invalidateUserImageQuotaCache,
+  markFreeAccountImageConsumed,
+  unmarkFreeAccountImageConsumed,
+  type AuthenticatedRequestUser,
+} from './planLimits.ts';
+import {
+  deleteImageFromR2,
+  deleteImagesFromR2,
+  getMissingR2EnvNames,
+  isR2Configured,
+} from './r2Storage.ts';
+import {
+  getSupabaseServerConfig,
+  invalidateCoreCatalogCache,
+} from './supabaseServer.ts';
+import { processAndStoreUploadedImage } from './uploadHandler.ts';
 
+export const R2_UPLOAD_CONCURRENCY = 4;
 export const QUEUE_BATCH_BEFORE_PAUSE = 5;
 export const QUEUE_COOLDOWN_MS = 10_000;
-export const QUEUE_INTER_ITEM_MS = 350;
+export const QUEUE_INTER_ITEM_MS = 100;
 export const QUEUE_MAX_TRANSIENT_ATTEMPTS = 6;
 
 const TRANSIENT_BACKOFF_MS = [10_000, 20_000, 35_000, 50_000, 60_000];
+
+export type MappingQueueItemUploadStatus =
+  | 'pending'
+  | 'uploading'
+  | 'done'
+  | 'error';
+
+export type MappingQueueItemReceiveStatus =
+  | 'waiting'
+  | 'received'
+  | 'error';
 
 export type MappingQueueItemStatus =
   | 'queued'
@@ -24,6 +51,7 @@ export type MappingQueueItemStatus =
   | 'failed';
 
 export type MappingQueueJobStatus =
+  | 'uploading_r2'
   | 'running'
   | 'cooling_down'
   | 'completed'
@@ -32,15 +60,29 @@ export type MappingQueueJobStatus =
 
 export interface MappingQueueItemInput {
   clientItemId: string;
-  r2Key: string;
-  imageUrl: string;
+  r2Key?: string;
+  imageUrl?: string;
+  sourceImageUrl?: string;
   originalUrl?: string;
   savedPercent: number;
   compressedBytes: number;
 }
 
-export interface MappingQueueItem extends MappingQueueItemInput {
+export interface PendingR2UploadPayload {
+  buffer?: Buffer;
+  sourceImageUrl?: string;
+}
+
+export interface MappingQueueItem {
+  clientItemId: string;
   position: number;
+  r2Key: string;
+  imageUrl: string;
+  originalUrl?: string;
+  savedPercent: number;
+  compressedBytes: number;
+  uploadStatus: MappingQueueItemUploadStatus;
+  receiveStatus: MappingQueueItemReceiveStatus;
   status: MappingQueueItemStatus;
   attempts: number;
   nextRetryAt: number | null;
@@ -76,26 +118,35 @@ export interface MappingQueueJob {
 }
 
 export interface CreateMappingJobInput {
-  userId: string;
-  accessToken: string;
+  authUser: AuthenticatedRequestUser;
+  requestOrigin?: string;
   sourceType: 'url' | 'files';
   sourceUrl?: string | null;
   serviceSlug: string;
   keyPrefix: string;
   keyHash: string;
   items: MappingQueueItemInput[];
+  pendingUploads?: Map<string, PendingR2UploadPayload>;
 }
 
 interface JobRuntimeContext {
-  accessToken: string;
+  authUser: AuthenticatedRequestUser;
+  requestOrigin?: string;
+  pendingUploads: Map<string, PendingR2UploadPayload>;
   cancelled: boolean;
   running: boolean;
   mappingJobsTableMissing: boolean;
 }
 
+const NO_ACTIVE_JOB_CACHE_TTL_MS = 30_000;
+const PURGE_OLD_JOBS_COOLDOWN_MS = 60 * 60 * 1000;
+const FINISHED_JOB_RETENTION_MS = 12 * 60 * 60 * 1000;
+
 const jobsById = new Map<string, MappingQueueJob>();
 const latestJobIdByUser = new Map<string, string>();
 const runtimeByJobId = new Map<string, JobRuntimeContext>();
+const noActiveJobCache = new Map<string, number>();
+const lastJobsPurgeAtByUser = new Map<string, number>();
 
 let globalGeminiQueueTail: Promise<void> = Promise.resolve();
 
@@ -187,9 +238,10 @@ function buildServiceSnapshotPayload(job: MappingQueueJob) {
   > = {};
 
   for (const item of job.items) {
-    compressionStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'done';
-    uploadStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'done';
-    receiveStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'received';
+    const uploadFailed = item.r2Deleted || item.uploadStatus === 'error' || !item.imageUrl;
+    compressionStatuses[item.clientItemId] = uploadFailed ? 'error' : 'done';
+    uploadStatuses[item.clientItemId] = uploadFailed ? 'error' : 'done';
+    receiveStatuses[item.clientItemId] = uploadFailed ? 'error' : 'received';
 
     if (item.status === 'mapped' && item.mapped) {
       mapStatuses[item.clientItemId] = 'mapped';
@@ -202,7 +254,7 @@ function buildServiceSnapshotPayload(job: MappingQueueJob) {
       mapStatuses[item.clientItemId] = 'waiting';
     }
 
-    if (!item.r2Deleted) {
+    if (!uploadFailed) {
       compressionResults[item.clientItemId] = {
         url: item.imageUrl,
         cleanUrl: item.imageUrl,
@@ -228,7 +280,7 @@ async function persistJobRecordToSupabase(
   ctx: JobRuntimeContext,
 ): Promise<void> {
   if (ctx.mappingJobsTableMissing) return;
-  const supabase = createUserSupabaseClient(ctx.accessToken);
+  const supabase = createUserSupabaseClient(ctx.authUser.accessToken);
   if (!supabase) return;
 
   try {
@@ -274,13 +326,12 @@ async function persistSingleMappedProductToSupabase(
   ctx: JobRuntimeContext,
 ): Promise<void> {
   if (!item.mapped || item.persistedInService) return;
-  const supabase = createUserSupabaseClient(ctx.accessToken);
+  const supabase = createUserSupabaseClient(ctx.authUser.accessToken);
   if (!supabase) return;
 
   try {
-    const snapshot = buildServiceSnapshotPayload(job);
-
     if (!job.serviceId) {
+      const snapshot = buildServiceSnapshotPayload(job);
       const firstName = item.mapped.nombre.trim() || 'Producto catalogado';
       const defaultServiceName = `Servicio · ${firstName}`;
       job.serviceName = defaultServiceName;
@@ -321,14 +372,20 @@ async function persistSingleMappedProductToSupabase(
         key_hash: job.keyHash,
         is_active: true,
       });
+
+      invalidateCoreCatalogCache({ slug: job.serviceSlug, keyHash: job.keyHash });
     } else {
+      // Throttle heavy snapshot_json writes to every 5th mapped item (final snapshot is synced on completion)
+      const updatePayload: Record<string, unknown> = {
+        item_count: job.mappedCount,
+        updated_at: new Date().toISOString(),
+      };
+      if (job.mappedCount % 5 === 0) {
+        updatePayload.snapshot_json = buildServiceSnapshotPayload(job);
+      }
       await supabase
         .from('servicios')
-        .update({
-          item_count: job.mappedCount,
-          snapshot_json: snapshot,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', job.serviceId)
         .eq('user_id', job.userId);
     }
@@ -360,7 +417,7 @@ async function syncFinalSnapshotToSupabase(
   ctx: JobRuntimeContext,
 ): Promise<void> {
   if (!job.serviceId) return;
-  const supabase = createUserSupabaseClient(ctx.accessToken);
+  const supabase = createUserSupabaseClient(ctx.authUser.accessToken);
   if (!supabase) return;
 
   try {
@@ -383,7 +440,7 @@ async function rollbackDraftServiceInSupabase(
   ctx: JobRuntimeContext,
 ): Promise<void> {
   if (!job.serviceId) return;
-  const supabase = createUserSupabaseClient(ctx.accessToken);
+  const supabase = createUserSupabaseClient(ctx.authUser.accessToken);
   if (!supabase) return;
 
   try {
@@ -416,6 +473,7 @@ async function executePlanBForSevereBatchFailure(
   ctx: JobRuntimeContext,
   reasonNotice: string,
 ): Promise<void> {
+  ctx.pendingUploads.clear();
   const keysToDelete = job.items
     .filter((item) => !item.r2Deleted && Boolean(item.r2Key))
     .map((item) => item.r2Key);
@@ -432,6 +490,8 @@ async function executePlanBForSevereBatchFailure(
   }
 
   await rollbackDraftServiceInSupabase(job, ctx);
+  invalidateCoreCatalogCache({ slug: job.serviceSlug, keyHash: job.keyHash });
+  invalidateUserImageQuotaCache(job.userId);
 
   job.planBRolledBack = true;
   job.status = 'failed_rolled_back';
@@ -441,11 +501,135 @@ async function executePlanBForSevereBatchFailure(
   await persistJobRecordToSupabase(job, ctx);
 }
 
+async function runPhase1R2Uploads(
+  job: MappingQueueJob,
+  ctx: JobRuntimeContext,
+): Promise<boolean> {
+  const pendingItems = job.items.filter(
+    (item) => item.uploadStatus !== 'done' || !item.r2Key || !item.imageUrl,
+  );
+  if (pendingItems.length === 0) {
+    return true;
+  }
+
+  if (!isR2Configured()) {
+    const missing = getMissingR2EnvNames();
+    const errMsg = `Faltan variables de R2 en Render (${missing.join(', ')}). Revisa Environment en Render y guarda los cambios.`;
+    for (const item of pendingItems) {
+      item.uploadStatus = 'error';
+      item.receiveStatus = 'error';
+      item.status = 'failed';
+      item.errorKind = 'fatal';
+      item.lastError = errMsg;
+    }
+    await executePlanBForSevereBatchFailure(job, ctx, errMsg);
+    return false;
+  }
+
+  job.status = 'uploading_r2';
+  let uploadedSoFar = job.items.filter((i) => i.uploadStatus === 'done').length;
+  job.notice = `Subiendo a R2 en segundo plano (${uploadedSoFar}/${job.totalItems}) · Puedes salir y volver cuando quieras.`;
+  recomputeCounters(job);
+  await persistJobRecordToSupabase(job, ctx);
+
+  let cursor = 0;
+  let firstUploadError: string | null = null;
+  const workerCount = Math.min(R2_UPLOAD_CONCURRENCY, pendingItems.length);
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (cursor < pendingItems.length && !ctx.cancelled) {
+      const item = pendingItems[cursor++];
+      if (!item) continue;
+
+      item.uploadStatus = 'uploading';
+      job.updatedAt = new Date().toISOString();
+
+      try {
+        const pending = ctx.pendingUploads.get(item.clientItemId);
+        let buffer = pending?.buffer;
+
+        if (!buffer && pending?.sourceImageUrl) {
+          const proxied = await fetchProxiedImage(
+            pending.sourceImageUrl,
+            item.originalUrl,
+          );
+          buffer = proxied.buffer;
+        }
+
+        if (!buffer || buffer.byteLength === 0) {
+          throw new Error('No se recibieron bytes válidos para guardar en R2.');
+        }
+
+        const stored = await processAndStoreUploadedImage(
+          buffer,
+          ctx.requestOrigin,
+          'catalog',
+        );
+
+        item.r2Key = stored.key;
+        item.imageUrl = stored.url;
+        item.compressedBytes = stored.sizeBytes;
+        item.uploadStatus = 'done';
+        item.receiveStatus = 'received';
+        markFreeAccountImageConsumed(ctx.authUser, stored.key);
+
+        uploadedSoFar += 1;
+        job.notice = `Subiendo a R2 en segundo plano (${uploadedSoFar}/${job.totalItems}) · Puedes salir y volver cuando quieras.`;
+        job.updatedAt = new Date().toISOString();
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : 'No se pudo subir la imagen a R2.';
+        if (!firstUploadError) firstUploadError = msg;
+        item.uploadStatus = 'error';
+        item.receiveStatus = 'error';
+        item.status = 'failed';
+        item.errorKind = 'fatal';
+        item.lastError = msg;
+        recomputeCounters(job);
+      } finally {
+        ctx.pendingUploads.delete(item.clientItemId);
+      }
+    }
+  });
+
+  await Promise.all(workers);
+  ctx.pendingUploads.clear();
+
+  if (ctx.cancelled) {
+    return false;
+  }
+
+  const uploadedCount = job.items.filter(
+    (item) => item.uploadStatus === 'done' && Boolean(item.r2Key),
+  ).length;
+  const r2FailedCount = pendingItems.filter(
+    (item) => item.uploadStatus === 'error',
+  ).length;
+
+  if (
+    uploadedCount === 0 ||
+    (r2FailedCount > 0 && uploadedCount / Math.max(1, job.totalItems) <= 0.6)
+  ) {
+    const reason =
+      uploadedCount === 0
+        ? firstUploadError ||
+          'Plan B activado: falló la subida a R2 y se limpiaron los archivos temporales.'
+        : `Plan B activado: demasiados fallos al subir a R2 (${uploadedCount}/${job.totalItems} válidas); se eliminaron las imágenes ya subidas.`;
+    await executePlanBForSevereBatchFailure(job, ctx, reason);
+    return false;
+  }
+
+  job.status = 'running';
+  job.notice = `Mapeando en segundo plano (0/${job.totalItems}) · Puedes salir y volver cuando quieras.`;
+  recomputeCounters(job);
+  await persistJobRecordToSupabase(job, ctx);
+  return true;
+}
+
 function findNextReadyItem(
   queue: MappingQueueItem[],
   now: number,
 ): { item: MappingQueueItem | null; earliestWaitMs: number | null } {
-  // Prefer normal queued items first so 503 retries move to the back of the line
   for (const item of queue) {
     if (item.status === 'queued') {
       return { item, earliestWaitMs: null };
@@ -476,11 +660,36 @@ async function runQueueWorker(jobId: string): Promise<void> {
   if (!job || !ctx || ctx.running) return;
   ctx.running = true;
 
-  // Dynamic rotation order: push 503 items to the back cleanly
-  const workQueue: MappingQueueItem[] = [...job.items];
-  let processedInBurst = 0;
-
   try {
+    // Phase 1: Background R2 Upload (starts immediately so closing tab mid-R2 never leaves orphans)
+    const r2Ok = await runPhase1R2Uploads(job, ctx);
+    if (!r2Ok) {
+      if (ctx.cancelled) {
+        const uploadedKeys = job.items
+          .filter((i) => !i.r2Deleted && Boolean(i.r2Key))
+          .map((i) => i.r2Key);
+        if (uploadedKeys.length > 0) {
+          const deleted = await deleteImagesFromR2(uploadedKeys);
+          job.planBDeletedKeys += deleted;
+          for (const i of job.items) {
+            if (!i.r2Deleted && i.r2Key) {
+              i.r2Deleted = true;
+              unmarkFreeAccountImageConsumed(job.userId, i.r2Key);
+            }
+          }
+        }
+        job.status = 'cancelled';
+        job.cooldownUntil = null;
+        recomputeCounters(job);
+        await persistJobRecordToSupabase(job, ctx);
+      }
+      return;
+    }
+
+    // Phase 2: Sequential Gemini AI Mapping + Anti-503 Cooldowns + Incremental Save + Plan B
+    const workQueue: MappingQueueItem[] = [...job.items];
+    let processedInBurst = 0;
+
     while (!ctx.cancelled) {
       const now = Date.now();
       const { item, earliestWaitMs } = findNextReadyItem(workQueue, now);
@@ -492,14 +701,13 @@ async function runQueueWorker(jobId: string): Promise<void> {
           job.notice =
             'Reintentando imágenes con saturación 503 en unos segundos sin perder las ya mapeadas...';
           recomputeCounters(job);
-          await persistJobRecordToSupabase(job, ctx);
+          void persistJobRecordToSupabase(job, ctx);
           await sleep(Math.min(earliestWaitMs, 10_000));
           continue;
         }
         break;
       }
 
-      // Apply 10-second breathing cooldown after every 5 mappings
       if (processedInBurst >= QUEUE_BATCH_BEFORE_PAUSE) {
         processedInBurst = 0;
         const until = Date.now() + QUEUE_COOLDOWN_MS;
@@ -522,7 +730,8 @@ async function runQueueWorker(jobId: string): Promise<void> {
       item.lastError = null;
       item.errorKind = null;
       recomputeCounters(job);
-      await persistJobRecordToSupabase(job, ctx);
+      // Fire-and-forget DB status tick to keep Gemini mapping fast
+      void persistJobRecordToSupabase(job, ctx);
 
       try {
         const mapped = await runWithGlobalGeminiTurn(() =>
@@ -541,8 +750,9 @@ async function runQueueWorker(jobId: string): Promise<void> {
         processedInBurst += 1;
 
         recomputeCounters(job);
+        job.notice = `Mapeando en segundo plano (${job.mappedCount}/${job.totalItems}) · Puedes salir y volver cuando quieras.`;
         await persistSingleMappedProductToSupabase(job, item, ctx);
-        await persistJobRecordToSupabase(job, ctx);
+        void persistJobRecordToSupabase(job, ctx);
       } catch (err) {
         const errorKind =
           err instanceof GeminiMapError ? err.kind : 'fatal';
@@ -556,7 +766,6 @@ async function runQueueWorker(jobId: string): Promise<void> {
         processedInBurst += 1;
 
         if (errorKind === 'auth') {
-          // Stop entire job immediately if Gemini API Key is invalid/rejected
           item.status = 'failed';
           for (const pending of workQueue) {
             if (
@@ -585,7 +794,6 @@ async function runQueueWorker(jobId: string): Promise<void> {
           item.nextRetryAt = Date.now() + delayMs;
           job.notice = `Error temporal 503 en una imagen; enviada al final de la fila para reintento automático (intento ${item.attempts}/${QUEUE_MAX_TRANSIENT_ATTEMPTS}).`;
 
-          // Move this item to the back of the queue so healthy items finish first
           const idx = workQueue.indexOf(item);
           if (idx !== -1) {
             workQueue.splice(idx, 1);
@@ -593,14 +801,13 @@ async function runQueueWorker(jobId: string): Promise<void> {
           }
 
           recomputeCounters(job);
-          await persistJobRecordToSupabase(job, ctx);
+          void persistJobRecordToSupabase(job, ctx);
         } else {
-          // Definitive failure (or exhausted all 503 retries): Plan B single-image R2 delete
           item.status = 'failed';
           item.nextRetryAt = null;
           await executePlanBForSingleItem(job, item);
           recomputeCounters(job);
-          await persistJobRecordToSupabase(job, ctx);
+          void persistJobRecordToSupabase(job, ctx);
         }
       }
 
@@ -630,6 +837,8 @@ async function runQueueWorker(jobId: string): Promise<void> {
       } else {
         await syncFinalSnapshotToSupabase(job, ctx);
       }
+      invalidateCoreCatalogCache({ slug: job.serviceSlug, keyHash: job.keyHash });
+      invalidateUserImageQuotaCache(job.userId);
       recomputeCounters(job);
       await persistJobRecordToSupabase(job, ctx);
       return;
@@ -637,8 +846,6 @@ async function runQueueWorker(jobId: string): Promise<void> {
 
     recomputeCounters(job);
 
-    // Plan B Batch Check:
-    // If 0 mapped OR (definitive/fatal failures caused <= 60% success rate), roll back orphaned batch
     const successRatio =
       job.totalItems > 0 ? job.mappedCount / job.totalItems : 0;
     const hasFatalFailure = job.items.some(
@@ -655,6 +862,8 @@ async function runQueueWorker(jobId: string): Promise<void> {
     }
 
     await syncFinalSnapshotToSupabase(job, ctx);
+    invalidateCoreCatalogCache({ slug: job.serviceSlug, keyHash: job.keyHash });
+    invalidateUserImageQuotaCache(job.userId);
     job.status = 'completed';
     job.cooldownUntil = null;
     job.notice =
@@ -664,7 +873,38 @@ async function runQueueWorker(jobId: string): Promise<void> {
     recomputeCounters(job);
     await persistJobRecordToSupabase(job, ctx);
   } finally {
+    ctx.pendingUploads.clear();
     ctx.running = false;
+  }
+}
+
+async function purgeOldFinishedMappingJobs(
+  userId: string,
+  accessToken: string,
+): Promise<void> {
+  const now = Date.now();
+  const lastPurge = lastJobsPurgeAtByUser.get(userId) ?? 0;
+  if (now - lastPurge < PURGE_OLD_JOBS_COOLDOWN_MS) return;
+
+  if (lastJobsPurgeAtByUser.size >= 2000) {
+    const oldestKey = lastJobsPurgeAtByUser.keys().next().value;
+    if (oldestKey) lastJobsPurgeAtByUser.delete(oldestKey);
+  }
+  lastJobsPurgeAtByUser.set(userId, now);
+
+  const supabase = createUserSupabaseClient(accessToken);
+  if (!supabase) return;
+
+  try {
+    const cutoffIso = new Date(now - FINISHED_JOB_RETENTION_MS).toISOString();
+    await supabase
+      .from('mapping_jobs')
+      .delete()
+      .eq('user_id', userId)
+      .in('status', ['completed', 'failed_rolled_back', 'cancelled'])
+      .lt('updated_at', cutoffIso);
+  } catch {
+    // Non-fatal cleanup
   }
 }
 
@@ -674,27 +914,34 @@ export async function createAndStartMappingJob(
   const nowIso = new Date().toISOString();
   const jobId = `job_${crypto.randomUUID().replace(/-/g, '').slice(0, 18)}`;
 
-  const items: MappingQueueItem[] = input.items.map((item, idx) => ({
-    clientItemId: item.clientItemId,
-    position: idx,
-    r2Key: item.r2Key,
-    imageUrl: item.imageUrl,
-    originalUrl: item.originalUrl,
-    savedPercent: item.savedPercent,
-    compressedBytes: item.compressedBytes,
-    status: 'queued',
-    attempts: 0,
-    nextRetryAt: null,
-    lastError: null,
-    errorKind: null,
-    r2Deleted: false,
-    persistedInService: false,
-    mapped: null,
-  }));
+  const items: MappingQueueItem[] = input.items.map((item, idx) => {
+    const alreadyInR2 = Boolean(item.r2Key && item.imageUrl);
+    return {
+      clientItemId: item.clientItemId,
+      position: idx,
+      r2Key: item.r2Key || '',
+      imageUrl: item.imageUrl || '',
+      originalUrl: item.originalUrl,
+      savedPercent: item.savedPercent,
+      compressedBytes: item.compressedBytes,
+      uploadStatus: alreadyInR2 ? 'done' : 'pending',
+      receiveStatus: alreadyInR2 ? 'received' : 'waiting',
+      status: 'queued',
+      attempts: 0,
+      nextRetryAt: null,
+      lastError: null,
+      errorKind: null,
+      r2Deleted: false,
+      persistedInService: false,
+      mapped: null,
+    };
+  });
+
+  const needsR2Upload = items.some((item) => item.uploadStatus !== 'done');
 
   const job: MappingQueueJob = {
     id: jobId,
-    userId: input.userId,
+    userId: input.authUser.userId,
     sourceType: input.sourceType,
     sourceUrl: input.sourceUrl ?? null,
     serviceId: null,
@@ -702,7 +949,7 @@ export async function createAndStartMappingJob(
     serviceName: null,
     keyPrefix: input.keyPrefix,
     keyHash: input.keyHash,
-    status: 'running',
+    status: needsR2Upload ? 'uploading_r2' : 'running',
     totalItems: items.length,
     mappedCount: 0,
     failedCount: 0,
@@ -710,24 +957,31 @@ export async function createAndStartMappingJob(
     cooldownUntil: null,
     planBRolledBack: false,
     planBDeletedKeys: 0,
-    notice: null,
+    notice: needsR2Upload
+      ? `Subiendo a R2 en segundo plano (0/${items.length}) · Puedes salir y volver cuando quieras.`
+      : `Mapeando en segundo plano (0/${items.length}) · Puedes salir y volver cuando quieras.`,
     createdAt: nowIso,
     updatedAt: nowIso,
     items,
   };
 
   const ctx: JobRuntimeContext = {
-    accessToken: input.accessToken,
+    authUser: input.authUser,
+    requestOrigin: input.requestOrigin,
+    pendingUploads: input.pendingUploads ?? new Map(),
     cancelled: false,
     running: false,
     mappingJobsTableMissing: false,
   };
 
+  noActiveJobCache.delete(input.authUser.userId);
+  invalidateUserImageQuotaCache(input.authUser.userId);
+  invalidateCoreCatalogCache({ slug: input.serviceSlug, keyHash: input.keyHash });
+
   jobsById.set(jobId, job);
-  latestJobIdByUser.set(input.userId, jobId);
+  latestJobIdByUser.set(input.authUser.userId, jobId);
   runtimeByJobId.set(jobId, ctx);
 
-  // Prune older finished jobs from RAM if map grows very large
   if (jobsById.size > 400) {
     for (const oldId of jobsById.keys()) {
       const oldCtx = runtimeByJobId.get(oldId);
@@ -740,8 +994,12 @@ export async function createAndStartMappingJob(
   }
 
   await persistJobRecordToSupabase(job, ctx);
+  void purgeOldFinishedMappingJobs(
+    input.authUser.userId,
+    input.authUser.accessToken,
+  );
 
-  // Start background queue immediately without blocking HTTP response
+  // Start background worker (Phase 1 R2 -> Phase 2 Gemini -> Plan B) without blocking HTTP response
   void runQueueWorker(jobId);
 
   return job;
@@ -749,8 +1007,41 @@ export async function createAndStartMappingJob(
 
 function hydrateJobFromDbRow(row: Record<string, unknown>): MappingQueueJob {
   const rawItems = Array.isArray(row.items_json)
-    ? (row.items_json as MappingQueueItem[])
+    ? (row.items_json as Array<Partial<MappingQueueItem>>).map((item, idx) => {
+        const r2Key = typeof item.r2Key === 'string' ? item.r2Key : '';
+        const imageUrl = typeof item.imageUrl === 'string' ? item.imageUrl : '';
+        const r2Deleted = Boolean(item.r2Deleted);
+        const uploadStatus: MappingQueueItemUploadStatus =
+          item.uploadStatus ||
+          (r2Deleted ? 'error' : r2Key && imageUrl ? 'done' : 'pending');
+        const receiveStatus: MappingQueueItemReceiveStatus =
+          item.receiveStatus ||
+          (r2Deleted ? 'error' : imageUrl ? 'received' : 'waiting');
+
+        return {
+          clientItemId: String(item.clientItemId || `item-${idx}`),
+          position: typeof item.position === 'number' ? item.position : idx,
+          r2Key,
+          imageUrl,
+          originalUrl: item.originalUrl,
+          savedPercent: typeof item.savedPercent === 'number' ? item.savedPercent : 0,
+          compressedBytes:
+            typeof item.compressedBytes === 'number' ? item.compressedBytes : 0,
+          uploadStatus,
+          receiveStatus,
+          status: (item.status as MappingQueueItemStatus) || 'queued',
+          attempts: typeof item.attempts === 'number' ? item.attempts : 0,
+          nextRetryAt:
+            typeof item.nextRetryAt === 'number' ? item.nextRetryAt : null,
+          lastError: typeof item.lastError === 'string' ? item.lastError : null,
+          errorKind: item.errorKind ?? null,
+          r2Deleted,
+          persistedInService: Boolean(item.persistedInService),
+          mapped: item.mapped ?? null,
+        };
+      })
     : [];
+
   const cooldownRaw =
     typeof row.cooldown_until === 'string' && row.cooldown_until
       ? Date.parse(row.cooldown_until)
@@ -817,33 +1108,77 @@ export async function getMappingJobForUser(
 }
 
 export async function getLatestMappingJobForUser(
-  userId: string,
-  accessToken: string,
+  authUser: AuthenticatedRequestUser,
 ): Promise<MappingQueueJob | null> {
-  const latestId = latestJobIdByUser.get(userId);
+  const latestId = latestJobIdByUser.get(authUser.userId);
   if (latestId) {
     const memJob = jobsById.get(latestId);
-    if (memJob && memJob.userId === userId) {
+    if (memJob && memJob.userId === authUser.userId) {
       return memJob;
     }
   }
 
-  const supabase = createUserSupabaseClient(accessToken);
+  const now = Date.now();
+  const cachedEmptyUntil = noActiveJobCache.get(authUser.userId);
+  if (cachedEmptyUntil && cachedEmptyUntil > now) {
+    return null;
+  }
+  if (cachedEmptyUntil) {
+    noActiveJobCache.delete(authUser.userId);
+  }
+
+  const supabase = createUserSupabaseClient(authUser.accessToken);
   if (!supabase) return null;
 
   try {
     const { data, error } = await supabase
       .from('mapping_jobs')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', authUser.userId)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (error || !data) return null;
+    if (error) return null;
+    if (!data) {
+      if (noActiveJobCache.size >= 2000) {
+        const oldestKey = noActiveJobCache.keys().next().value;
+        if (oldestKey) noActiveJobCache.delete(oldestKey);
+      }
+      noActiveJobCache.set(authUser.userId, now + NO_ACTIVE_JOB_CACHE_TTL_MS);
+      return null;
+    }
     const hydrated = hydrateJobFromDbRow(data as Record<string, unknown>);
+    jobsById.set(hydrated.id, hydrated);
+    latestJobIdByUser.set(authUser.userId, hydrated.id);
 
-    // If Render restarted while job was still 'running' or 'cooling_down', resume pending items cleanly
+    // If Render restarted mid-R2 upload (without buffers in RAM), execute Plan B cleanup cleanly
+    if (hydrated.status === 'uploading_r2') {
+      const ctx: JobRuntimeContext = {
+        authUser,
+        pendingUploads: new Map(),
+        cancelled: false,
+        running: false,
+        mappingJobsTableMissing: false,
+      };
+      runtimeByJobId.set(hydrated.id, ctx);
+
+      const hasAllR2Keys = hydrated.items.every(
+        (i) => i.uploadStatus === 'done' && Boolean(i.r2Key) && Boolean(i.imageUrl),
+      );
+      if (!hasAllR2Keys) {
+        await executePlanBForSevereBatchFailure(
+          hydrated,
+          ctx,
+          'Plan B activado: el servidor se reinició durante la subida a R2 y se limpiaron los archivos parciales.',
+        );
+        return hydrated;
+      }
+      hydrated.status = 'running';
+      void runQueueWorker(hydrated.id);
+      return hydrated;
+    }
+
     const hasPending = hydrated.items.some(
       (i) =>
         i.status === 'queued' ||
@@ -859,10 +1194,9 @@ export async function getLatestMappingJobForUser(
           item.status = 'queued';
         }
       }
-      jobsById.set(hydrated.id, hydrated);
-      latestJobIdByUser.set(userId, hydrated.id);
       runtimeByJobId.set(hydrated.id, {
-        accessToken,
+        authUser,
+        pendingUploads: new Map(),
         cancelled: false,
         running: false,
         mappingJobsTableMissing: false,
@@ -894,6 +1228,7 @@ export async function cancelMappingJobForUser(
   const existing = await getMappingJobForUser(jobId, userId, accessToken);
   if (!existing) return null;
   if (
+    existing.status === 'uploading_r2' ||
     existing.status === 'running' ||
     existing.status === 'cooling_down'
   ) {

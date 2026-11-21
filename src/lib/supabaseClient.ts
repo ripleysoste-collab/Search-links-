@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { resolveApiUrl } from './apiConfig';
 import type { MappedImageMetadata } from './imageCompression';
 
 const DEFAULT_SUPABASE_URL = 'https://nhofuamltqglrgfjucof.supabase.co';
@@ -58,6 +59,24 @@ export async function getSupabaseAccessToken(): Promise<string | null> {
     return data.session?.access_token ?? null;
   } catch {
     return null;
+  }
+}
+
+async function notifyServerCacheInvalidation(slug?: string): Promise<void> {
+  try {
+    const token = await getSupabaseAccessToken();
+    if (!token) return;
+    await fetch(resolveApiUrl('/api/cache/invalidate'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(slug ? { slug } : {}),
+      keepalive: true,
+    });
+  } catch {
+    // Non-fatal: Render RAM caches also auto-expire via short TTL
   }
 }
 
@@ -234,6 +253,8 @@ export async function upsertUserOrganization(input: {
     };
   }
 
+  void notifyServerCacheInvalidation();
+
   return {
     saved: true,
     organization: data as OrganizationRow,
@@ -382,6 +403,8 @@ export async function createCoreServiceInSupabase(
     };
   }
 
+  void notifyServerCacheInvalidation(input.publicSlug);
+
   return { saved: true, serviceId };
 }
 
@@ -394,6 +417,9 @@ export async function renameCoreServiceInSupabase(
     .from('servicios')
     .update({ nombre: nextName.trim() || 'Servicio Search Link' })
     .eq('id', serviceId);
+  if (!error) {
+    void notifyServerCacheInvalidation();
+  }
   return !error;
 }
 
@@ -406,6 +432,9 @@ export async function toggleCoreServiceActiveInSupabase(
     .from('servicios')
     .update({ is_active: isActive })
     .eq('id', serviceId);
+  if (!error) {
+    void notifyServerCacheInvalidation();
+  }
   return !error;
 }
 
@@ -444,6 +473,8 @@ export async function rotateCoreServiceApiKeyInSupabase(input: {
   if (error) {
     return { ok: false, reason: error.message };
   }
+
+  void notifyServerCacheInvalidation();
 
   return { ok: true };
 }

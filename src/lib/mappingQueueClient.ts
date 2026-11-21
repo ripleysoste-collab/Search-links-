@@ -2,6 +2,17 @@ import { resolveApiUrl } from './apiConfig';
 import type { MappedImageMetadata } from './imageCompression';
 import { getSupabaseAccessToken } from './supabaseClient';
 
+export type MappingQueueItemUploadStatus =
+  | 'pending'
+  | 'uploading'
+  | 'done'
+  | 'error';
+
+export type MappingQueueItemReceiveStatus =
+  | 'waiting'
+  | 'received'
+  | 'error';
+
 export type MappingQueueItemStatus =
   | 'queued'
   | 'processing'
@@ -10,6 +21,7 @@ export type MappingQueueItemStatus =
   | 'failed';
 
 export type MappingQueueJobStatus =
+  | 'uploading_r2'
   | 'running'
   | 'cooling_down'
   | 'completed'
@@ -24,6 +36,8 @@ export interface MappingQueueItemClient {
   originalUrl?: string;
   savedPercent: number;
   compressedBytes: number;
+  uploadStatus: MappingQueueItemUploadStatus;
+  receiveStatus: MappingQueueItemReceiveStatus;
   status: MappingQueueItemStatus;
   attempts: number;
   nextRetryAt: number | null;
@@ -63,8 +77,10 @@ export interface StartMappingJobPayload {
   keyHash: string;
   items: Array<{
     clientItemId: string;
-    r2Key: string;
-    imageUrl: string;
+    r2Key?: string;
+    imageUrl?: string;
+    dataBase64?: string;
+    sourceImageUrl?: string;
     originalUrl?: string;
     savedPercent: number;
     compressedBytes: number;

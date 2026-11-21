@@ -39,11 +39,11 @@ const MAX_JS_BUNDLE_BYTES = 1_500_000;
 const MAX_PROBE_CANDIDATES = 80;
 const MAX_RESULTS = 24;
 const MAX_ALLOWED_RESULTS = 50;
-const PROBE_WAVE_SIZE = 16;
-const PROBE_CONCURRENCY = 8;
-const MAX_IMAGE_PROBE_BYTES = 192 * 1024;
-const MAX_SUBPAGES_TO_CRAWL = 4;
-const MAX_JS_BUNDLES_TO_SCAN = 3;
+const PROBE_WAVE_SIZE = 24;
+const PROBE_CONCURRENCY = 12;
+const MAX_IMAGE_PROBE_BYTES = 160 * 1024;
+const MAX_SUBPAGES_TO_CRAWL = 3;
+const MAX_JS_BUNDLES_TO_SCAN = 2;
 
 const BROWSER_HEADER_PROFILES: Record<string, string>[] = [
   {
@@ -751,7 +751,7 @@ async function tryPlatformJsonApis(
             'User-Agent': BROWSER_HEADER_PROFILES[0]['User-Agent'],
             Accept: 'application/json',
           },
-          timeoutMs: 3600,
+          timeoutMs: 2200,
         });
 
         if (!response.ok) {
@@ -1023,7 +1023,7 @@ async function probeImageDimensions(
 
     const { response } = await safeFetch(candidateUrl, {
       headers,
-      timeoutMs: 3600,
+      timeoutMs: 2400,
     });
 
     if (!response.ok && response.status !== 206) {
@@ -1157,10 +1157,7 @@ export async function extractImagesFromUrl(
   const platformCandidates = await platformPromise;
   rawCandidates.push(...platformCandidates);
 
-  // Layer 2 & 3: If it's a root domain or still has few candidates, scan SPA JS bundles + internal catalog pages
-  const parsedFinal = new URL(finalUrl);
-  const isDomainRoot = parsedFinal.pathname === '/' || parsedFinal.pathname === '';
-
+  // Layer 2 & 3: If main page still has few candidates, scan SPA JS bundles + internal catalog pages
   const parallelExtraTasks: Array<Promise<void>> = [];
 
   if (htmlInfo.isSpaShell && htmlInfo.scriptSrcs.length > 0 && platformCandidates.length < 6) {
@@ -1172,7 +1169,7 @@ export async function extractImagesFromUrl(
   }
 
   if (
-    (isDomainRoot || rawCandidates.length < targetMaxResults) &&
+    rawCandidates.length < Math.ceil(targetMaxResults * 1.4) &&
     platformCandidates.length < targetMaxResults
   ) {
     parallelExtraTasks.push(

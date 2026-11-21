@@ -30,12 +30,11 @@ import { CATALOG_SAMPLE_IMAGES, type CatalogImageItem } from './data/catalogSamp
 import { resolveApiUrl } from './lib/apiConfig';
 import { useI18n } from './lib/i18n';
 import {
+  blobToDataUrl,
   compressImageToWebp,
   renderImageBlobFromUrl,
-  uploadCompressedImage,
   type CompressedImageResult,
   type MappedImageMetadata,
-  type UploadedCompressedImage,
 } from './lib/imageCompression';
 import {
   clearPendingJobTracking,
@@ -69,15 +68,10 @@ const MAX_FREE_UPLOAD_IMAGES = 20;
 const MAX_GUEST_EXTRACT_IMAGES = 10;
 const MAX_ADMIN_EXTRACT_IMAGES = 50;
 const ADMIN_EXTRACT_ONLY_EMAIL = 'cristiancuerodiaz@gmail.com';
-const COMPRESSION_START_DELAY_MS = 2000;
-const UPLOAD_START_DELAY_MS = 1000;
-const RECEIVE_START_DELAY_MS = 1000;
-const MAP_START_DELAY_MS = 1800;
-const UPLOAD_CONCURRENCY = 3;
-const MIN_RENDER_STEP_MS = 230;
-const MIN_TILE_STEP_MS = 260;
-const MIN_RECEIVE_STEP_MS = 230;
-const JOB_POLL_INTERVAL_MS = 1800;
+const COMPRESSION_START_DELAY_MS = 180;
+const UPLOAD_START_DELAY_MS = 100;
+const COMPRESS_CONCURRENCY = 6;
+const JOB_POLL_INTERVAL_MS = 950;
 
 type BatchImageSource =
   | { kind: 'file'; file: File }
@@ -381,6 +375,7 @@ export default function App() {
 
           const pendingTrackedId = readUnacknowledgedJobId(authUser.id);
           const isRunning =
+            activeJob.status === 'uploading_r2' ||
             activeJob.status === 'running' ||
             activeJob.status === 'cooling_down';
           const shouldRestoreFinished =
@@ -415,11 +410,25 @@ export default function App() {
   }, [authUser]);
 
   const applyQueueJobProgress = (job: MappingQueueJobClient) => {
+    const nextUploadStatuses: Record<string, ImageUploadStatus> = {};
+    const nextReceiveStatuses: Record<string, ImageReceiveStatus> = {};
     const nextMapStatuses: Record<string, ImageMapStatus> = {};
     const nextMappedResults: Record<string, MappedImageMetadata> = {};
     const nextCompressionResults: Record<string, CompressedImageMeta> = {};
 
     for (const item of job.items) {
+      const fallbackUploadDone =
+        !item.r2Deleted && Boolean(item.r2Key) && Boolean(item.imageUrl);
+      const uStatus: ImageUploadStatus = item.r2Deleted
+        ? 'error'
+        : item.uploadStatus || (fallbackUploadDone ? 'done' : 'pending');
+      const rStatus: ImageReceiveStatus = item.r2Deleted
+        ? 'error'
+        : item.receiveStatus || (item.imageUrl ? 'received' : 'waiting');
+
+      nextUploadStatuses[item.clientItemId] = uStatus;
+      nextReceiveStatuses[item.clientItemId] = rStatus;
+
       if (item.status === 'mapped' && item.mapped) {
         nextMapStatuses[item.clientItemId] = 'mapped';
         nextMappedResults[item.clientItemId] = item.mapped;
@@ -431,7 +440,7 @@ export default function App() {
         nextMapStatuses[item.clientItemId] = 'waiting';
       }
 
-      if (!item.r2Deleted) {
+      if (!item.r2Deleted && item.imageUrl) {
         nextCompressionResults[item.clientItemId] = {
           url: item.imageUrl,
           cleanUrl: item.imageUrl,
@@ -441,12 +450,19 @@ export default function App() {
       }
     }
 
+    setUploadStatuses((prev) => ({ ...prev, ...nextUploadStatuses }));
+    setReceiveStatuses((prev) => ({ ...prev, ...nextReceiveStatuses }));
     setMapStatuses(nextMapStatuses);
     setMappedResults(nextMappedResults);
     setCompressionResults((prev) => ({
       ...prev,
       ...nextCompressionResults,
     }));
+
+    if (job.status !== 'uploading_r2') {
+      setShowReceiveBox(true);
+      setShowMapBox(true);
+    }
 
     if (job.status === 'cooling_down' && job.cooldownUntil) {
       const secs = Math.max(
@@ -468,34 +484,34 @@ export default function App() {
   const hydrateStateFromQueueJob = (job: MappingQueueJobClient) => {
     const hydratedImages: CatalogImageItem[] = job.items.map((item, idx) => ({
       id: item.clientItemId,
-      url: item.imageUrl,
-      cleanUrl: item.imageUrl,
+      url: item.imageUrl || item.originalUrl || '',
+      cleanUrl: item.imageUrl || item.originalUrl || '',
       sourcePageUrl: item.originalUrl,
       alt: item.mapped?.nombre || t.app.imageFallbackAlt(idx + 1),
     }));
 
     const compStatuses: Record<string, ImageCompressionStatus> = {};
-    const upStatuses: Record<string, ImageUploadStatus> = {};
-    const recStatuses: Record<string, ImageReceiveStatus> = {};
-
     for (const item of job.items) {
-      compStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'done';
-      upStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'done';
-      recStatuses[item.clientItemId] = item.r2Deleted ? 'error' : 'received';
+      compStatuses[item.clientItemId] =
+        item.r2Deleted || item.uploadStatus === 'error' ? 'error' : 'done';
     }
 
     setHasSearched(true);
     setIsReadOnlyReplay(false);
-    setIsFileUploadFlow(job.sourceType === 'files');
+    setIsFileUploadFlow(true);
     setCatalogImages(hydratedImages);
     setCatalogVersion((prev) => prev + 1);
     setShowCompressionBox(true);
     setShowUploadBox(true);
-    setShowReceiveBox(true);
-    setShowMapBox(true);
+    setShowReceiveBox(job.status !== 'uploading_r2');
+    setShowMapBox(
+      job.status === 'running' ||
+        job.status === 'cooling_down' ||
+        job.status === 'completed' ||
+        job.status === 'failed_rolled_back' ||
+        job.status === 'cancelled',
+    );
     setCompressionStatuses(compStatuses);
-    setUploadStatuses(upStatuses);
-    setReceiveStatuses(recStatuses);
     applyQueueJobProgress(job);
   };
 
@@ -694,7 +710,9 @@ export default function App() {
 
     while (
       !signal.aborted &&
-      (latestJob.status === 'running' || latestJob.status === 'cooling_down')
+      (latestJob.status === 'uploading_r2' ||
+        latestJob.status === 'running' ||
+        latestJob.status === 'cooling_down')
     ) {
       await new Promise<void>((resolve) => {
         jobPollTimerRef.current = window.setTimeout(() => {
@@ -1322,130 +1340,71 @@ export default function App() {
     const controller = new AbortController();
     compressionAbortRef.current = controller;
 
-    // Wait 2 seconds after images settle, then run Stage 2 (render URL if needed -> WebP compress), Stage 3 (R2 upload), Stage 4 (receive URLs)
+    // Start Stage 2 quickly: parallel render + WebP compression, then launch Render background job at R2 start
     compressionTimerRef.current = window.setTimeout(() => {
       compressionTimerRef.current = null;
       if (controller.signal.aborted) return;
 
       setShowCompressionBox(true);
 
-      type RenderTaskResult =
-        | { ok: true; blob: Blob }
-        | { ok: false };
-
-      type CompressTaskResult =
-        | { ok: true; data: CompressedImageResult }
-        | { ok: false };
-
-      const renderResolvers: Array<(res: RenderTaskResult) => void> = [];
-      const renderPromises: Array<Promise<RenderTaskResult>> = sources.map(
-        (_, idx) =>
-          new Promise<RenderTaskResult>((resolve) => {
-            renderResolvers[idx] = resolve;
-          }),
-      );
-
-      const compressResolvers: Array<(res: CompressTaskResult) => void> = [];
-      const compressPromises: Array<Promise<CompressTaskResult>> = sources.map(
-        (_, idx) =>
-          new Promise<CompressTaskResult>((resolve) => {
-            compressResolvers[idx] = resolve;
-          }),
-      );
-
-      // Workers render URLs (if remote) and compress to WebP in parallel
-      let workerCursor = 0;
-      const workerCount = Math.min(UPLOAD_CONCURRENCY, sources.length);
-      for (let w = 0; w < workerCount; w++) {
-        void (async () => {
-          while (workerCursor < sources.length && !controller.signal.aborted) {
-            const index = workerCursor++;
-            const source = sources[index];
-
-            try {
-              let sourceBlob: Blob;
-              if (source.kind === 'url') {
-                sourceBlob = await renderImageBlobFromUrl(
-                  source.url,
-                  controller.signal,
-                );
-                renderResolvers[index]({ ok: true, blob: sourceBlob });
-              } else {
-                sourceBlob = source.file;
-                renderResolvers[index]({ ok: true, blob: sourceBlob });
-              }
-
-              const compressed = await compressImageToWebp(sourceBlob);
-              compressResolvers[index]({ ok: true, data: compressed });
-            } catch {
-              renderResolvers[index]({ ok: false });
-              compressResolvers[index]({ ok: false });
-            }
-          }
-        })();
-      }
-
       void (async () => {
         const compressedPayloads: Array<CompressedImageResult | null> = new Array(
           items.length,
         ).fill(null);
 
-        for (let i = 0; i < items.length; i++) {
-          if (controller.signal.aborted) return;
-          const item = items[i];
-          const source = sources[i];
+        let workerCursor = 0;
+        const workerCount = Math.min(COMPRESS_CONCURRENCY, sources.length);
+        const workers = Array.from({ length: workerCount }, async () => {
+          while (workerCursor < sources.length && !controller.signal.aborted) {
+            const index = workerCursor++;
+            const item = items[index];
+            const source = sources[index];
+            if (!item || !source) continue;
 
-          if (source.kind === 'url') {
-            setCompressionStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'rendering',
-            }));
+            try {
+              let sourceBlob: Blob;
+              if (source.kind === 'url') {
+                setCompressionStatuses((prev) => ({
+                  ...prev,
+                  [item.id]: 'rendering',
+                }));
+                sourceBlob = await renderImageBlobFromUrl(
+                  source.url,
+                  controller.signal,
+                );
+              } else {
+                sourceBlob = source.file;
+              }
 
-            const renderBeat = new Promise<void>((resolve) =>
-              window.setTimeout(resolve, MIN_RENDER_STEP_MS),
-            );
-            const [renderResult] = await Promise.all([renderPromises[i], renderBeat]);
-            if (controller.signal.aborted) return;
+              if (controller.signal.aborted) return;
 
-            if (!renderResult.ok) {
               setCompressionStatuses((prev) => ({
                 ...prev,
-                [item.id]: 'error',
+                [item.id]: 'compressing',
               }));
-              continue;
+
+              const compressed = await compressImageToWebp(sourceBlob);
+              if (controller.signal.aborted) return;
+
+              compressedPayloads[index] = compressed;
+              setCompressionStatuses((prev) => ({
+                ...prev,
+                [item.id]: 'done',
+              }));
+            } catch {
+              if (!controller.signal.aborted) {
+                setCompressionStatuses((prev) => ({
+                  ...prev,
+                  [item.id]: 'error',
+                }));
+              }
             }
           }
+        });
 
-          setCompressionStatuses((prev) => ({
-            ...prev,
-            [item.id]: 'compressing',
-          }));
+        await Promise.all(workers);
+        if (controller.signal.aborted) return;
 
-          const stepBeat = new Promise<void>((resolve) =>
-            window.setTimeout(
-              resolve,
-              source.kind === 'file' ? 320 : MIN_TILE_STEP_MS,
-            ),
-          );
-
-          const [result] = await Promise.all([compressPromises[i], stepBeat]);
-          if (controller.signal.aborted) return;
-
-          if (result.ok) {
-            compressedPayloads[i] = result.data;
-            setCompressionStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'done',
-            }));
-          } else {
-            setCompressionStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'error',
-            }));
-          }
-        }
-
-        // Wait 1 second after all images finish compressing before moving to Stage 3
         await new Promise<void>((resolve) => {
           compressionTimerRef.current = window.setTimeout(() => {
             compressionTimerRef.current = null;
@@ -1455,174 +1414,55 @@ export default function App() {
 
         if (controller.signal.aborted) return;
 
+        // Stage 3 (R2): Launch Render background worker right when R2 begins
         setShowUploadBox(true);
 
-        type UploadTaskResult =
-          | { ok: true; data: UploadedCompressedImage }
-          | { ok: false; aborted: boolean; errorMessage?: string };
+        const queueItems = (
+          await Promise.all(
+            items.map(async (item, idx) => {
+              const compressed = compressedPayloads[idx];
+              const source = sources[idx];
 
-        const uploadResolvers: Array<(res: UploadTaskResult) => void> = [];
-        const uploadPromises: Array<Promise<UploadTaskResult>> = compressedPayloads.map(
-          (payload, idx) => {
-            if (!payload) {
-              return Promise.resolve({ ok: false, aborted: false });
-            }
-            return new Promise<UploadTaskResult>((resolve) => {
-              uploadResolvers[idx] = resolve;
-            });
-          },
-        );
-
-        let uploadCursor = 0;
-        const uploadWorkerCount = Math.min(UPLOAD_CONCURRENCY, compressedPayloads.length);
-        for (let w = 0; w < uploadWorkerCount; w++) {
-          void (async () => {
-            while (
-              uploadCursor < compressedPayloads.length &&
-              !controller.signal.aborted
-            ) {
-              const index = uploadCursor++;
-              const payload = compressedPayloads[index];
-              if (!payload) continue;
-
-              try {
-                const data = await uploadCompressedImage(payload, controller.signal);
-                uploadResolvers[index]({ ok: true, data });
-              } catch (err) {
-                const aborted =
-                  controller.signal.aborted ||
-                  (err instanceof DOMException && err.name === 'AbortError');
-                const errorMessage =
-                  err instanceof Error ? err.message : t.app.uploadImageError;
-                uploadResolvers[index]({ ok: false, aborted, errorMessage });
+              if (compressed) {
+                const dataBase64 = await blobToDataUrl(compressed.blob);
+                return {
+                  clientItemId: item.id,
+                  dataBase64,
+                  originalUrl: item.sourcePageUrl,
+                  savedPercent: compressed.savedPercent,
+                  compressedBytes: compressed.compressedBytes,
+                };
               }
-            }
-          })();
-        }
 
-        const uploadedPayloads: Array<UploadedCompressedImage | null> = new Array(
-          items.length,
-        ).fill(null);
-        let firstUploadError: string | null = null;
+              if (source?.kind === 'url') {
+                return {
+                  clientItemId: item.id,
+                  sourceImageUrl: source.url,
+                  originalUrl: item.sourcePageUrl,
+                  savedPercent: 0,
+                  compressedBytes: 0,
+                };
+              }
 
-        for (let i = 0; i < items.length; i++) {
-          if (controller.signal.aborted) return;
-          const item = items[i];
-
-          setUploadStatuses((prev) => ({
-            ...prev,
-            [item.id]: 'uploading',
-          }));
-
-          const stepBeat = new Promise<void>((resolve) =>
-            window.setTimeout(resolve, MIN_TILE_STEP_MS),
-          );
-
-          const [result] = await Promise.all([uploadPromises[i], stepBeat]);
-          if (controller.signal.aborted) return;
-
-          if (result.ok) {
-            uploadedPayloads[i] = result.data;
-            setUploadStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'done',
-            }));
-          } else if (!result.aborted) {
-            if (!firstUploadError && result.errorMessage) {
-              firstUploadError = result.errorMessage;
-              setBatchNotice(result.errorMessage);
-            }
-            setUploadStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'error',
-            }));
-          }
-        }
-
-        // Wait 1 second after all uploads finish before moving to Stage 4 ("Recibiendo")
-        await new Promise<void>((resolve) => {
-          compressionTimerRef.current = window.setTimeout(() => {
-            compressionTimerRef.current = null;
-            resolve();
-          }, RECEIVE_START_DELAY_MS);
-        });
-
-        if (controller.signal.aborted) return;
-
-        setShowReceiveBox(true);
-
-        // Brief spin beat so the user sees all green circles rotating rapidly before URLs settle
-        await new Promise<void>((resolve) => {
-          compressionTimerRef.current = window.setTimeout(() => {
-            compressionTimerRef.current = null;
-            resolve();
-          }, 360);
-        });
-
-        for (let i = 0; i < items.length; i++) {
-          if (controller.signal.aborted) return;
-          const item = items[i];
-          const uploaded = uploadedPayloads[i];
-
-          if (uploaded) {
-            setCompressionResults((prev) => ({
-              ...prev,
-              [item.id]: {
-                url: uploaded.url,
-                cleanUrl: uploaded.url,
-                savedPercent: uploaded.savedPercent,
-                compressedBytes: uploaded.compressedBytes,
-              },
-            }));
-            setReceiveStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'received',
-            }));
-          } else {
-            setReceiveStatuses((prev) => ({
-              ...prev,
-              [item.id]: 'error',
-            }));
-          }
-
-          if (i < items.length - 1) {
-            await new Promise<void>((resolve) =>
-              window.setTimeout(resolve, MIN_RECEIVE_STEP_MS),
-            );
-          }
-        }
-
-        // Wait 1 second after all URLs are received before moving to Stage 5 ("Renderizar y mapear")
-        await new Promise<void>((resolve) => {
-          compressionTimerRef.current = window.setTimeout(() => {
-            compressionTimerRef.current = null;
-            resolve();
-          }, MAP_START_DELAY_MS);
-        });
-
-        if (controller.signal.aborted) return;
-
-        const queueItems = items
-          .map((item, idx) => {
-            const uploaded = uploadedPayloads[idx];
-            if (!uploaded) return null;
-            return {
-              clientItemId: item.id,
-              r2Key: uploaded.key,
-              imageUrl: uploaded.url,
-              originalUrl: item.sourcePageUrl,
-              savedPercent: uploaded.savedPercent,
-              compressedBytes: uploaded.compressedBytes,
-            };
-          })
-          .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
+              return null;
+            }),
+          )
+        ).filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
         if (queueItems.length === 0) {
-          setBatchNotice(firstUploadError || t.app.uploadImageError);
+          setUploadStatuses(
+            Object.fromEntries(items.map((item) => [item.id, 'error' as const])),
+          );
+          setBatchNotice(t.app.uploadImageError);
           return;
         }
 
-        setShowMapBox(true);
+        const initialQueuedUploadStatuses: Record<string, ImageUploadStatus> = {};
+        for (const item of items) {
+          const isIncluded = queueItems.some((q) => q.clientItemId === item.id);
+          initialQueuedUploadStatuses[item.id] = isIncluded ? 'uploading' : 'error';
+        }
+        setUploadStatuses(initialQueuedUploadStatuses);
 
         const currentUserId = authUserRef.current?.id;
         if (!currentUserId) return;
@@ -1671,9 +1511,9 @@ export default function App() {
           ) {
             return;
           }
-          const msg = err instanceof Error ? err.message : t.app.mapImageError;
+          const msg = err instanceof Error ? err.message : t.app.uploadImageError;
           setBatchNotice(msg);
-          setMapStatuses((prev) => {
+          setUploadStatuses((prev) => {
             const next = { ...prev };
             for (const qItem of queueItems) {
               next[qItem.clientItemId] = 'error';
@@ -1792,103 +1632,15 @@ export default function App() {
         isDesktopSplitActive ? 'lg:h-dvh lg:overflow-hidden' : ''
       }`}
     >
-      {/* Mobile-only full-screen natural luminous backdrop with gentle living color movement */}
+      {/* Mobile-only lightweight ambient backdrop (zero continuous blur GPU repaints) */}
       <div
         aria-hidden="true"
         className="pointer-events-none select-none fixed inset-0 z-0 overflow-hidden lg:hidden"
         style={{
           background:
-            'linear-gradient(160deg, #eef6ff 0%, #f8fbff 42%, #ffffff 70%, #f2fbf6 100%)',
+            'radial-gradient(circle at 12% 8%, rgba(59,130,246,0.16) 0%, transparent 42%), radial-gradient(circle at 88% 12%, rgba(245,158,11,0.12) 0%, transparent 40%), radial-gradient(circle at 18% 54%, rgba(59,130,246,0.10) 0%, transparent 44%), radial-gradient(circle at 85% 92%, rgba(16,185,129,0.16) 0%, transparent 46%), linear-gradient(160deg, #eef6ff 0%, #f8fbff 42%, #ffffff 70%, #f2fbf6 100%)',
         }}
-      >
-        <motion.div
-          animate={
-            shouldReduceMotion
-              ? undefined
-              : {
-                  x: [-18, 28, -10, -18],
-                  y: [-12, 22, 10, -12],
-                  scale: [1, 1.08, 0.96, 1],
-                }
-          }
-          transition={{
-            duration: 18,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-          className="absolute -top-24 -left-20 w-[92vw] h-[46vh] rounded-full blur-3xl will-change-transform"
-          style={{
-            background:
-              'radial-gradient(circle, rgba(59, 130, 246, 0.28) 0%, rgba(96, 165, 250, 0.14) 55%, transparent 76%)',
-          }}
-        />
-
-        <motion.div
-          animate={
-            shouldReduceMotion
-              ? undefined
-              : {
-                  x: [20, -24, 14, 20],
-                  y: [10, -16, 20, 10],
-                  scale: [1.02, 0.95, 1.07, 1.02],
-                }
-          }
-          transition={{
-            duration: 21,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-          className="absolute -top-16 -right-24 w-[88vw] h-[44vh] rounded-full blur-3xl will-change-transform"
-          style={{
-            background:
-              'radial-gradient(circle, rgba(234, 67, 53, 0.20) 0%, rgba(245, 158, 11, 0.15) 50%, transparent 76%)',
-          }}
-        />
-
-        <motion.div
-          animate={
-            shouldReduceMotion
-              ? undefined
-              : {
-                  x: [-16, 22, -20, -16],
-                  y: [18, -20, 8, 18],
-                  scale: [0.98, 1.07, 1, 0.98],
-                }
-          }
-          transition={{
-            duration: 23,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-          className="absolute top-[36vh] -left-20 w-[90vw] h-[44vh] rounded-full blur-3xl will-change-transform"
-          style={{
-            background:
-              'radial-gradient(circle, rgba(245, 158, 11, 0.16) 0%, rgba(59, 130, 246, 0.12) 55%, transparent 76%)',
-          }}
-        />
-
-        <motion.div
-          animate={
-            shouldReduceMotion
-              ? undefined
-              : {
-                  x: [14, -26, 12, 14],
-                  y: [-14, 18, -8, -14],
-                  scale: [1, 1.09, 0.97, 1],
-                }
-          }
-          transition={{
-            duration: 19,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-          className="absolute -bottom-24 -right-16 w-[96vw] h-[48vh] rounded-full blur-3xl will-change-transform"
-          style={{
-            background:
-              'radial-gradient(circle, rgba(16, 185, 129, 0.22) 0%, rgba(59, 130, 246, 0.15) 52%, transparent 76%)',
-          }}
-        />
-      </div>
+      />
 
       {/* Desktop-only AI-generated daytime desert background */}
       <div

@@ -11,6 +11,7 @@ import {
   getLatestMappingJobForUser,
   getMappingJobForUser,
   type MappingQueueItemInput,
+  type PendingR2UploadPayload,
 } from './lib/mappingQueue.ts';
 import {
   checkAndConsumeGuestExtractQuota,
@@ -18,6 +19,7 @@ import {
   FREE_PLAN_MAX_IMAGES,
   GUEST_EXTRACT_MAX_IMAGES,
   inspectGuestExtractStatus,
+  invalidateUserImageQuotaCache,
   isAdminTestEmail,
   markFreeAccountImageConsumed,
   verifySupabaseBearerUser,
@@ -42,6 +44,7 @@ import {
 import {
   extractCoreRequestParams,
   getSearchLinkCoreManifest,
+  invalidateCoreCatalogCache,
   resolveSearchLinkCoreEndpoint,
   SEARCH_LINK_CORE_NAME,
   SEARCH_LINK_CORE_VERSION,
@@ -145,6 +148,22 @@ async function startServer() {
         groq: Boolean(groqKey && !/^TU_/i.test(groqKey)),
       },
     });
+  });
+
+  app.post('/api/cache/invalidate', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'No autorizado.' });
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const slug =
+      typeof body.slug === 'string' && body.slug.trim()
+        ? body.slug.trim()
+        : undefined;
+    invalidateUserImageQuotaCache(authUser.userId);
+    invalidateCoreCatalogCache(slug ? { slug } : undefined);
+    return res.json({ ok: true });
   });
 
   app.get('/api/extract', async (req, res) => {
@@ -378,13 +397,13 @@ async function startServer() {
 
   app.post(
     '/api/jobs/map',
-    express.json({ type: 'application/json', limit: '1mb' }),
+    express.json({ type: 'application/json', limit: '30mb' }),
     async (req, res) => {
       try {
         const authUser = await verifySupabaseBearerUser(req.headers);
         if (!authUser) {
           return res.status(401).json({
-            error: 'Inicia sesión con Google para iniciar la cola de mapeo.',
+            error: 'Inicia sesión con Google para iniciar el proceso en segundo plano.',
           });
         }
 
@@ -404,43 +423,80 @@ async function startServer() {
 
         if (!serviceSlug || !keyPrefix || !keyHash || rawItems.length === 0) {
           return res.status(400).json({
-            error: 'Faltan datos válidos del lote para iniciar la cola de mapeo.',
+            error: 'Faltan datos válidos del lote para iniciar en segundo plano.',
           });
         }
 
         const items: MappingQueueItemInput[] = [];
+        const pendingUploads = new Map<string, PendingR2UploadPayload>();
+
         for (const entry of rawItems) {
           if (!entry || typeof entry !== 'object') continue;
           const item = entry as Record<string, unknown>;
           const clientItemId =
             typeof item.clientItemId === 'string' ? item.clientItemId.trim() : '';
+          if (!clientItemId) continue;
+
           const r2Key = typeof item.r2Key === 'string' ? item.r2Key.trim() : '';
           const imageUrl =
             typeof item.imageUrl === 'string' ? item.imageUrl.trim() : '';
-          if (!clientItemId || !r2Key || !imageUrl || !isValidMediaKey(r2Key)) {
+          const dataBase64 =
+            typeof item.dataBase64 === 'string' ? item.dataBase64.trim() : '';
+          const sourceImageUrl =
+            typeof item.sourceImageUrl === 'string'
+              ? item.sourceImageUrl.trim()
+              : '';
+          const originalUrl =
+            typeof item.originalUrl === 'string' ? item.originalUrl.trim() : undefined;
+          const savedPercent =
+            typeof item.savedPercent === 'number' && Number.isFinite(item.savedPercent)
+              ? Math.max(0, Math.min(99, Math.trunc(item.savedPercent)))
+              : 0;
+          const compressedBytes =
+            typeof item.compressedBytes === 'number' &&
+            Number.isFinite(item.compressedBytes)
+              ? Math.max(0, Math.trunc(item.compressedBytes))
+              : 0;
+
+          if (r2Key && imageUrl && isValidMediaKey(r2Key)) {
+            items.push({
+              clientItemId,
+              r2Key,
+              imageUrl,
+              originalUrl,
+              savedPercent,
+              compressedBytes,
+            });
             continue;
           }
-          items.push({
-            clientItemId,
-            r2Key,
-            imageUrl,
-            originalUrl:
-              typeof item.originalUrl === 'string' ? item.originalUrl.trim() : undefined,
-            savedPercent:
-              typeof item.savedPercent === 'number' && Number.isFinite(item.savedPercent)
-                ? Math.max(0, Math.min(99, Math.trunc(item.savedPercent)))
-                : 0,
-            compressedBytes:
-              typeof item.compressedBytes === 'number' &&
-              Number.isFinite(item.compressedBytes)
-                ? Math.max(0, Math.trunc(item.compressedBytes))
-                : 0,
-          });
+
+          if (dataBase64) {
+            const buffer = decodeBase64ImagePayload({ dataBase64 });
+            pendingUploads.set(clientItemId, { buffer });
+            items.push({
+              clientItemId,
+              originalUrl,
+              savedPercent,
+              compressedBytes: compressedBytes || buffer.byteLength,
+            });
+            continue;
+          }
+
+          if (sourceImageUrl && /^https?:\/\//i.test(sourceImageUrl)) {
+            pendingUploads.set(clientItemId, { sourceImageUrl });
+            items.push({
+              clientItemId,
+              sourceImageUrl,
+              originalUrl,
+              savedPercent,
+              compressedBytes,
+            });
+          }
         }
 
         if (items.length === 0) {
           return res.status(400).json({
-            error: 'No hay imágenes válidas almacenadas en R2 para encolar.',
+            error: 'No hay imágenes válidas para procesar en segundo plano.',
           });
         }
 
@@ -454,15 +510,28 @@ async function startServer() {
           });
         }
 
+        if (pendingUploads.size > 0 && !isAdminTestEmail(authUser.email)) {
+          const quota = await checkFreeAccountImageQuota(authUser);
+          if (!quota.allowed || pendingUploads.size > quota.remaining) {
+            return res.status(429).json({
+              quotaExceeded: true,
+              used: quota.used,
+              limit: quota.limit,
+              error: `Has alcanzado el límite de ${FREE_PLAN_MAX_IMAGES} imágenes del plan gratuito.`,
+            });
+          }
+        }
+
         const job = await createAndStartMappingJob({
-          userId: authUser.userId,
-          accessToken: authUser.accessToken,
+          authUser,
+          requestOrigin: getRequestOrigin(req.headers),
           sourceType,
           sourceUrl,
           serviceSlug,
           keyPrefix,
           keyHash,
           items,
+          pendingUploads,
         });
 
         return res.status(202).json({ ok: true, job });
@@ -470,7 +539,7 @@ async function startServer() {
         const message =
           err instanceof Error
             ? err.message
-            : 'No se pudo iniciar la cola de mapeo.';
+            : 'No se pudo iniciar la cola en segundo plano.';
         return res.status(400).json({ error: message });
       }
     },
@@ -485,10 +554,7 @@ async function startServer() {
       });
     }
 
-    const job = await getLatestMappingJobForUser(
-      authUser.userId,
-      authUser.accessToken,
-    );
+    const job = await getLatestMappingJobForUser(authUser);
     return res.json({ ok: true, job });
   });
 

@@ -25,10 +25,10 @@ interface DesktopUploadSequenceProps {
 type SequencePhase = 'merging' | 'active' | 'splitting';
 
 const TILE_GAP = 10;
-const MERGE_DURATION_MS = 460;
-const SPLIT_DURATION_MS = 500;
-const VANISH_HOLD_AFTER_ALL_MS = 160;
-const RECEIVE_COMPLETE_HOLD_MS = 700;
+const MERGE_DURATION_MS = 280;
+const SPLIT_DURATION_MS = 320;
+const VANISH_HOLD_AFTER_ALL_MS = 90;
+const RECEIVE_COMPLETE_HOLD_MS = 260;
 
 function computeUnifiedGrid(count: number, containerAspect: number) {
   if (count <= 1) return { cols: 1, rows: 1 };

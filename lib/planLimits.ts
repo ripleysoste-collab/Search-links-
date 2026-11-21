@@ -28,13 +28,30 @@ interface GuestExtractRecord {
 
 interface AccountImageTracker {
   baseDbCount: number;
+  lastDbSyncAt: number;
   recentKeys: Set<string>;
 }
 
+interface VerifiedTokenCacheEntry {
+  userId: string;
+  email: string;
+  expiresAt: number;
+}
+
+const TOKEN_CACHE_TTL_MS = 45_000;
+const TOKEN_CACHE_MAX_ENTRIES = 2000;
+const QUOTA_DB_CACHE_TTL_MS = 120_000;
+
 const guestExtractMemory = new Map<string, GuestExtractRecord>();
 const accountImageMemory = new Map<string, AccountImageTracker>();
+const verifiedTokenCache = new Map<string, VerifiedTokenCacheEntry>();
 const monthlyApiCounterMemory = new Map<string, number>();
 const keyHashToServiceScope = new Map<string, string>();
+
+export function invalidateUserImageQuotaCache(userId: string): void {
+  if (!userId) return;
+  accountImageMemory.delete(userId);
+}
 
 export function isAdminTestEmail(email?: string | null): boolean {
   return (email || '').trim().toLowerCase() === ADMIN_TEST_EMAIL;
@@ -132,6 +149,21 @@ function verifySignedCookiePayload<T>(raw: string | undefined): T | null {
   }
 }
 
+function readJwtExpMs(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = JSON.parse(
+      Buffer.from(parts[1], 'base64url').toString('utf8'),
+    ) as { exp?: number };
+    return typeof payload?.exp === 'number' && Number.isFinite(payload.exp)
+      ? payload.exp * 1000
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function verifySupabaseBearerUser(
   headers: IncomingHttpHeaders,
 ): Promise<AuthenticatedRequestUser | null> {
@@ -143,12 +175,44 @@ export async function verifySupabaseBearerUser(
   const token = authHeader.slice(7).trim();
   if (!token || token.length < 20) return null;
 
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const now = Date.now();
+  const cached = verifiedTokenCache.get(tokenHash);
+  if (cached && cached.expiresAt > now) {
+    return {
+      userId: cached.userId,
+      email: cached.email,
+      accessToken: token,
+    };
+  }
+  if (cached) {
+    verifiedTokenCache.delete(tokenHash);
+  }
+
   const supabase = getSupabaseServerClient();
   if (!supabase) return null;
 
   try {
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user?.id) return null;
+
+    const jwtExpMs = readJwtExpMs(token);
+    const cacheUntil = jwtExpMs
+      ? Math.min(now + TOKEN_CACHE_TTL_MS, jwtExpMs - 1000)
+      : now + TOKEN_CACHE_TTL_MS;
+
+    if (cacheUntil > now) {
+      if (verifiedTokenCache.size >= TOKEN_CACHE_MAX_ENTRIES) {
+        const oldest = verifiedTokenCache.keys().next().value;
+        if (oldest) verifiedTokenCache.delete(oldest);
+      }
+      verifiedTokenCache.set(tokenHash, {
+        userId: data.user.id,
+        email: data.user.email || '',
+        expiresAt: cacheUntil,
+      });
+    }
+
     return {
       userId: data.user.id,
       email: data.user.email || '',
@@ -376,15 +440,20 @@ export async function checkFreeAccountImageQuota(
     };
   }
 
-  const dbCount = await fetchUserDbImageCount(user);
+  const now = Date.now();
   let tracker = accountImageMemory.get(user.userId);
-  if (!tracker) {
-    tracker = { baseDbCount: dbCount, recentKeys: new Set<string>() };
+  if (!tracker || now - tracker.lastDbSyncAt > QUOTA_DB_CACHE_TTL_MS) {
+    const dbCount = await fetchUserDbImageCount(user);
+    tracker = {
+      baseDbCount: dbCount,
+      lastDbSyncAt: now,
+      recentKeys: tracker?.recentKeys ?? new Set<string>(),
+    };
     accountImageMemory.set(user.userId, tracker);
   }
 
   const effectiveUsed = Math.max(
-    dbCount,
+    tracker.baseDbCount,
     tracker.baseDbCount + tracker.recentKeys.size,
   );
   const alreadyTracked = Boolean(candidateKey && tracker.recentKeys.has(candidateKey));
@@ -404,7 +473,11 @@ export function markFreeAccountImageConsumed(
   if (isAdminTestEmail(user.email) || !uniqueKey) return;
   let tracker = accountImageMemory.get(user.userId);
   if (!tracker) {
-    tracker = { baseDbCount: 0, recentKeys: new Set<string>() };
+    tracker = {
+      baseDbCount: 0,
+      lastDbSyncAt: 0,
+      recentKeys: new Set<string>(),
+    };
     accountImageMemory.set(user.userId, tracker);
   }
   tracker.recentKeys.add(uniqueKey);

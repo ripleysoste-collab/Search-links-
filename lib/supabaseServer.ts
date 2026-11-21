@@ -13,6 +13,40 @@ const DEFAULT_SUPABASE_URL = 'https://nhofuamltqglrgfjucof.supabase.co';
 const DEFAULT_SUPABASE_PUBLISHABLE_KEY =
   'sb_publishable_wKhXyZ7s3CtT4NcU8Nx8EQ_T9TZsxFI';
 
+const CORE_CATALOG_CACHE_TTL_MS = 120_000;
+const CORE_CATALOG_CACHE_MAX_ENTRIES = 1000;
+
+interface CachedCoreCatalogEntry {
+  expiresAt: number;
+  keyHash: string;
+  slug: string;
+  scopeId: string;
+  data: SearchLinkCoreResponse | PublicCatalogResult;
+}
+
+const coreCatalogCache = new Map<string, CachedCoreCatalogEntry>();
+
+export function invalidateCoreCatalogCache(filter?: {
+  slug?: string;
+  keyHash?: string;
+}): void {
+  if (!filter || (!filter.slug && !filter.keyHash)) {
+    coreCatalogCache.clear();
+    return;
+  }
+  const targetSlug = filter.slug?.trim().toLowerCase();
+  const targetKeyHash = filter.keyHash?.trim();
+
+  for (const [cacheKey, entry] of coreCatalogCache.entries()) {
+    if (
+      (targetKeyHash && entry.keyHash === targetKeyHash) ||
+      (targetSlug && entry.slug === targetSlug)
+    ) {
+      coreCatalogCache.delete(cacheKey);
+    }
+  }
+}
+
 export const SEARCH_LINK_CORE_NAME = 'Search Link Core';
 export const SEARCH_LINK_CORE_VERSION = '1.0';
 
@@ -255,6 +289,9 @@ export async function resolveSearchLinkCoreEndpoint(
     };
   }
 
+  const safeSlug = params.slug?.trim() || '';
+  const safeQuery = params.query?.trim() || '';
+  const safeCategoria = params.categoria?.trim() || '';
   const safeLimit =
     typeof params.limit === 'number' && Number.isFinite(params.limit)
       ? Math.min(Math.max(Math.trunc(params.limit), 1), 100)
@@ -264,11 +301,32 @@ export async function resolveSearchLinkCoreEndpoint(
       ? Math.max(Math.trunc(params.offset), 0)
       : 0;
 
+  const cacheKey = `${keyHash}|${safeSlug.toLowerCase()}|${safeQuery.toLowerCase()}|${safeCategoria.toLowerCase()}|${safeLimit}|${safeOffset}`;
+  const now = Date.now();
+  const cached = coreCatalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    const quota = recordAndCheckMonthlyApiQuota(cached.scopeId, keyHash);
+    if (!quota.allowed) {
+      return {
+        ok: false,
+        status: 429,
+        error: `Límite mensual alcanzado: el plan gratuito incluye hasta ${FREE_PLAN_MAX_API_REQUESTS_MONTHLY} peticiones API por mes.`,
+      };
+    }
+    return {
+      ok: true,
+      data: cached.data,
+    };
+  }
+  if (cached) {
+    coreCatalogCache.delete(cacheKey);
+  }
+
   const { data, error } = await supabase.rpc('search_link_core_resolve', {
     p_key_hash: keyHash,
-    p_slug: params.slug?.trim() || null,
-    p_query: params.query?.trim() || null,
-    p_categoria: params.categoria?.trim() || null,
+    p_slug: safeSlug || null,
+    p_query: safeQuery || null,
+    p_categoria: safeCategoria || null,
     p_limit: safeLimit,
     p_offset: safeOffset,
   });
@@ -338,6 +396,18 @@ export async function resolveSearchLinkCoreEndpoint(
       error: `Límite mensual alcanzado: el plan gratuito incluye hasta ${FREE_PLAN_MAX_API_REQUESTS_MONTHLY} peticiones API por mes.`,
     };
   }
+
+  if (coreCatalogCache.size >= CORE_CATALOG_CACHE_MAX_ENTRIES) {
+    const oldestKey = coreCatalogCache.keys().next().value;
+    if (oldestKey) coreCatalogCache.delete(oldestKey);
+  }
+  coreCatalogCache.set(cacheKey, {
+    expiresAt: now + CORE_CATALOG_CACHE_TTL_MS,
+    keyHash,
+    slug: (record.servicio?.slug || safeSlug).toLowerCase(),
+    scopeId,
+    data: record,
+  });
 
   return {
     ok: true,

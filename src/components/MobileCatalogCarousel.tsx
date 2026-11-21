@@ -391,7 +391,7 @@ export function MobileCatalogCarousel({
 
     const timer = window.setTimeout(() => {
       setShowLifecycleBox(true);
-    }, 2000);
+    }, 450);
 
     return () => window.clearTimeout(timer);
   }, [allMappedComplete, isReadOnlyReplay]);
@@ -428,7 +428,7 @@ export function MobileCatalogCarousel({
 
     const autoAdvanceTimer = window.setTimeout(() => {
       setShowViewApiBox(true);
-    }, 2000);
+    }, 650);
 
     return () => window.clearTimeout(autoAdvanceTimer);
   }, [showLifecycleBox, showViewApiBox]);
