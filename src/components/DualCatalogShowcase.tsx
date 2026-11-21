@@ -8,10 +8,12 @@ import {
   Eye,
   Image as ImageIcon,
   Loader2,
+  ShieldAlert,
   X,
 } from 'lucide-react';
 import type { CatalogImageItem } from '../data/catalogSamples';
 import type { MappedImageMetadata } from '../lib/imageCompression';
+import type { MappingQueueJobStatus } from '../lib/mappingQueueClient';
 import {
   generateAndDownloadCatalogPdf,
   type CatalogPdfExportKind,
@@ -52,6 +54,10 @@ interface DualCatalogShowcaseProps {
   compressionResults?: Record<string, CompressedImageMeta>;
   isReadOnlyReplay?: boolean;
   serviceCredentials?: ServiceCredentialsDisplay | null;
+  jobStatus?: MappingQueueJobStatus | null;
+  planBRolledBack?: boolean;
+  policyBlocked?: boolean;
+  jobNotice?: string | null;
 }
 
 interface BoxRect {
@@ -187,6 +193,10 @@ export function DualCatalogShowcase({
   compressionResults = {},
   isReadOnlyReplay = false,
   serviceCredentials = null,
+  jobStatus = null,
+  planBRolledBack = false,
+  policyBlocked = false,
+  jobNotice = null,
 }: DualCatalogShowcaseProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const leftCardRef = useRef<HTMLElement>(null);
@@ -223,18 +233,25 @@ export function DualCatalogShowcase({
   const [contentVisible, setContentVisible] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  const isBatchBlockedOrRolledBack = Boolean(
+    planBRolledBack || policyBlocked || jobStatus === 'failed_rolled_back',
+  );
+
   const isSplitWorkspaceActive = Boolean(
-    isFileUploadFlow && showMapBox && uploadSequenceCompleted,
+    isFileUploadFlow &&
+      showMapBox &&
+      (uploadSequenceCompleted || isBatchBlockedOrRolledBack),
   );
 
   const allMappedComplete = Boolean(
     isSplitWorkspaceActive &&
       images.length > 0 &&
-      images.every((img) => {
-        const status = mapStatuses[img.id];
-        return status === 'mapped' || status === 'error';
-      }) &&
-      images.some((img) => Boolean(mappedResults[img.id])),
+      (isBatchBlockedOrRolledBack ||
+        (images.every((img) => {
+          const status = mapStatuses[img.id];
+          return status === 'mapped' || status === 'error';
+        }) &&
+          images.some((img) => Boolean(mappedResults[img.id])))),
   );
 
   const [hasLifecycleUnlocked, setHasLifecycleUnlocked] = useState(
@@ -261,13 +278,14 @@ export function DualCatalogShowcase({
       return;
     }
 
+    const delayMs = isBatchBlockedOrRolledBack ? 550 : 2000;
     const timerId = window.setTimeout(() => {
       setHasLifecycleUnlocked(true);
       setRightCardView('lifecycle');
-    }, 2000);
+    }, delayMs);
 
     return () => window.clearTimeout(timerId);
-  }, [allMappedComplete, isReadOnlyReplay]);
+  }, [allMappedComplete, isBatchBlockedOrRolledBack, isReadOnlyReplay]);
 
   const processedImages = useMemo(
     () => images.filter((img) => Boolean(mappedResults[img.id])),
@@ -1224,136 +1242,183 @@ export function DualCatalogShowcase({
                       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                       className="flex flex-col gap-5"
                     >
-                      {/* Top congratulations text + small top-right arrow back to Renderizado y mapeado */}
-                      <div className="flex items-start justify-between gap-3">
-                        <p className="flex-1 min-w-0 text-[13.5px] leading-relaxed text-slate-700">
-                          <span aria-hidden="true" className="mr-1.5">
-                            🎉
-                          </span>
-                          <span className="font-semibold text-slate-950">
-                            {t.pipeline.congratsTitleDesktop}
-                          </span>{' '}
-                          {t.pipeline.congratsBodyDesktop(processedCount)}
-                        </p>
-
-                        <button
-                          type="button"
-                          onClick={() => setRightCardView('mapped')}
-                          aria-label={t.pipeline.backToMappedAria}
-                          title={t.pipeline.backToMappedAria}
-                          className="w-7 h-7 shrink-0 rounded-full border border-slate-200/85 bg-slate-50/70 flex items-center justify-center text-slate-500 hover:text-slate-950 hover:bg-slate-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
-                        >
-                          <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      </div>
-
-                      {/* Generado tu API y endpoint (Search Link Core) */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="text-xs font-semibold tracking-tight text-slate-900">
-                            {t.pipeline.generatedApiTitle}
-                          </h3>
-                          <span className="text-[10.5px] font-medium text-slate-400">
-                            Search Link Core
-                          </span>
-                        </div>
-
-                        <div className="rounded-2xl border border-slate-200/85 bg-slate-50/70 divide-y divide-slate-200/75">
-                          <div className="h-10 px-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span
-                                aria-hidden="true"
-                                className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"
-                              />
-                              <span className="font-mono text-xs font-medium text-slate-800 truncate">
-                                {serviceCredentials?.apiKey || t.pipeline.generatingApiKey}
-                              </span>
+                      {isBatchBlockedOrRolledBack ? (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-full bg-rose-50 border border-rose-200/80 text-rose-600 flex items-center justify-center shrink-0">
+                                <ShieldAlert
+                                  className="w-4 h-4"
+                                  aria-hidden="true"
+                                />
+                              </div>
+                              <div>
+                                <h3 className="text-[14px] font-semibold text-slate-950">
+                                  {policyBlocked
+                                    ? 'Proceso detenido por políticas de seguridad'
+                                    : 'Proceso detenido y limpiado'}
+                                </h3>
+                                <p className="text-[11.5px] text-slate-500">
+                                  Ciclo de vida · Protección automática
+                                </p>
+                              </div>
                             </div>
 
                             <button
                               type="button"
-                              disabled={!serviceCredentials?.apiKey}
-                              onClick={() =>
-                                serviceCredentials?.apiKey &&
-                                void handleCopyText(
-                                  'lifecycle-api',
-                                  serviceCredentials.apiKey,
-                                )
-                              }
-                              aria-label={t.pipeline.copyApiAria}
-                              title={t.pipeline.copyApiTitle}
-                              className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer disabled:opacity-40"
+                              onClick={() => setRightCardView('mapped')}
+                              aria-label={t.pipeline.backToMappedAria}
+                              title={t.pipeline.backToMappedAria}
+                              className="w-7 h-7 shrink-0 rounded-full border border-slate-200/85 bg-slate-50/70 flex items-center justify-center text-slate-500 hover:text-slate-950 hover:bg-slate-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
                             >
-                              {copiedId === 'lifecycle-api' ? (
-                                <Check
-                                  className="w-3.5 h-3.5 text-emerald-600 stroke-[2.75]"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                              )}
+                              <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>
                           </div>
 
-                          <div className="h-10 px-3.5 flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span
-                                aria-hidden="true"
-                                className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"
-                              />
-                              <span className="font-mono text-xs font-medium text-slate-800 truncate">
-                                {serviceCredentials?.endpointUrl || t.pipeline.generatingEndpoint}
+                          <div className="rounded-2xl border border-rose-200/80 bg-rose-50/60 p-4 space-y-2.5">
+                            <p className="text-[13.5px] leading-relaxed text-slate-800">
+                              {jobNotice ||
+                                'Detectamos contenido que infringe nuestras políticas de seguridad (desnudez explícita, actos sexuales o violencia). Por protección, detuvimos el proceso en seco.'}
+                            </p>
+                            <p className="text-xs font-medium text-rose-700/90">
+                              Todas las imágenes fueron eliminadas de R2 y no se guardó ningún catálogo ni API en tu cuenta.
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* Top congratulations text + small top-right arrow back to Renderizado y mapeado */}
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="flex-1 min-w-0 text-[13.5px] leading-relaxed text-slate-700">
+                              <span aria-hidden="true" className="mr-1.5">
+                                🎉
                               </span>
-                            </div>
+                              <span className="font-semibold text-slate-950">
+                                {t.pipeline.congratsTitleDesktop}
+                              </span>{' '}
+                              {t.pipeline.congratsBodyDesktop(processedCount)}
+                            </p>
 
                             <button
                               type="button"
-                              disabled={!serviceCredentials?.endpointUrl}
-                              onClick={() =>
-                                serviceCredentials?.endpointUrl &&
-                                void handleCopyText(
-                                  'lifecycle-endpoint',
-                                  serviceCredentials.endpointUrl,
-                                )
-                              }
-                              aria-label={t.pipeline.copyEndpointAria}
-                              title={t.pipeline.copyEndpointTitle}
-                              className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer disabled:opacity-40"
+                              onClick={() => setRightCardView('mapped')}
+                              aria-label={t.pipeline.backToMappedAria}
+                              title={t.pipeline.backToMappedAria}
+                              className="w-7 h-7 shrink-0 rounded-full border border-slate-200/85 bg-slate-50/70 flex items-center justify-center text-slate-500 hover:text-slate-950 hover:bg-slate-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
                             >
-                              {copiedId === 'lifecycle-endpoint' ? (
-                                <Check
-                                  className="w-3.5 h-3.5 text-emerald-600 stroke-[2.75]"
-                                  aria-hidden="true"
-                                />
-                              ) : (
-                                <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                              )}
+                              <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
                             </button>
                           </div>
-                        </div>
-                      </div>
 
-                      {/* Small thumbnail boxes side by side (3-4 per row) */}
-                      <div className="grid grid-cols-4 gap-2.5">
-                        {processedImages.map((item) => (
-                          <button
-                            key={`lifecycle-thumb-${item.id}`}
-                            type="button"
-                            onClick={() => setFullscreenImage(item)}
-                            aria-label={t.pipeline.viewProductAria(mappedResults[item.id]?.nombre || item.alt)}
-                            title={mappedResults[item.id]?.nombre || item.alt}
-                            className="relative aspect-square w-full overflow-hidden rounded-xl bg-slate-50 border border-slate-200/85 hover:brightness-95 active:scale-[0.97] transition-all duration-150 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
-                          >
-                            <TileImage
-                              item={item}
-                              hasError={Boolean(failedIds[item.id])}
-                              onError={() =>
-                                setFailedIds((prev) => ({ ...prev, [item.id]: true }))
-                              }
-                            />
-                          </button>
-                        ))}
-                      </div>
+                          {/* Generado tu API y endpoint (Search Link Core) */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <h3 className="text-xs font-semibold tracking-tight text-slate-900">
+                                {t.pipeline.generatedApiTitle}
+                              </h3>
+                              <span className="text-[10.5px] font-medium text-slate-400">
+                                Search Link Core
+                              </span>
+                            </div>
+
+                            <div className="rounded-2xl border border-slate-200/85 bg-slate-50/70 divide-y divide-slate-200/75">
+                              <div className="h-10 px-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span
+                                    aria-hidden="true"
+                                    className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"
+                                  />
+                                  <span className="font-mono text-xs font-medium text-slate-800 truncate">
+                                    {serviceCredentials?.apiKey || t.pipeline.generatingApiKey}
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={!serviceCredentials?.apiKey}
+                                  onClick={() =>
+                                    serviceCredentials?.apiKey &&
+                                    void handleCopyText(
+                                      'lifecycle-api',
+                                      serviceCredentials.apiKey,
+                                    )
+                                  }
+                                  aria-label={t.pipeline.copyApiAria}
+                                  title={t.pipeline.copyApiTitle}
+                                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer disabled:opacity-40"
+                                >
+                                  {copiedId === 'lifecycle-api' ? (
+                                    <Check
+                                      className="w-3.5 h-3.5 text-emerald-600 stroke-[2.75]"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                                  )}
+                                </button>
+                              </div>
+
+                              <div className="h-10 px-3.5 flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span
+                                    aria-hidden="true"
+                                    className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"
+                                  />
+                                  <span className="font-mono text-xs font-medium text-slate-800 truncate">
+                                    {serviceCredentials?.endpointUrl || t.pipeline.generatingEndpoint}
+                                  </span>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={!serviceCredentials?.endpointUrl}
+                                  onClick={() =>
+                                    serviceCredentials?.endpointUrl &&
+                                    void handleCopyText(
+                                      'lifecycle-endpoint',
+                                      serviceCredentials.endpointUrl,
+                                    )
+                                  }
+                                  aria-label={t.pipeline.copyEndpointAria}
+                                  title={t.pipeline.copyEndpointTitle}
+                                  className="w-7 h-7 shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer disabled:opacity-40"
+                                >
+                                  {copiedId === 'lifecycle-endpoint' ? (
+                                    <Check
+                                      className="w-3.5 h-3.5 text-emerald-600 stroke-[2.75]"
+                                      aria-hidden="true"
+                                    />
+                                  ) : (
+                                    <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                                  )}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Small thumbnail boxes side by side (3-4 per row) */}
+                          <div className="grid grid-cols-4 gap-2.5">
+                            {processedImages.map((item) => (
+                              <button
+                                key={`lifecycle-thumb-${item.id}`}
+                                type="button"
+                                onClick={() => setFullscreenImage(item)}
+                                aria-label={t.pipeline.viewProductAria(mappedResults[item.id]?.nombre || item.alt)}
+                                title={mappedResults[item.id]?.nombre || item.alt}
+                                className="relative aspect-square w-full overflow-hidden rounded-xl bg-slate-50 border border-slate-200/85 hover:brightness-95 active:scale-[0.97] transition-all duration-150 cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                              >
+                                <TileImage
+                                  item={item}
+                                  hasError={Boolean(failedIds[item.id])}
+                                  onError={() =>
+                                    setFailedIds((prev) => ({ ...prev, [item.id]: true }))
+                                  }
+                                />
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </motion.div>
                   ) : (
                     <motion.div

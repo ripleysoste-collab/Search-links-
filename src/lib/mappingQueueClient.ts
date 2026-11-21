@@ -42,7 +42,7 @@ export interface MappingQueueItemClient {
   attempts: number;
   nextRetryAt: number | null;
   lastError: string | null;
-  errorKind: 'transient' | 'fatal' | 'auth' | null;
+  errorKind: 'transient' | 'fatal' | 'auth' | 'policy' | null;
   r2Deleted: boolean;
   mapped: MappedImageMetadata | null;
 }
@@ -63,6 +63,8 @@ export interface MappingQueueJobClient {
   cooldownUntil: number | null;
   planBRolledBack: boolean;
   planBDeletedKeys: number;
+  policyBlocked?: boolean;
+  policyReason?: string | null;
   notice: string | null;
   createdAt: string;
   updatedAt: string;

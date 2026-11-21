@@ -87,7 +87,7 @@ export interface MappingQueueItem {
   attempts: number;
   nextRetryAt: number | null;
   lastError: string | null;
-  errorKind: 'transient' | 'fatal' | 'auth' | null;
+  errorKind: 'transient' | 'fatal' | 'auth' | 'policy' | null;
   r2Deleted: boolean;
   persistedInService: boolean;
   mapped: MappedImageMetadata | null;
@@ -111,6 +111,8 @@ export interface MappingQueueJob {
   cooldownUntil: number | null;
   planBRolledBack: boolean;
   planBDeletedKeys: number;
+  policyBlocked?: boolean;
+  policyReason?: string | null;
   notice: string | null;
   createdAt: string;
   updatedAt: string;
@@ -686,9 +688,12 @@ async function runQueueWorker(jobId: string): Promise<void> {
       return;
     }
 
-    // Phase 2: Sequential Gemini AI Mapping + Anti-503 Cooldowns + Incremental Save + Plan B
+    // Phase 2: Sequential Gemini AI Mapping + Anti-503 Cooldowns + Incremental Save + Policy Moderation + Plan B
     const workQueue: MappingQueueItem[] = [...job.items];
     let processedInBurst = 0;
+    let policyStrikesInBatch = workQueue.filter(
+      (i) => i.errorKind === 'policy',
+    ).length;
 
     while (!ctx.cancelled) {
       const now = Date.now();
@@ -781,7 +786,42 @@ async function runQueueWorker(jobId: string): Promise<void> {
           return;
         }
 
-        if (
+        if (errorKind === 'policy') {
+          item.status = 'failed';
+          item.nextRetryAt = null;
+          await executePlanBForSingleItem(job, item);
+          policyStrikesInBatch += 1;
+
+          const isExtremeViolation =
+            err instanceof GeminiMapError && err.policySeverity === 'extreme';
+
+          if (isExtremeViolation || policyStrikesInBatch >= 2) {
+            for (const pending of workQueue) {
+              if (
+                pending.status === 'queued' ||
+                pending.status === 'processing' ||
+                pending.status === 'retry_wait'
+              ) {
+                pending.status = 'failed';
+                pending.errorKind = 'policy';
+                pending.lastError =
+                  'Proceso detenido por incumplimiento de nuestras políticas de seguridad.';
+              }
+            }
+            const stopReason =
+              policyStrikesInBatch >= 2
+                ? `Proceso detenido por políticas de seguridad: se detectaron varias imágenes con contenido no permitido (${message}). Todas las imágenes fueron eliminadas de R2 y no se guardó el catálogo.`
+                : `Proceso detenido por políticas de seguridad: ${message} Todas las imágenes fueron eliminadas de R2 y no se guardó el catálogo.`;
+            job.policyBlocked = true;
+            job.policyReason = stopReason;
+            await executePlanBForSevereBatchFailure(job, ctx, stopReason);
+            return;
+          }
+
+          recomputeCounters(job);
+          job.notice = `Una imagen infringió nuestras políticas y fue eliminada de R2 (${message}). Revisando la siguiente imagen...`;
+          void persistJobRecordToSupabase(job, ctx);
+        } else if (
           errorKind === 'transient' &&
           item.attempts < QUEUE_MAX_TRANSIENT_ATTEMPTS
         ) {
@@ -957,6 +997,8 @@ export async function createAndStartMappingJob(
     cooldownUntil: null,
     planBRolledBack: false,
     planBDeletedKeys: 0,
+    policyBlocked: false,
+    policyReason: null,
     notice: needsR2Upload
       ? `Subiendo a R2 en segundo plano (0/${items.length}) · Puedes salir y volver cuando quieras.`
       : `Mapeando en segundo plano (0/${items.length}) · Puedes salir y volver cuando quieras.`,
@@ -1047,6 +1089,10 @@ function hydrateJobFromDbRow(row: Record<string, unknown>): MappingQueueJob {
       ? Date.parse(row.cooldown_until)
       : NaN;
 
+  const noticeText = typeof row.notice === 'string' ? row.notice : null;
+  const planBRolledBack = Boolean(row.plan_b_rolled_back);
+  const hasPolicyItems = rawItems.some((item) => item.errorKind === 'policy');
+
   return {
     id: String(row.id || ''),
     userId: String(row.user_id || ''),
@@ -1064,9 +1110,11 @@ function hydrateJobFromDbRow(row: Record<string, unknown>): MappingQueueJob {
     failedCount: Number(row.failed_count) || 0,
     retryingCount: Number(row.retrying_count) || 0,
     cooldownUntil: Number.isFinite(cooldownRaw) ? cooldownRaw : null,
-    planBRolledBack: Boolean(row.plan_b_rolled_back),
+    planBRolledBack,
     planBDeletedKeys: Number(row.plan_b_deleted_keys) || 0,
-    notice: typeof row.notice === 'string' ? row.notice : null,
+    policyBlocked: planBRolledBack && hasPolicyItems,
+    policyReason: planBRolledBack && hasPolicyItems ? noticeText : null,
+    notice: noticeText,
     createdAt:
       typeof row.created_at === 'string'
         ? row.created_at

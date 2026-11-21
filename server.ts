@@ -4,7 +4,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractImagesFromUrl } from './lib/extractor.ts';
-import { mapStoredImageWithGemini } from './lib/geminiMapper.ts';
+import {
+  GeminiMapError,
+  mapStoredImageWithGemini,
+} from './lib/geminiMapper.ts';
 import {
   cancelMappingJobForUser,
   createAndStartMappingJob,
@@ -22,6 +25,7 @@ import {
   invalidateUserImageQuotaCache,
   isAdminTestEmail,
   markFreeAccountImageConsumed,
+  unmarkFreeAccountImageConsumed,
   verifySupabaseBearerUser,
 } from './lib/planLimits.ts';
 import {
@@ -36,6 +40,7 @@ import {
 } from './lib/localeDetection.ts';
 import { fetchProxiedImage } from './lib/imageProxy.ts';
 import {
+  deleteImageFromR2,
   getMissingR2EnvNames,
   isR2Configured,
   isValidMediaKey,
@@ -386,6 +391,26 @@ async function startServer() {
 
         return res.json(mapped);
       } catch (err) {
+        if (err instanceof GeminiMapError && err.kind === 'policy') {
+          const bodyKey =
+            req.body && typeof req.body === 'object' && typeof (req.body as Record<string, unknown>).key === 'string'
+              ? ((req.body as Record<string, unknown>).key as string)
+              : undefined;
+          if (bodyKey && isValidMediaKey(bodyKey)) {
+            void deleteImageFromR2(bodyKey);
+            if (req.headers.authorization) {
+              const user = await verifySupabaseBearerUser(req.headers);
+              if (user) {
+                unmarkFreeAccountImageConsumed(user.userId, bodyKey);
+              }
+            }
+          }
+          return res.status(422).json({
+            policyBlocked: true,
+            error: err.message,
+          });
+        }
+
         const message =
           err instanceof Error
             ? err.message

@@ -15,12 +15,14 @@ import {
   Image as ImageIcon,
   Link2,
   Loader2,
+  ShieldAlert,
   Smartphone,
   X,
   Zap,
 } from 'lucide-react';
 import type { CatalogImageItem } from '../data/catalogSamples';
 import type { MappedImageMetadata } from '../lib/imageCompression';
+import type { MappingQueueJobStatus } from '../lib/mappingQueueClient';
 import {
   generateAndDownloadCatalogPdf,
   type CatalogPdfExportKind,
@@ -66,6 +68,10 @@ interface MobileCatalogCarouselProps {
   onOpenOrganization?: () => void;
   isReadOnlyReplay?: boolean;
   serviceCredentials?: ServiceCredentialsDisplay | null;
+  jobStatus?: MappingQueueJobStatus | null;
+  planBRolledBack?: boolean;
+  policyBlocked?: boolean;
+  jobNotice?: string | null;
 }
 
 const BENEFIT_VISUALS = {
@@ -94,6 +100,10 @@ export function MobileCatalogCarousel({
   onOpenOrganization,
   isReadOnlyReplay = false,
   serviceCredentials = null,
+  jobStatus = null,
+  planBRolledBack = false,
+  policyBlocked = false,
+  jobNotice = null,
 }: MobileCatalogCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const compressionScrollRef = useRef<HTMLDivElement>(null);
@@ -362,14 +372,19 @@ export function MobileCatalogCarousel({
     shouldReduceMotion,
   ]);
 
+  const isBatchBlockedOrRolledBack = Boolean(
+    planBRolledBack || policyBlocked || jobStatus === 'failed_rolled_back',
+  );
+
   const allMappedComplete = Boolean(
     showMapBox &&
       images.length > 0 &&
-      images.every((img) => {
-        const status = mapStatuses[img.id];
-        return status === 'mapped' || status === 'error';
-      }) &&
-      images.some((img) => Boolean(mappedResults[img.id])),
+      (isBatchBlockedOrRolledBack ||
+        (images.every((img) => {
+          const status = mapStatuses[img.id];
+          return status === 'mapped' || status === 'error';
+        }) &&
+          images.some((img) => Boolean(mappedResults[img.id])))),
   );
 
   const processedCount = images.filter((img) => Boolean(mappedResults[img.id])).length;
@@ -378,7 +393,9 @@ export function MobileCatalogCarousel({
     if (isReadOnlyReplay) {
       if (allMappedComplete) {
         setShowLifecycleBox(true);
-        setShowViewApiBox(true);
+        if (!isBatchBlockedOrRolledBack) {
+          setShowViewApiBox(true);
+        }
       }
       return;
     }
@@ -394,7 +411,7 @@ export function MobileCatalogCarousel({
     }, 450);
 
     return () => window.clearTimeout(timer);
-  }, [allMappedComplete, isReadOnlyReplay]);
+  }, [allMappedComplete, isBatchBlockedOrRolledBack, isReadOnlyReplay]);
 
   useEffect(() => {
     if (!showLifecycleBox || showViewApiBox || mergeStage !== 'unified') {
@@ -422,7 +439,7 @@ export function MobileCatalogCarousel({
   }, [showLifecycleBox, showViewApiBox, mergeStage, shouldReduceMotion]);
 
   useEffect(() => {
-    if (!showLifecycleBox || showViewApiBox) {
+    if (!showLifecycleBox || showViewApiBox || isBatchBlockedOrRolledBack) {
       return;
     }
 
@@ -431,7 +448,7 @@ export function MobileCatalogCarousel({
     }, 650);
 
     return () => window.clearTimeout(autoAdvanceTimer);
-  }, [showLifecycleBox, showViewApiBox]);
+  }, [showLifecycleBox, showViewApiBox, isBatchBlockedOrRolledBack]);
 
   const scrollToViewApiCard = () => {
     const container = compressionScrollRef.current;
@@ -1189,33 +1206,61 @@ export function MobileCatalogCarousel({
                         aria-label={t.pipeline.stageLifecycleTitle}
                         className="h-[min(42dvh,310px)] min-h-[245px] w-full rounded-[20px] bg-white/95 backdrop-blur-sm border border-slate-200/80 shadow-[0_16px_42px_-12px_rgba(15,23,42,0.12),0_4px_14px_-4px_rgba(37,99,235,0.08)] p-4 flex flex-col justify-between overflow-hidden"
                       >
-                        <p className="text-[13px] leading-relaxed text-slate-700">
-                          <span aria-hidden="true" className="mr-1.5">
-                            🎉
-                          </span>
-                          <span className="font-semibold text-slate-950">
-                            {t.pipeline.congratsTitleMobile}
-                          </span>{' '}
-                          {t.pipeline.congratsBodyMobile(processedCount)}
-                        </p>
+                        {isBatchBlockedOrRolledBack ? (
+                          <>
+                            <div className="space-y-2.5 overflow-y-auto pr-0.5">
+                              <div className="flex items-center gap-2 text-rose-600">
+                                <ShieldAlert
+                                  className="w-4.5 h-4.5 shrink-0"
+                                  aria-hidden="true"
+                                />
+                                <span className="text-[13px] font-semibold text-slate-950">
+                                  {policyBlocked
+                                    ? 'Proceso detenido por políticas'
+                                    : 'Proceso detenido y limpiado'}
+                                </span>
+                              </div>
+                              <p className="text-[12.5px] leading-relaxed text-slate-700">
+                                {jobNotice ||
+                                  'Detectamos contenido que infringe nuestras políticas de seguridad (desnudez explícita, actos sexuales o violencia). Por protección, detuvimos el lote.'}
+                              </p>
+                            </div>
 
-                        <div className="pt-3 border-t border-slate-200/75 flex flex-col gap-1.5">
-                          <button
-                            type="button"
-                            onClick={handleOpenViewApi}
-                            className="w-full py-1.5 text-left text-[13px] font-semibold text-blue-600 hover:text-blue-700 active:opacity-75 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
-                          >
-                            {t.pipeline.generatedApisLink}
-                          </button>
+                            <div className="pt-3 border-t border-slate-200/75 text-[11.5px] font-medium text-slate-500">
+                              Imágenes eliminadas de R2 · No se guardó ningún catálogo ni API.
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-[13px] leading-relaxed text-slate-700">
+                              <span aria-hidden="true" className="mr-1.5">
+                                🎉
+                              </span>
+                              <span className="font-semibold text-slate-950">
+                                {t.pipeline.congratsTitleMobile}
+                              </span>{' '}
+                              {t.pipeline.congratsBodyMobile(processedCount)}
+                            </p>
 
-                          <button
-                            type="button"
-                            onClick={handleOpenViewApi}
-                            className="w-full py-1.5 text-left text-[13px] font-semibold text-blue-600 hover:text-blue-700 active:opacity-75 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
-                          >
-                            {t.pipeline.generatedEndpointLink}
-                          </button>
-                        </div>
+                            <div className="pt-3 border-t border-slate-200/75 flex flex-col gap-1.5">
+                              <button
+                                type="button"
+                                onClick={handleOpenViewApi}
+                                className="w-full py-1.5 text-left text-[13px] font-semibold text-blue-600 hover:text-blue-700 active:opacity-75 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
+                              >
+                                {t.pipeline.generatedApisLink}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={handleOpenViewApi}
+                                className="w-full py-1.5 text-left text-[13px] font-semibold text-blue-600 hover:text-blue-700 active:opacity-75 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
+                              >
+                                {t.pipeline.generatedEndpointLink}
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </section>
                     </motion.div>
                   )}

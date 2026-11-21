@@ -45,6 +45,7 @@ import {
   savePendingJobCredentials,
   startBackgroundMappingJob,
   type MappingQueueJobClient,
+  type MappingQueueJobStatus,
 } from './lib/mappingQueueClient';
 import {
   buildCoreServiceEndpointUrl,
@@ -122,6 +123,13 @@ export default function App() {
   const [compressionResults, setCompressionResults] = useState<
     Record<string, CompressedImageMeta>
   >({});
+  const [activeJobStatus, setActiveJobStatus] =
+    useState<MappingQueueJobStatus | null>(null);
+  const [jobPlanBRolledBack, setJobPlanBRolledBack] = useState(false);
+  const [jobPolicyBlocked, setJobPolicyBlocked] = useState(false);
+  const [jobLifecycleNotice, setJobLifecycleNotice] = useState<string | null>(
+    null,
+  );
   const [pendingDomainBatch, setPendingDomainBatch] = useState<{
     items: CatalogImageItem[];
     originUrl: string;
@@ -459,7 +467,23 @@ export default function App() {
       ...nextCompressionResults,
     }));
 
-    if (job.status !== 'uploading_r2') {
+    setActiveJobStatus(job.status);
+    setJobPlanBRolledBack(
+      Boolean(job.planBRolledBack || job.status === 'failed_rolled_back'),
+    );
+    setJobPolicyBlocked(
+      Boolean(
+        job.policyBlocked ||
+          job.items.some((i) => i.errorKind === 'policy'),
+      ),
+    );
+    setJobLifecycleNotice(job.policyReason || job.notice || null);
+
+    if (
+      job.status !== 'uploading_r2' ||
+      job.planBRolledBack ||
+      job.policyBlocked
+    ) {
       setShowReceiveBox(true);
       setShowMapBox(true);
     }
@@ -529,10 +553,19 @@ export default function App() {
     applyQueueJobProgress(job);
 
     if (job.status === 'failed_rolled_back' || job.planBRolledBack) {
-      setBatchNotice(
-        job.notice ||
-          'Plan B activado: el mapeo falló definitivamente y se eliminaron las imágenes de R2.',
+      setJobPlanBRolledBack(true);
+      setJobPolicyBlocked(
+        Boolean(
+          job.policyBlocked ||
+            job.items.some((i) => i.errorKind === 'policy'),
+        ),
       );
+      const rollbackReason =
+        job.policyReason ||
+        job.notice ||
+        'Plan B activado: el mapeo falló definitivamente y se eliminaron las imágenes de R2.';
+      setJobLifecycleNotice(rollbackReason);
+      setBatchNotice(rollbackReason);
       clearPendingJobTracking(userId, job.id);
       return;
     }
@@ -855,6 +888,10 @@ export default function App() {
     setMapStatuses({});
     setMappedResults({});
     setCompressionResults({});
+    setActiveJobStatus(null);
+    setJobPlanBRolledBack(false);
+    setJobPolicyBlocked(false);
+    setJobLifecycleNotice(null);
     setActiveServiceCredentials(null);
     setCatalogImages(CATALOG_SAMPLE_IMAGES);
     setCatalogVersion((prev) => prev + 1);
@@ -1144,6 +1181,10 @@ export default function App() {
     setMapStatuses({});
     setMappedResults({});
     setCompressionResults({});
+    setActiveJobStatus(null);
+    setJobPlanBRolledBack(false);
+    setJobPolicyBlocked(false);
+    setJobLifecycleNotice(null);
     setActiveServiceCredentials(null);
     setUrl(normalized);
     setHasSearched(true);
@@ -1332,6 +1373,10 @@ export default function App() {
     setMapStatuses(initialMapStatuses);
     setMappedResults({});
     setCompressionResults({});
+    setActiveJobStatus(null);
+    setJobPlanBRolledBack(false);
+    setJobPolicyBlocked(false);
+    setJobLifecycleNotice(null);
     setActiveServiceCredentials(null);
     setHasSearched(true);
     setCatalogImages(items);
@@ -1935,6 +1980,10 @@ export default function App() {
         compressionResults={compressionResults}
         isReadOnlyReplay={isReadOnlyReplay}
         serviceCredentials={activeServiceCredentials}
+        jobStatus={activeJobStatus}
+        planBRolledBack={jobPlanBRolledBack}
+        policyBlocked={jobPolicyBlocked}
+        jobNotice={jobLifecycleNotice}
       />
 
       {/* Desktop-only animated automation examples below the home showcase; fades out once an automation flow starts */}
@@ -1962,6 +2011,10 @@ export default function App() {
         compressionResults={compressionResults}
         isReadOnlyReplay={isReadOnlyReplay}
         serviceCredentials={activeServiceCredentials}
+        jobStatus={activeJobStatus}
+        planBRolledBack={jobPlanBRolledBack}
+        policyBlocked={jobPolicyBlocked}
+        jobNotice={jobLifecycleNotice}
         onOpenOrganization={() => {
           if (authUser) {
             setIsMobilePanelOpen(true);

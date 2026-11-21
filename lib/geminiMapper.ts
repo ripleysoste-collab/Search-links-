@@ -48,15 +48,34 @@ function sanitizeStringArray(value: unknown): string[] {
   return out;
 }
 
-export type GeminiErrorKind = 'transient' | 'fatal' | 'auth';
+export type GeminiErrorKind = 'transient' | 'fatal' | 'auth' | 'policy';
+export type PolicySeverity = 'moderate' | 'extreme';
+
+interface GeminiModerationResult {
+  aprobada?: boolean;
+  severidad?: 'none' | 'moderate' | 'extreme';
+  categoria?: string;
+  motivo_usuario?: string;
+}
 
 export class GeminiMapError extends Error {
   readonly kind: GeminiErrorKind;
+  readonly policySeverity?: PolicySeverity;
+  readonly policyCategory?: string;
 
-  constructor(message: string, kind: GeminiErrorKind) {
+  constructor(
+    message: string,
+    kind: GeminiErrorKind,
+    options?: {
+      policySeverity?: PolicySeverity;
+      policyCategory?: string;
+    },
+  ) {
     super(message);
     this.name = 'GeminiMapError';
     this.kind = kind;
+    this.policySeverity = options?.policySeverity;
+    this.policyCategory = options?.policyCategory;
   }
 }
 
@@ -117,9 +136,18 @@ export async function mapStoredImageWithGemini(options: {
   });
 
   const promptText =
-    'Realiza una auditoría visual MILIMÉTRICA de esta imagen para un catálogo comercial conectado a un asesor de ventas.\n' +
-    'Regla de oro: describe ÚNICAMENTE lo que se observa en los píxeles; nunca inventes precios, tallas impresas ni marcas ilegibles.\n\n' +
-    'PASO 1 — "analisis_visual" (inspección física capa por capa antes de nombrar el producto):\n' +
+    'Realiza una auditoría de SEGURIDAD y una auditoría visual MILIMÉTRICA de esta imagen para un catálogo comercial conectado a un asesor de ventas.\n' +
+    'Regla de oro: evalúa únicamente lo que muestran los píxeles; nunca inventes precios, tallas impresas ni marcas ilegibles.\n\n' +
+    'PASO 0 — "moderacion" (CONTROL DE POLÍTICAS ANTES DE CATALOGAR):\n' +
+    '  Evalúa con precisión quirúrgica la intención real de la escena (en inglés y español):\n' +
+    '  • BLOQUEO INMEDIATO ("aprobada": false):\n' +
+    '    - "extreme" ("severidad": "extreme"): child sexual abuse/exploitation (CSAM), explicit pornography, sexual acts or exposed genitalia (actos sexuales, sexo explícito, acceso carnal), sexual violence, dead bodies/corpses (personas muertas), real gore/mutilation, active lethal violence with firearms or bladed weapons (violencia real con armas de fuego o armas blancas, heridas sangrientas), suicide or self-harm.\n' +
+    '    - "moderate" ("severidad": "moderate"): explicit non-commercial nudity (senos, glúteos o genitales descubiertos sin contexto comercial válido), escenas sangrientas o amenazas violentas explícitas con armas.\n' +
+    '  • CATÁLOGOS COMERCIALES PERMITIDOS ("aprobada": true, NUNCA confundir ni bloquear por error):\n' +
+    '    - Lencería, ropa interior, trajes de baño o bikinis en maniquí o modelo comercial (si NO hay genitales expuestos, NO hay actos sexuales ni pornografía).\n' +
+    '    - Cuchillos de cocina, utensilios culinarios, navajas de camping, herramientas o réplicas/artículos comerciales neutros de catálogo (si NO hay sangre, heridas, cadáveres ni violencia contra personas o animales).\n' +
+    '  Si "aprobada" es false, redacta "motivo_usuario" en español claro, breve y respetuoso explicando por qué infringe nuestras políticas (sin detalles morbosos).\n\n' +
+    'PASO 1 — "analisis_visual" (solo si "aprobada": true; inspección física capa por capa):\n' +
     '  • "cantidad_productos_visibles": Entero exacto de unidades o artículos principales visibles (ej. 2 si hay un par de tenis o hamburguesa + papas; 1 si es una unidad única).\n' +
     '  • "conteo_detallado": Inventario numerado y exacto de CADA parte o capa visible (de arriba a abajo o de exterior a interior):\n' +
     '    - En alimentos/bebidas: tipo de pan o base, semillas, número exacto de carnes/proteínas, láminas de queso, tiras de tocineta, rodajas de tomate, hojas verdes, aros, salsas y acompañamientos.\n' +
@@ -175,7 +203,7 @@ export async function mapStoredImageWithGemini(options: {
         },
         config: {
           systemInstruction:
-            'Eres un auditor visual y catalogador experto en e-commerce, gastronomía y retail. Primero inspeccionas y cuentas cada componente, capa, color, textura, geometría y proporción visual de forma milimétrica; luego redactas el nombre, categoría y descripción comercial exactamente fieles a esa auditoría. Nunca inventes precios, tallas impresas ni marcas no legibles. Responde exclusivamente JSON válido en español.',
+            'Eres un auditor de seguridad comercial y catalogador experto en e-commerce, gastronomía y retail. Antes de catalogar, verificas que la imagen no contenga desnudez explícita, actos sexuales, abuso, cadáveres, heridas reales ni violencia con armas o armas blancas, sin confundir nunca lencería comercial, trajes de baño o cuchillos de cocina/catálogo limpio. Luego inspeccionas y cuentas cada componente, capa, color, textura, geometría y proporción visual de forma milimétrica y redactas el nombre, categoría y descripción comercial. Responde exclusivamente JSON válido en español.',
           thinkingConfig: {
             thinkingLevel: ThinkingLevel.LOW,
           },
@@ -183,12 +211,47 @@ export async function mapStoredImageWithGemini(options: {
           responseSchema: {
             type: Type.OBJECT,
             propertyOrdering: [
+              'moderacion',
               'analisis_visual',
               'nombre',
               'categoria',
               'descripcion',
             ],
             properties: {
+              moderacion: {
+                type: Type.OBJECT,
+                description:
+                  'Verificación previa de seguridad y políticas de contenido antes de catalogar.',
+                propertyOrdering: [
+                  'aprobada',
+                  'severidad',
+                  'categoria',
+                  'motivo_usuario',
+                ],
+                properties: {
+                  aprobada: {
+                    type: Type.BOOLEAN,
+                    description:
+                      'true si es segura o un producto comercial válido (incluida ropa interior o cuchillos de cocina sin violencia); false si infringe políticas de desnudez explícita, actos sexuales o violencia real.',
+                  },
+                  severidad: {
+                    type: Type.STRING,
+                    description:
+                      'none si aprobada=true; extreme si hay actos sexuales, CSAM, cadáveres, gore o violencia real con armas; moderate en infracciones menores.',
+                  },
+                  categoria: {
+                    type: Type.STRING,
+                    description:
+                      'safe, nudity_sexual, violence_gore, self_harm o illegal_harm.',
+                  },
+                  motivo_usuario: {
+                    type: Type.STRING,
+                    description:
+                      'Explicación clara y respetuosa en español para el usuario cuando aprobada es false; cadena vacía si aprobada es true.',
+                  },
+                },
+                required: ['aprobada', 'severidad', 'categoria', 'motivo_usuario'],
+              },
               analisis_visual: {
                 type: Type.OBJECT,
                 description:
@@ -267,13 +330,68 @@ export async function mapStoredImageWithGemini(options: {
                   'Descripción comercial de 3 a 4 oraciones concisas con colores, estructura, conteo exacto de piezas/ingredientes, materiales y tamaño mínimo estimado.',
               },
             },
-            required: ['analisis_visual', 'nombre', 'categoria', 'descripcion'],
+            required: [
+              'moderacion',
+              'analisis_visual',
+              'nombre',
+              'categoria',
+              'descripcion',
+            ],
           },
         },
       });
 
+      const candidate = response.candidates?.[0];
+      const finishReason = String(candidate?.finishReason || '').toUpperCase();
+      const blockReason = String(
+        response.promptFeedback?.blockReason || '',
+      ).toUpperCase();
+      const SAFETY_BLOCK_REASONS = new Set([
+        'SAFETY',
+        'PROHIBITED_CONTENT',
+        'IMAGE_SAFETY',
+        'SEXUALLY_EXPLICIT',
+        'DANGEROUS_CONTENT',
+        'HATE_SPEECH',
+        'HARASSMENT',
+        'BLOCKLIST',
+        'SPII',
+      ]);
+      if (
+        SAFETY_BLOCK_REASONS.has(finishReason) ||
+        SAFETY_BLOCK_REASONS.has(blockReason)
+      ) {
+        throw new GeminiMapError(
+          'Esta imagen contiene desnudez explícita, contenido sexual o violencia grave e infringe nuestras políticas de seguridad.',
+          'policy',
+          {
+            policySeverity: 'extreme',
+            policyCategory: 'native_safety_block',
+          },
+        );
+      }
+
       const rawText = (response.text ?? '{}').trim();
-      const parsed = JSON.parse(rawText) as Partial<MappedImageMetadata>;
+      const parsed = JSON.parse(rawText) as Partial<MappedImageMetadata> & {
+        moderacion?: GeminiModerationResult;
+      };
+
+      if (parsed.moderacion && parsed.moderacion.aprobada === false) {
+        const policySeverity: PolicySeverity =
+          parsed.moderacion.severidad === 'extreme' ? 'extreme' : 'moderate';
+        const policyCategory = sanitizeString(
+          parsed.moderacion.categoria,
+          'policy_violation',
+        );
+        const motivoUsuario = sanitizeString(
+          parsed.moderacion.motivo_usuario,
+          'Esta imagen infringe nuestras políticas de seguridad (desnudez explícita, actos sexuales o violencia) y fue rechazada.',
+        );
+        throw new GeminiMapError(motivoUsuario, 'policy', {
+          policySeverity,
+          policyCategory,
+        });
+      }
 
       const nombre = sanitizeString(parsed.nombre, 'Producto catalogado');
       const categoria = sanitizeString(parsed.categoria, 'General');
@@ -332,6 +450,10 @@ export async function mapStoredImageWithGemini(options: {
         url: options.imageUrl,
       };
     } catch (err) {
+      if (err instanceof GeminiMapError) {
+        throw err;
+      }
+
       const message =
         err instanceof Error ? err.message : 'Error al consultar Gemini';
 
