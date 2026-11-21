@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { PRIVACY_POLICY_CONTENT } from '../data/privacyPolicyContent';
+import { TERMS_AND_CONDITIONS_CONTENT } from '../data/termsContent';
 import { useI18n, type SupportedLocale } from '../lib/i18n';
 import { SearchLinkLogo } from './SearchLinkLogo';
 
-interface PrivacyPolicyPageProps {
-  onBack: () => void;
+export type LegalDocId = 'privacy' | 'terms';
+
+interface LegalDocumentPageProps {
+  docId: LegalDocId;
+  onClose: () => void;
 }
 
 const LOCALE_SHORT_LABELS: Array<{ code: SupportedLocale; label: string }> = [
@@ -14,9 +18,13 @@ const LOCALE_SHORT_LABELS: Array<{ code: SupportedLocale; label: string }> = [
   { code: 'pt', label: 'PT' },
 ];
 
-export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
+export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
   const { locale, setManualLocale } = useI18n();
-  const doc = PRIVACY_POLICY_CONTENT[locale];
+  const doc =
+    docId === 'terms'
+      ? TERMS_AND_CONDITIONS_CONTENT[locale]
+      : PRIVACY_POLICY_CONTENT[locale];
+
   const [activeSectionId, setActiveSectionId] = useState<string>(
     doc.sections[0]?.id ?? '',
   );
@@ -24,8 +32,9 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
 
   useEffect(() => {
     setActiveSectionId(doc.sections[0]?.id ?? '');
+    setMobileTocOpen(false);
     window.scrollTo({ top: 0, behavior: 'auto' });
-  }, [locale, doc.sections]);
+  }, [docId, locale, doc.sections]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -39,12 +48,12 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onBack();
+        onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onBack]);
+  }, [onClose]);
 
   useEffect(() => {
     if (typeof IntersectionObserver === 'undefined') return;
@@ -85,104 +94,97 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
   return (
     <div className="min-h-dvh w-full bg-white text-black antialiased selection:bg-neutral-900 selection:text-white">
       {/* ============================================================
-          DESKTOP HEADER & INSTITUTIONAL NAVIGATION BAR (lg+)
+          DESKTOP TOP HEADER: CLEAN LOGO LEFT, LANGUAGE + X RIGHT (lg+)
          ============================================================ */}
-      <header className="hidden lg:block sticky top-0 z-30 bg-white/96 backdrop-blur-sm border-b border-neutral-200">
+      <header className="hidden lg:block sticky top-0 z-30 bg-white/96 backdrop-blur-sm">
         <div className="max-w-[1140px] mx-auto px-10 h-16 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-4 min-w-0">
+          <SearchLinkLogo size="sm" />
+
+          <div className="flex items-center gap-5 shrink-0">
+            <div role="group" aria-label="Language" className="flex items-center gap-1">
+              {LOCALE_SHORT_LABELS.map((item) => {
+                const active = locale === item.code;
+                return (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => setManualLocale(item.code)}
+                    aria-pressed={active}
+                    className={`px-2 py-1 text-xs tracking-wide transition-colors cursor-pointer ${
+                      active
+                        ? 'font-semibold text-black underline underline-offset-4'
+                        : 'font-medium text-neutral-400 hover:text-black'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               type="button"
-              onClick={onBack}
-              className="inline-flex items-center gap-2 text-sm font-medium text-neutral-700 hover:text-black transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
+              onClick={onClose}
+              aria-label={doc.backLabel}
+              className="w-9 h-9 rounded-full flex items-center justify-center text-neutral-500 hover:text-black hover:bg-neutral-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black"
             >
-              <ArrowLeft className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span>{doc.backLabel}</span>
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
-            <span className="h-4 w-px bg-neutral-200 shrink-0" aria-hidden="true" />
-            <SearchLinkLogo size="sm" />
-          </div>
-
-          <div
-            role="group"
-            aria-label="Language"
-            className="flex items-center divide-x divide-neutral-200 border border-neutral-200 bg-white"
-          >
-            {LOCALE_SHORT_LABELS.map((item) => {
-              const active = locale === item.code;
-              return (
-                <button
-                  key={item.code}
-                  type="button"
-                  onClick={() => setManualLocale(item.code)}
-                  aria-pressed={active}
-                  className={`px-3 py-1.5 text-xs font-medium tracking-wide transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-black text-white'
-                      : 'bg-white text-neutral-600 hover:text-black hover:bg-neutral-50'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
           </div>
         </div>
       </header>
 
       {/* ============================================================
-          MOBILE STICKY COMPACT TOP BAR & SECTION DRAWER (< lg)
+          MOBILE TOP HEADER: CLEAN LOGO LEFT, LANGUAGE + X RIGHT (< lg)
          ============================================================ */}
-      <header className="lg:hidden sticky top-0 z-30 bg-white border-b border-neutral-200">
-        <div className="px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
+      <header className="lg:hidden sticky top-0 z-30 bg-white/96 backdrop-blur-sm">
+        <div className="px-5 h-14 flex items-center justify-between gap-3">
+          <SearchLinkLogo size="sm" />
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div role="group" aria-label="Language" className="flex items-center gap-0.5">
+              {LOCALE_SHORT_LABELS.map((item) => {
+                const active = locale === item.code;
+                return (
+                  <button
+                    key={item.code}
+                    type="button"
+                    onClick={() => setManualLocale(item.code)}
+                    aria-pressed={active}
+                    className={`min-w-[30px] min-h-[32px] px-1.5 text-[11px] tracking-wide transition-colors cursor-pointer ${
+                      active
+                        ? 'font-semibold text-black underline underline-offset-4'
+                        : 'font-medium text-neutral-400 hover:text-black'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
             <button
               type="button"
-              onClick={onBack}
+              onClick={onClose}
               aria-label={doc.backLabel}
-              className="w-10 h-10 -ml-2 flex items-center justify-center text-black hover:bg-neutral-100 transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 -mr-2 rounded-full flex items-center justify-center text-black hover:bg-neutral-100 transition-colors cursor-pointer shrink-0"
             >
-              <ArrowLeft className="w-5 h-5" aria-hidden="true" />
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
-            <SearchLinkLogo size="sm" />
-          </div>
-
-          <div
-            role="group"
-            aria-label="Language"
-            className="flex items-center divide-x divide-neutral-200 border border-neutral-200 bg-white shrink-0"
-          >
-            {LOCALE_SHORT_LABELS.map((item) => {
-              const active = locale === item.code;
-              return (
-                <button
-                  key={item.code}
-                  type="button"
-                  onClick={() => setManualLocale(item.code)}
-                  aria-pressed={active}
-                  className={`min-w-[36px] min-h-[32px] px-2.5 text-[11px] font-medium tracking-wide transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-black text-white'
-                      : 'bg-white text-neutral-600 hover:text-black'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
           </div>
         </div>
 
-        {/* Collapsible Mobile Chapter Selector */}
-        <div className="border-t border-neutral-200 bg-neutral-50/60">
+        {/* Mobile Collapsible Section Index */}
+        <div className="px-5 pb-2">
           <button
             type="button"
             onClick={() => setMobileTocOpen((prev) => !prev)}
             aria-expanded={mobileTocOpen}
-            className="w-full min-h-[44px] px-4 flex items-center justify-between gap-3 text-left text-xs font-medium text-black cursor-pointer"
+            className="w-full min-h-[40px] flex items-center justify-between gap-3 text-left text-xs font-medium text-neutral-600 hover:text-black cursor-pointer"
           >
             <span>{doc.mobileTocToggleLabel}</span>
             <ChevronDown
-              className={`w-4 h-4 text-neutral-600 transition-transform duration-200 ${
+              className={`w-4 h-4 text-neutral-500 transition-transform duration-200 ${
                 mobileTocOpen ? 'rotate-180' : ''
               }`}
               aria-hidden="true"
@@ -192,7 +194,7 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
           {mobileTocOpen && (
             <nav
               aria-label={doc.tocHeading}
-              className="max-h-[55dvh] overflow-y-auto border-t border-neutral-200 bg-white px-4 py-2 divide-y divide-neutral-100"
+              className="max-h-[55dvh] overflow-y-auto bg-neutral-50/85 rounded-xl px-3.5 py-2 mb-2 space-y-0.5"
             >
               {doc.sections.map((section) => {
                 const isActive = activeSectionId === section.id;
@@ -201,7 +203,7 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
                     key={section.id}
                     type="button"
                     onClick={() => scrollToSection(section.id)}
-                    className={`w-full min-h-[44px] py-2.5 flex items-baseline gap-3 text-left text-[13px] transition-colors cursor-pointer ${
+                    className={`w-full min-h-[42px] py-2 flex items-baseline gap-3 text-left text-[13px] transition-colors cursor-pointer ${
                       isActive ? 'font-semibold text-black' : 'text-neutral-600'
                     }`}
                   >
@@ -220,16 +222,16 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
       {/* ============================================================
           MAIN CONTENT: TWO-COLUMN ON DESKTOP, SINGLE-COLUMN ON MOBILE
          ============================================================ */}
-      <main className="max-w-[1140px] mx-auto px-5 pt-7 pb-16 lg:px-10 lg:pt-12 lg:pb-24">
-        <div className="lg:grid lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-14 items-start">
-          {/* Desktop Sticky Left Index Rail */}
-          <aside className="hidden lg:block sticky top-24 self-start border-r border-neutral-200 pr-8">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
+      <main className="max-w-[1140px] mx-auto px-5 pt-6 pb-16 lg:px-10 lg:pt-10 lg:pb-24">
+        <div className="lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-14 items-start">
+          {/* Desktop Sticky Left Index Rail (clean, no divider lines) */}
+          <aside className="hidden lg:block sticky top-24 self-start pr-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
               {doc.tocHeading}
             </p>
 
             <nav aria-label={doc.tocHeading} className="mt-4">
-              <ul className="space-y-1">
+              <ul className="space-y-1.5">
                 {doc.sections.map((section) => {
                   const isActive = activeSectionId === section.id;
                   return (
@@ -240,7 +242,7 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
                           event.preventDefault();
                           scrollToSection(section.id);
                         }}
-                        className={`group flex items-baseline gap-2.5 py-1.5 text-[13px] leading-snug transition-colors ${
+                        className={`group flex items-baseline gap-2.5 py-1 text-[13px] leading-snug transition-colors ${
                           isActive
                             ? 'font-semibold text-black'
                             : 'text-neutral-500 hover:text-black'
@@ -262,75 +264,28 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
                 })}
               </ul>
             </nav>
-
-            <dl className="mt-8 pt-6 border-t border-neutral-200 space-y-3 text-xs">
-              <div>
-                <dt className="text-neutral-400">{doc.effectiveLabel}</dt>
-                <dd className="font-medium text-black mt-0.5 tabular-nums">
-                  {doc.effectiveDate}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">{doc.versionLabel}</dt>
-                <dd className="font-medium text-black mt-0.5 tabular-nums">
-                  {doc.version}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-neutral-400">{doc.appliesToLabel}</dt>
-                <dd className="font-medium text-neutral-800 mt-0.5 leading-relaxed">
-                  {doc.appliesTo}
-                </dd>
-              </div>
-            </dl>
           </aside>
 
           {/* Editorial Legal Document Body */}
-          <article className="min-w-0 max-w-[72ch]">
-            {/* Title Block — Strictly Crisp Black Typography on Pure White */}
-            <header className="pb-7 border-b border-neutral-200">
-              <p className="text-xs font-medium tracking-wide text-neutral-500">
-                {doc.documentCategory}
-              </p>
-
-              <h1 className="mt-3 text-[1.8rem] sm:text-[2.15rem] lg:text-[2.4rem] font-semibold tracking-[-0.025em] leading-[1.15] text-black">
+          <article className="min-w-0 max-w-[70ch]">
+            {/* Clean Black Title + Lead Summary (no top metadata clutter) */}
+            <header className="pb-6 lg:pb-8">
+              <h1 className="text-[1.8rem] sm:text-[2.15rem] lg:text-[2.45rem] font-semibold tracking-[-0.025em] leading-[1.15] text-black">
                 {doc.documentTitle}
               </h1>
 
-              {/* Mobile Metadata Strip (hidden on desktop where left rail shows it) */}
-              <dl className="mt-5 py-3.5 border-y border-neutral-200 grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs lg:hidden">
-                <div>
-                  <dt className="text-neutral-400">{doc.effectiveLabel}</dt>
-                  <dd className="font-medium text-black mt-0.5 tabular-nums">
-                    {doc.effectiveDate}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-neutral-400">{doc.versionLabel}</dt>
-                  <dd className="font-medium text-black mt-0.5 tabular-nums">
-                    {doc.version}
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-neutral-400">{doc.appliesToLabel}</dt>
-                  <dd className="font-medium text-neutral-800 mt-0.5">
-                    {doc.appliesTo}
-                  </dd>
-                </div>
-              </dl>
-
-              <p className="mt-6 text-[15.5px] lg:text-[16.5px] leading-[1.7] text-neutral-800">
+              <p className="mt-5 text-[15.5px] lg:text-[16.5px] leading-[1.72] text-neutral-800">
                 {doc.leadSummary}
               </p>
             </header>
 
-            {/* Numbered Sections — Every Subtitle in Solid Black */}
-            <div className="divide-y divide-neutral-200">
+            {/* Sections Separated Naturally by Generous Whitespace — Zero Lines Between Subtitles */}
+            <div className="mt-4 space-y-10 lg:space-y-12">
               {doc.sections.map((section) => (
                 <section
                   key={section.id}
                   id={section.id}
-                  className="py-8 lg:py-9 scroll-mt-24"
+                  className="scroll-mt-24"
                 >
                   <h2 className="text-lg lg:text-[1.25rem] font-semibold tracking-[-0.015em] leading-snug text-black flex items-baseline gap-3">
                     <span className="font-mono text-sm font-semibold tabular-nums text-black shrink-0">
@@ -346,7 +301,7 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
                   </div>
 
                   {section.bullets && section.bullets.length > 0 && (
-                    <ul className="mt-5 space-y-3 border-t border-neutral-100 pt-4">
+                    <ul className="mt-5 space-y-3">
                       {section.bullets.map((bullet, index) => (
                         <li
                           key={index}
@@ -364,8 +319,8 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
 
                   {section.table && (
                     <div className="mt-6">
-                      {/* Desktop structured hairline table */}
-                      <div className="hidden lg:block border border-neutral-200">
+                      {/* Desktop structured table */}
+                      <div className="hidden lg:block border border-neutral-200 rounded-lg overflow-hidden">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="border-b border-neutral-200 bg-neutral-50/70">
@@ -401,10 +356,13 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
                         </table>
                       </div>
 
-                      {/* Mobile stacked hairline cards (prevents cramped horizontal scrolling) */}
-                      <div className="lg:hidden border border-neutral-200 divide-y divide-neutral-200">
+                      {/* Mobile stacked cards */}
+                      <div className="lg:hidden space-y-3">
                         {section.table.rows.map((row, rIdx) => (
-                          <div key={rIdx} className="p-4 bg-white space-y-2 text-[13.5px]">
+                          <div
+                            key={rIdx}
+                            className="p-4 bg-neutral-50/70 rounded-xl space-y-2 text-[13.5px]"
+                          >
                             <p className="font-semibold text-black">{row.category}</p>
                             <dl className="space-y-1.5 text-neutral-700">
                               <div>
@@ -437,18 +395,32 @@ export function PrivacyPolicyPage({ onBack }: PrivacyPolicyPageProps) {
               ))}
             </div>
 
-            <footer className="mt-4 pt-7 border-t border-neutral-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <p className="text-xs leading-relaxed text-neutral-500 max-w-[54ch]">
+            {/* Bottom Metadata & Footer Summary (placed cleanly at the bottom) */}
+            <footer className="mt-14 pt-8 border-t border-neutral-200 space-y-5">
+              <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+                <div>
+                  <dt className="text-neutral-400">{doc.effectiveLabel}</dt>
+                  <dd className="font-medium text-black mt-0.5 tabular-nums">
+                    {doc.effectiveDate}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-neutral-400">{doc.versionLabel}</dt>
+                  <dd className="font-medium text-black mt-0.5 tabular-nums">
+                    {doc.version}
+                  </dd>
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <dt className="text-neutral-400">{doc.appliesToLabel}</dt>
+                  <dd className="font-medium text-neutral-800 mt-0.5 leading-relaxed">
+                    {doc.appliesTo}
+                  </dd>
+                </div>
+              </dl>
+
+              <p className="text-xs leading-relaxed text-neutral-500">
                 {doc.footerNote}
               </p>
-              <button
-                type="button"
-                onClick={onBack}
-                className="self-start sm:self-auto inline-flex items-center gap-2 border border-neutral-300 bg-white hover:bg-neutral-50 hover:border-black px-4 py-2 text-xs font-medium text-black transition-colors cursor-pointer shrink-0"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" aria-hidden="true" />
-                <span>{doc.backLabel}</span>
-              </button>
             </footer>
           </article>
         </div>

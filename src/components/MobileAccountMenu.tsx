@@ -37,7 +37,7 @@ interface MobileAccountMenuProps {
   onCloseLanguageModal: () => void;
   onOpenPanel: () => void;
   onClosePanel: () => void;
-  onOpenDocumentation: (docId: 'privacy') => void;
+  onOpenDocumentation: (docId: 'privacy' | 'terms') => void;
   onSignOut: () => Promise<void>;
 }
 
@@ -282,13 +282,16 @@ export function MobileAccountMenu({
                               </button>
                             </li>
                             <li>
-                              <span
-                                aria-disabled="true"
-                                className="w-full py-1.5 px-1.5 flex flex-col gap-0.5 text-left text-[12px] text-slate-400 select-none"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onCloseMenu();
+                                  onOpenDocumentation('terms');
+                                }}
+                                className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                               >
-                                <span>{t.menu.termsAndConditions}</span>
-                                <span className="text-[10.5px]">{t.menu.comingSoon}</span>
-                              </span>
+                                {t.menu.termsAndConditions}
+                              </button>
                             </li>
                             <li>
                               <span

@@ -165,6 +165,11 @@ export interface TranslationDictionary {
   };
   auth: {
     acceptTermsLabel: string;
+    acceptTermsPrefix: string;
+    acceptTermsLinkLabel: string;
+    acceptTermsMiddle: string;
+    acceptPrivacyLinkLabel: string;
+    acceptTermsSuffix: string;
     bullet1: string;
     bullet2: string;
     bullet3: string;
@@ -583,6 +588,11 @@ const ES_DICTIONARY: TranslationDictionary = {
   },
   auth: {
     acceptTermsLabel: 'Acepto los términos y políticas de privacidad de Search Link.',
+    acceptTermsPrefix: 'Acepto los ',
+    acceptTermsLinkLabel: 'términos',
+    acceptTermsMiddle: ' y ',
+    acceptPrivacyLinkLabel: 'políticas de privacidad',
+    acceptTermsSuffix: ' de Search Link.',
     bullet1: 'Sesión segura y cifrada con Google',
     bullet2: 'Catálogos y medios sincronizados en la nube',
     bullet3: 'API Keys y endpoints Search Link Core al instante',
@@ -1045,6 +1055,11 @@ const EN_DICTIONARY: TranslationDictionary = {
   },
   auth: {
     acceptTermsLabel: 'I accept the Search Link terms of service and privacy policy.',
+    acceptTermsPrefix: 'I accept the Search Link ',
+    acceptTermsLinkLabel: 'terms of service',
+    acceptTermsMiddle: ' and ',
+    acceptPrivacyLinkLabel: 'privacy policy',
+    acceptTermsSuffix: '.',
     bullet1: 'Encrypted Google authentication',
     bullet2: 'Cloud-synced catalogs & optimized media',
     bullet3: 'Instant Search Link Core API Keys & endpoints',
@@ -1508,6 +1523,11 @@ const PT_DICTIONARY: TranslationDictionary = {
   auth: {
     acceptTermsLabel:
       'Aceito os termos de serviço e a política de privacidade do Search Link.',
+    acceptTermsPrefix: 'Aceito os ',
+    acceptTermsLinkLabel: 'termos de serviço',
+    acceptTermsMiddle: ' e a ',
+    acceptPrivacyLinkLabel: 'política de privacidade',
+    acceptTermsSuffix: ' do Search Link.',
     bullet1: 'Sessão segura e criptografada com Google',
     bullet2: 'Catálogos e mídias sincronizados na nuvem',
     bullet3: 'API Keys e endpoints Search Link Core na hora',

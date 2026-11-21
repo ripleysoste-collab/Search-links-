@@ -10,13 +10,15 @@ import {
 import { supabase } from '../lib/supabaseClient';
 import { useI18n, type TranslationDictionary } from '../lib/i18n';
 import { SearchLinkLogo } from './SearchLinkLogo';
+import type { LegalDocId } from './LegalDocumentPage';
 
 interface AuthDrawerProps {
   open: boolean;
   onClose: () => void;
+  onOpenLegalDoc?: (docId: LegalDocId) => void;
 }
 
-export function AuthDrawer({ open, onClose }: AuthDrawerProps) {
+export function AuthDrawer({ open, onClose, onOpenLegalDoc }: AuthDrawerProps) {
   const { t } = useI18n();
   const [googleLoading, setGoogleLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -362,7 +364,37 @@ export function AuthDrawer({ open, onClose }: AuthDrawerProps) {
                     className="mt-0.5 w-4 h-4 rounded border-slate-300 text-slate-900 accent-slate-900 focus:ring-slate-400 shrink-0 cursor-pointer"
                   />
                   <span className="text-[13px] font-normal text-slate-700 leading-snug">
-                    {t.auth.acceptTermsLabel}
+                    {onOpenLegalDoc ? (
+                      <>
+                        {t.auth.acceptTermsPrefix}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onOpenLegalDoc('terms');
+                          }}
+                          className="text-blue-600 hover:text-blue-700 hover:underline font-medium cursor-pointer focus-visible:outline-none focus-visible:underline"
+                        >
+                          {t.auth.acceptTermsLinkLabel}
+                        </button>
+                        {t.auth.acceptTermsMiddle}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onOpenLegalDoc('privacy');
+                          }}
+                          className="text-blue-600 hover:text-blue-700 hover:underline font-medium cursor-pointer focus-visible:outline-none focus-visible:underline"
+                        >
+                          {t.auth.acceptPrivacyLinkLabel}
+                        </button>
+                        {t.auth.acceptTermsSuffix}
+                      </>
+                    ) : (
+                      t.auth.acceptTermsLabel
+                    )}
                   </span>
                 </label>
 

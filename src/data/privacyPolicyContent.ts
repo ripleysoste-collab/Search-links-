@@ -46,7 +46,7 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
     version: '1.0',
     appliesToLabel: 'Ámbito',
     appliesTo: 'Search Link Web, Search Link Core API y Search Link IA',
-    backLabel: 'Volver a Search Link',
+    backLabel: 'Cerrar',
     tocHeading: 'Contenido del documento',
     mobileTocToggleLabel: 'Índice de secciones',
     leadSummary:
@@ -195,13 +195,13 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
         ],
       },
       {
-        id: 'derechos-del-usuario-y-contacto',
+        id: 'derechos-del-usuario-y-control',
         number: '10',
-        title: 'Derechos de privacidad, control de cuenta y contacto',
+        title: 'Derechos de privacidad y control directo en la cuenta',
         paragraphs: [
           'De conformidad con la normativa aplicable en materia de protección de datos —incluyendo el Reglamento General de Protección de Datos (RGPD/GDPR), la Lei Geral de Proteção de Dados (LGPD), la California Consumer Privacy Act (CCPA/CPRA) y las leyes latinoamericanas de hábeas data—, tienes derecho a conocer qué datos conservamos sobre ti, solicitar la rectificación de información inexacta, oponerte a determinados tratamientos, exportar tus catálogos y solicitar la supresión definitiva de tu cuenta y activos almacenados.',
-          'Gran parte de este control puede ejercerse de forma directa e inmediata dentro de la plataforma: puedes renombrar tu organización o servicios, desactivar endpoints públicos, rotar claves API o cambiar tu preferencia de idioma en cualquier momento. Para solicitudes formales de exportación completa de datos o eliminación integral de cuenta, puedes comunicarte con nuestro equipo de Privacidad e Ingeniería a través del correo electrónico privacy@searchlink.app indicando la dirección asociada a tu cuenta de Google.',
-          'Search Link podrá actualizar estas Políticas de privacidad y uso cuando incorporemos nuevas funcionalidades técnicas, cambiemos proveedores de infraestructura o se produzcan modificaciones normativas. Toda actualización sustancial se reflejará en la fecha y número de versión encabezados en esta página.',
+          'Estos controles se ejercen directamente dentro de tu sesión autenticada en Search Link: desde los paneles de Cuenta, Organización y Mi tienda puedes editar el nombre y logotipo de tu organización, renombrar o desactivar servicios, rotar tus claves API de Search Link Core en cualquier instante y modificar tu preferencia manual de idioma.',
+          'Search Link podrá actualizar estas Políticas de privacidad y uso cuando incorporemos nuevas funcionalidades técnicas, cambiemos proveedores de infraestructura o se produzcan modificaciones normativas. Toda actualización sustancial se reflejará en la fecha y número de versión publicados al pie de este documento.',
         ],
       },
     ],
@@ -218,7 +218,7 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
     version: '1.0',
     appliesToLabel: 'Scope',
     appliesTo: 'Search Link Web, Search Link Core API, and Search Link AI',
-    backLabel: 'Back to Search Link',
+    backLabel: 'Close',
     tocHeading: 'Document contents',
     mobileTocToggleLabel: 'Section index',
     leadSummary:
@@ -367,18 +367,18 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
         ],
       },
       {
-        id: 'user-rights-and-contact',
+        id: 'user-rights-and-controls',
         number: '10',
-        title: 'Privacy rights, account controls, and contact',
+        title: 'Privacy rights and direct account controls',
         paragraphs: [
           'Depending on your jurisdiction—including under the EU/UK GDPR, Brazil LGPD, California CCPA/CPRA, and Latin American data-protection statutes—you have the right to request access to your personal data, rectify inaccurate details, object to specific processing activities, export structured catalog records, and request permanent erasure of your account and media assets.',
-          'Many controls are immediately self-service inside Search Link: you may update your organization profile, rename or disable services, rotate API keys, and switch language settings at any time. For formal data export or complete account deletion requests, please contact our Privacy & Engineering team at privacy@searchlink.app from or referencing your registered Google account email.',
-          'We may revise these Privacy and Usage Policies as our technical architecture, sub-processors, or regulatory obligations evolve. Material updates will be reflected in the effective date and version header published on this page.',
+          'These controls are available directly within your authenticated Search Link session: from your Account, Organization, and My Store panels you can edit your organization name and logo, rename or deactivate services, rotate Search Link Core API keys at any moment, and adjust your language settings.',
+          'We may revise these Privacy and Usage Policies as our technical architecture, sub-processors, or regulatory obligations evolve. Material updates will be reflected in the effective date and version summary published at the bottom of this document.',
         ],
       },
     ],
     footerNote:
-      'Search Link · Official Privacy and Usage Policies. Additional legal documentation (Terms and Conditions, Content Policies, and Cookie Policies) will be published directly within this Documentation section.',
+      'Search Link · Official Privacy and Usage Policies.',
   },
 
   pt: {
@@ -390,7 +390,7 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
     version: '1.0',
     appliesToLabel: 'Escopo',
     appliesTo: 'Search Link Web, Search Link Core API e Search Link IA',
-    backLabel: 'Voltar ao Search Link',
+    backLabel: 'Fechar',
     tocHeading: 'Conteúdo do documento',
     mobileTocToggleLabel: 'Índice de seções',
     leadSummary:
@@ -539,17 +539,17 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
         ],
       },
       {
-        id: 'direitos-e-contato',
+        id: 'direitos-e-controle',
         number: '10',
-        title: 'Direitos dos titulares, controle da conta e contato',
+        title: 'Direitos dos titulares e controle direto na conta',
         paragraphs: [
           'Nos termos da legislação aplicável — incluindo a Lei Geral de Proteção de Dados (LGPD), o Regulamento Geral sobre a Proteção de Dados (GDPR), a CCPA/CPRA e demais normas de proteção de dados — você tem direito à confirmação de tratamento, acesso aos dados, correção de informações inexatas, oposição, portabilidade do catálogo e eliminação definitiva da conta e das mídias armazenadas.',
-          'Diversos controles estão disponíveis diretamente na interface do Search Link, permitindo editar sua organização, renomear ou desativar serviços, rotacionar chaves API e alterar o idioma a qualquer momento. Para solicitações formais de exportação completa ou exclusão integral da conta, entre em contato com nossa equipe de Privacidade e Engenharia pelo e-mail privacy@searchlink.app informando o endereço vinculado à sua conta Google.',
-          'Estas Políticas de privacidade e uso podem ser atualizadas periodicamente para refletir evoluções técnicas, novos suboperadores ou exigências legais. Alterações relevantes serão indicadas pela data de atualização e número de versão no topo desta página.',
+          'Esses controles são exercidos diretamente dentro da sua sessão autenticada no Search Link: pelos painéis Conta, Organização e Minha loja você pode alterar nome e logotipo da organização, renomear ou desativar serviços, rotacionar API Keys do Search Link Core a qualquer instante e ajustar sua preferência manual de idioma.',
+          'Estas Políticas de privacidade e uso podem ser atualizadas periodicamente para refletir evoluções técnicas, novos suboperadores ou exigências legais. Alterações relevantes serão indicadas pela data de atualização e número de versão exibidos ao final deste documento.',
         ],
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de privacidade e uso. Os demais documentos complementares (Termos e condições, Políticas de conteúdo e Políticas de cookies) serão disponibilizados progressivamente nesta seção de Documentações.',
+      'Search Link · Documento oficial de Políticas de privacidade e uso.',
   },
 };

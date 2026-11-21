@@ -16,7 +16,7 @@ import {
   type ServiceCredentialsDisplay,
 } from './components/DualCatalogShowcase';
 import { MobileAccountMenu } from './components/MobileAccountMenu';
-import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { LegalDocumentPage, type LegalDocId } from './components/LegalDocumentPage';
 import {
   MobileCatalogCarousel,
   type CompressedImageMeta,
@@ -81,6 +81,8 @@ type BatchImageSource =
   | { kind: 'url'; url: string };
 
 const PRIVACY_POLICY_PATH = '/politicas-de-privacidad';
+const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
+
 const PRIVACY_POLICY_ALIASES = new Set([
   '/politicas-de-privacidad',
   '/politica-de-privacidad',
@@ -90,9 +92,24 @@ const PRIVACY_POLICY_ALIASES = new Set([
   '/politicas-de-privacidade',
 ]);
 
-function isPrivacyPolicyPathname(pathname: string): boolean {
+const TERMS_ALIASES = new Set([
+  '/terminos-y-condiciones',
+  '/terminos',
+  '/terms-and-conditions',
+  '/terms',
+  '/termos-e-condicoes',
+  '/termos',
+]);
+
+function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
   const normalized = pathname.replace(/\/+$/, '').toLowerCase();
-  return PRIVACY_POLICY_ALIASES.has(normalized);
+  if (PRIVACY_POLICY_ALIASES.has(normalized)) return 'privacy';
+  if (TERMS_ALIASES.has(normalized)) return 'terms';
+  return null;
+}
+
+function getCanonicalLegalDocPath(docId: LegalDocId): string {
+  return docId === 'terms' ? TERMS_AND_CONDITIONS_PATH : PRIVACY_POLICY_PATH;
 }
 
 export default function App() {
@@ -110,9 +127,9 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(() =>
     typeof window !== 'undefined' && window.location.pathname === '/login',
   );
-  const [activeDocRoute, setActiveDocRoute] = useState<'privacy' | null>(() =>
-    typeof window !== 'undefined' && isPrivacyPolicyPathname(window.location.pathname)
-      ? 'privacy'
+  const [activeDocRoute, setActiveDocRoute] = useState<LegalDocId | null>(() =>
+    typeof window !== 'undefined'
+      ? resolveLegalDocRouteFromPathname(window.location.pathname)
       : null,
   );
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
@@ -180,6 +197,7 @@ export default function App() {
   const activeJobIdRef = useRef<string | null>(null);
   const jobPollTimerRef = useRef<number | null>(null);
   const objectUrlsRef = useRef<string[]>([]);
+  const docReturnToAuthRef = useRef(false);
   const shouldReduceMotion = useReducedMotion();
   const { t } = useI18n();
 
@@ -1035,26 +1053,36 @@ export default function App() {
     }
   };
 
-  const openDocumentationRoute = (docId: 'privacy') => {
+  const openDocumentationRoute = (docId: LegalDocId, fromAuth = false) => {
     setIsDesktopMenuOpen(false);
     setIsMobileMenuOpen(false);
-    setIsAuthOpen(false);
+    docReturnToAuthRef.current = fromAuth;
+    if (!fromAuth) {
+      setIsAuthOpen(false);
+    }
+    const targetPath = getCanonicalLegalDocPath(docId);
     if (
       typeof window !== 'undefined' &&
-      !isPrivacyPolicyPathname(window.location.pathname)
+      resolveLegalDocRouteFromPathname(window.location.pathname) !== docId
     ) {
-      window.history.pushState({ docRoute: docId }, '', PRIVACY_POLICY_PATH);
+      window.history.pushState({ docRoute: docId, fromAuth }, '', targetPath);
     }
     setActiveDocRoute(docId);
   };
 
   const closeDocumentationRoute = () => {
+    const returnToAuth = docReturnToAuthRef.current && !authUserRef.current;
+    docReturnToAuthRef.current = false;
     setActiveDocRoute(null);
-    if (
-      typeof window !== 'undefined' &&
-      isPrivacyPolicyPathname(window.location.pathname)
-    ) {
-      window.history.pushState(null, '', '/');
+    if (typeof window !== 'undefined' && resolveLegalDocRouteFromPathname(window.location.pathname)) {
+      if (returnToAuth && window.innerWidth < 1024) {
+        window.history.pushState({ authRoute: true }, '', '/login');
+      } else {
+        window.history.pushState(null, '', '/');
+      }
+    }
+    if (returnToAuth) {
+      setIsAuthOpen(true);
     }
   };
 
@@ -1104,13 +1132,16 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      if (isPrivacyPolicyPathname(window.location.pathname)) {
-        setActiveDocRoute('privacy');
-        setIsAuthOpen(false);
+      const matchedDoc = resolveLegalDocRouteFromPathname(window.location.pathname);
+      if (matchedDoc) {
+        setActiveDocRoute(matchedDoc);
         return;
       }
       setActiveDocRoute(null);
       if (window.location.pathname === '/login' && !authUserRef.current) {
+        setIsAuthOpen(true);
+      } else if (docReturnToAuthRef.current && !authUserRef.current) {
+        docReturnToAuthRef.current = false;
         setIsAuthOpen(true);
       } else {
         setIsAuthOpen(false);
@@ -1743,8 +1774,13 @@ export default function App() {
 
   const isDesktopSplitActive = isFileUploadFlow && showMapBox;
 
-  if (activeDocRoute === 'privacy') {
-    return <PrivacyPolicyPage onBack={closeDocumentationRoute} />;
+  if (activeDocRoute) {
+    return (
+      <LegalDocumentPage
+        docId={activeDocRoute}
+        onClose={closeDocumentationRoute}
+      />
+    );
   }
 
   return (
@@ -2174,6 +2210,7 @@ export default function App() {
       <AuthDrawer
         open={isAuthOpen && !authUser}
         onClose={closeAuthFlow}
+        onOpenLegalDoc={(docId) => openDocumentationRoute(docId, true)}
       />
     </main>
   );

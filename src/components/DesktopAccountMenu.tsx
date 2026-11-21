@@ -28,7 +28,7 @@ interface DesktopAccountMenuProps {
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
-  onOpenDocumentation: (docId: 'privacy') => void;
+  onOpenDocumentation: (docId: 'privacy' | 'terms') => void;
   onClose: () => void;
   onSignOut: () => Promise<void>;
 }
@@ -320,13 +320,16 @@ export function DesktopAccountMenu({
                                 </button>
                               </li>
                               <li>
-                                <span
-                                  aria-disabled="true"
-                                  className="w-full py-1.5 px-2 flex items-center justify-between gap-2 text-left text-[12.5px] text-slate-400 select-none"
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onOpenDocumentation('terms');
+                                  }}
+                                  className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                                 >
-                                  <span className="truncate">{t.menu.termsAndConditions}</span>
-                                  <span className="text-[11px] shrink-0">{t.menu.comingSoon}</span>
-                                </span>
+                                  {t.menu.termsAndConditions}
+                                </button>
                               </li>
                               <li>
                                 <span
