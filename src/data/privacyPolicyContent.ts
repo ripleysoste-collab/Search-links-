@@ -95,20 +95,20 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
             },
             {
               category: 'Organización y servicios',
-              collectedData: 'Nombre, logotipo, slug, hash SHA-256 de API Key, snapshot_json',
-              processor: 'Supabase PostgreSQL + Cloudflare R2 (logotipo)',
+              collectedData: 'Nombre, logotipo, slug, hash SHA-256 de API Key y catálogo',
+              processor: 'Supabase PostgreSQL y Cloudflare R2 (logotipo)',
               retention: 'Hasta eliminación del servicio o supresión de la cuenta',
             },
             {
               category: 'Imágenes del catálogo',
               collectedData: 'Archivos WebP optimizados y URLs públicas asociadas',
-              processor: 'Cloudflare R2 (bucket searchlink-media)',
-              retention: 'Mientras el catálogo exista o borrado inmediato en Plan B / cancelación',
+              processor: 'Cloudflare R2',
+              retention: 'Mientras el catálogo exista o borrado inmediato en reversión / cancelación',
             },
             {
               category: 'Trabajos en segundo plano',
               collectedData: 'Estado de cola, contadores de progreso e incidencias de moderación',
-              processor: 'Supabase (mapping_jobs) y RAM efímera en Render',
+              processor: 'Base de datos PostgreSQL (Supabase) y RAM efímera en Render',
               retention: 'Purga automática de registros finalizados tras 12 horas',
             },
             {
@@ -267,20 +267,20 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
             },
             {
               category: 'Organization & services',
-              collectedData: 'Org name, logo, slug, SHA-256 API key hash, snapshot_json',
+              collectedData: 'Org name, logo, slug, SHA-256 API key hash, catalog index',
               processor: 'Supabase PostgreSQL + Cloudflare R2 (logo)',
               retention: 'Until service deletion or account erasure',
             },
             {
               category: 'Catalog media assets',
               collectedData: 'Optimized WebP images and associated public URLs',
-              processor: 'Cloudflare R2 (searchlink-media bucket)',
-              retention: 'While catalog exists or immediate purge on Plan B / cancellation',
+              processor: 'Cloudflare R2',
+              retention: 'While catalog exists or immediate purge on rollback / cancellation',
             },
             {
               category: 'Background queue jobs',
               collectedData: 'Queue state, progress counters, safety moderation status',
-              processor: 'Supabase (mapping_jobs) and ephemeral Render RAM',
+              processor: 'PostgreSQL database (Supabase) and ephemeral Render RAM',
               retention: 'Finished job logs auto-purged after 12 hours',
             },
             {
@@ -439,20 +439,20 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
             },
             {
               category: 'Organização e serviços',
-              collectedData: 'Nome, logotipo, slug, hash SHA-256 da API Key, snapshot_json',
+              collectedData: 'Nome, logotipo, slug, hash SHA-256 da API Key e catálogo',
               processor: 'Supabase PostgreSQL + Cloudflare R2 (logotipo)',
               retention: 'Até exclusão do serviço ou remoção da conta',
             },
             {
               category: 'Imagens do catálogo',
               collectedData: 'Arquivos WebP otimizados e URLs públicas vinculadas',
-              processor: 'Cloudflare R2 (bucket searchlink-media)',
-              retention: 'Enquanto o catálogo existir ou remoção imediata no Plano B / cancelamento',
+              processor: 'Cloudflare R2',
+              retention: 'Enquanto o catálogo existir ou remoção imediata em reversão / cancelamento',
             },
             {
               category: 'Trabalhos em segundo plano',
               collectedData: 'Estado da fila, progresso e eventos de moderação',
-              processor: 'Supabase (mapping_jobs) e RAM efêmera no Render',
+              processor: 'Banco de dados PostgreSQL (Supabase) e RAM efêmera no Render',
               retention: 'Expurgo automático de logs finalizados após 12 horas',
             },
             {

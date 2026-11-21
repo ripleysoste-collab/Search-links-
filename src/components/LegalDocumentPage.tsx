@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { CONTENT_POLICY_CONTENT } from '../data/contentPolicyContent';
+import { COOKIE_POLICY_CONTENT } from '../data/cookiePolicyContent';
 import { PRIVACY_POLICY_CONTENT } from '../data/privacyPolicyContent';
 import { TERMS_AND_CONDITIONS_CONTENT } from '../data/termsContent';
 import { useI18n, type SupportedLocale } from '../lib/i18n';
 import { SearchLinkLogo } from './SearchLinkLogo';
 
-export type LegalDocId = 'privacy' | 'terms';
+export type LegalDocId = 'privacy' | 'terms' | 'content' | 'cookies';
 
 interface LegalDocumentPageProps {
   docId: LegalDocId;
@@ -23,7 +25,11 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
   const doc =
     docId === 'terms'
       ? TERMS_AND_CONDITIONS_CONTENT[locale]
-      : PRIVACY_POLICY_CONTENT[locale];
+      : docId === 'content'
+        ? CONTENT_POLICY_CONTENT[locale]
+        : docId === 'cookies'
+          ? COOKIE_POLICY_CONTENT[locale]
+          : PRIVACY_POLICY_CONTENT[locale];
 
   const [activeSectionId, setActiveSectionId] = useState<string>(
     doc.sections[0]?.id ?? '',

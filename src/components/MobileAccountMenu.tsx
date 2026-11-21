@@ -37,7 +37,7 @@ interface MobileAccountMenuProps {
   onCloseLanguageModal: () => void;
   onOpenPanel: () => void;
   onClosePanel: () => void;
-  onOpenDocumentation: (docId: 'privacy' | 'terms') => void;
+  onOpenDocumentation: (docId: 'privacy' | 'terms' | 'content' | 'cookies') => void;
   onSignOut: () => Promise<void>;
 }
 
@@ -294,22 +294,28 @@ export function MobileAccountMenu({
                               </button>
                             </li>
                             <li>
-                              <span
-                                aria-disabled="true"
-                                className="w-full py-1.5 px-1.5 flex flex-col gap-0.5 text-left text-[12px] text-slate-400 select-none"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onCloseMenu();
+                                  onOpenDocumentation('content');
+                                }}
+                                className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                               >
-                                <span>{t.menu.contentPolicies}</span>
-                                <span className="text-[10.5px]">{t.menu.comingSoon}</span>
-                              </span>
+                                {t.menu.contentPolicies}
+                              </button>
                             </li>
                             <li>
-                              <span
-                                aria-disabled="true"
-                                className="w-full py-1.5 px-1.5 flex flex-col gap-0.5 text-left text-[12px] text-slate-400 select-none"
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onCloseMenu();
+                                  onOpenDocumentation('cookies');
+                                }}
+                                className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                               >
-                                <span>{t.menu.cookiePolicies}</span>
-                                <span className="text-[10.5px]">{t.menu.comingSoon}</span>
-                              </span>
+                                {t.menu.cookiePolicies}
+                              </button>
                             </li>
                           </ul>
                         </motion.div>

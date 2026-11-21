@@ -82,6 +82,8 @@ type BatchImageSource =
 
 const PRIVACY_POLICY_PATH = '/politicas-de-privacidad';
 const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
+const CONTENT_POLICY_PATH = '/politicas-de-contenido';
+const COOKIE_POLICY_PATH = '/politicas-de-cookies';
 
 const PRIVACY_POLICY_ALIASES = new Set([
   '/politicas-de-privacidad',
@@ -101,15 +103,37 @@ const TERMS_ALIASES = new Set([
   '/termos',
 ]);
 
+const CONTENT_POLICY_ALIASES = new Set([
+  '/politicas-de-contenido',
+  '/politica-de-contenido',
+  '/content-policies',
+  '/content-policy',
+  '/politicas-de-conteudo',
+  '/politica-de-conteudo',
+]);
+
+const COOKIE_POLICY_ALIASES = new Set([
+  '/politicas-de-cookies',
+  '/politica-de-cookies',
+  '/cookie-policies',
+  '/cookie-policy',
+  '/cookies',
+]);
+
 function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
   const normalized = pathname.replace(/\/+$/, '').toLowerCase();
   if (PRIVACY_POLICY_ALIASES.has(normalized)) return 'privacy';
   if (TERMS_ALIASES.has(normalized)) return 'terms';
+  if (CONTENT_POLICY_ALIASES.has(normalized)) return 'content';
+  if (COOKIE_POLICY_ALIASES.has(normalized)) return 'cookies';
   return null;
 }
 
 function getCanonicalLegalDocPath(docId: LegalDocId): string {
-  return docId === 'terms' ? TERMS_AND_CONDITIONS_PATH : PRIVACY_POLICY_PATH;
+  if (docId === 'terms') return TERMS_AND_CONDITIONS_PATH;
+  if (docId === 'content') return CONTENT_POLICY_PATH;
+  if (docId === 'cookies') return COOKIE_POLICY_PATH;
+  return PRIVACY_POLICY_PATH;
 }
 
 export default function App() {
