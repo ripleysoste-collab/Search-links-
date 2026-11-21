@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
-import { ArrowLeft, Calendar, Check, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, ChevronDown, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
 
 import {
   DesktopOrganizationView,
@@ -28,6 +28,7 @@ interface DesktopAccountMenuProps {
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
+  onOpenDocumentation: (docId: 'privacy') => void;
   onClose: () => void;
   onSignOut: () => Promise<void>;
 }
@@ -77,12 +78,14 @@ export function DesktopAccountMenu({
   onOpenServiceChat,
   onRotateServiceKey,
   onToggleServiceActive,
+  onOpenDocumentation,
   onClose,
   onSignOut,
 }: DesktopAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
   const [view, setView] = useState<DesktopMenuView>('menu');
+  const [docsExpanded, setDocsExpanded] = useState(false);
   const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
     null,
   );
@@ -105,6 +108,7 @@ export function DesktopAccountMenu({
   useEffect(() => {
     if (!open) {
       setView('menu');
+      setDocsExpanded(false);
       setSelectedStoreServiceId(null);
       setConfirmSignOut(false);
       setSigningOut(false);
@@ -270,6 +274,82 @@ export function DesktopAccountMenu({
                       >
                         {t.menu.language}
                       </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        aria-expanded={docsExpanded}
+                        onClick={() => setDocsExpanded((prev) => !prev)}
+                        className="w-full py-3 flex items-center justify-between gap-2 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
+                      >
+                        <span>{t.menu.documentation}</span>
+                        <ChevronDown
+                          className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
+                            docsExpanded ? 'rotate-180 text-slate-700' : ''
+                          }`}
+                          aria-hidden="true"
+                        />
+                      </button>
+
+                      <AnimatePresence initial={false}>
+                        {docsExpanded && (
+                          <motion.div
+                            initial={
+                              shouldReduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }
+                            }
+                            animate={
+                              shouldReduceMotion ? { opacity: 1 } : { height: 'auto', opacity: 1 }
+                            }
+                            exit={
+                              shouldReduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }
+                            }
+                            transition={{ duration: shouldReduceMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <ul className="pl-3 pb-3 pt-0.5 space-y-1 border-l border-slate-200/90 ml-1">
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onOpenDocumentation('privacy');
+                                  }}
+                                  className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  {t.menu.privacyAndUse}
+                                </button>
+                              </li>
+                              <li>
+                                <span
+                                  aria-disabled="true"
+                                  className="w-full py-1.5 px-2 flex items-center justify-between gap-2 text-left text-[12.5px] text-slate-400 select-none"
+                                >
+                                  <span className="truncate">{t.menu.termsAndConditions}</span>
+                                  <span className="text-[11px] shrink-0">{t.menu.comingSoon}</span>
+                                </span>
+                              </li>
+                              <li>
+                                <span
+                                  aria-disabled="true"
+                                  className="w-full py-1.5 px-2 flex items-center justify-between gap-2 text-left text-[12.5px] text-slate-400 select-none"
+                                >
+                                  <span className="truncate">{t.menu.contentPolicies}</span>
+                                  <span className="text-[11px] shrink-0">{t.menu.comingSoon}</span>
+                                </span>
+                              </li>
+                              <li>
+                                <span
+                                  aria-disabled="true"
+                                  className="w-full py-1.5 px-2 flex items-center justify-between gap-2 text-left text-[12.5px] text-slate-400 select-none"
+                                >
+                                  <span className="truncate">{t.menu.cookiePolicies}</span>
+                                  <span className="text-[11px] shrink-0">{t.menu.comingSoon}</span>
+                                </span>
+                              </li>
+                            </ul>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </li>
                   </ul>
                 </motion.nav>

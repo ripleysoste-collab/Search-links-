@@ -1,5 +1,13 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import { isBlockedPolicyDomain } from './blockedDomains.ts';
+
+export class PolicyBlockedDomainError extends Error {
+  constructor(message = 'Este dominio viola nuestras políticas de contenido') {
+    super(message);
+    this.name = 'PolicyBlockedDomainError';
+  }
+}
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -87,6 +95,12 @@ export async function assertSafePublicUrl(rawUrl: string): Promise<URL> {
   const normalized = normalizeTargetUrl(rawUrl);
   const parsed = new URL(normalized);
   const hostname = parsed.hostname.toLowerCase();
+
+  if (isBlockedPolicyDomain(hostname).blocked) {
+    throw new PolicyBlockedDomainError(
+      'Este dominio viola nuestras políticas de contenido',
+    );
+  }
 
   if (
     BLOCKED_HOSTNAMES.has(hostname) ||

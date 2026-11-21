@@ -92,6 +92,7 @@ export interface TranslationDictionary {
     imageUploadAria: (status: string, alt: string) => string;
     receiveStatusAria: (status: string, alt: string) => string;
     compressionStatusAria: (status: string, alt: string) => string;
+    blockedDomainPolicyError: string;
   };
   examples: {
     sectionAria: string;
@@ -155,6 +156,12 @@ export interface TranslationDictionary {
     signOut: string;
     signOutError: string;
     usernameLabel: string;
+    documentation: string;
+    privacyAndUse: string;
+    termsAndConditions: string;
+    contentPolicies: string;
+    cookiePolicies: string;
+    comingSoon: string;
   };
   auth: {
     acceptTermsLabel: string;
@@ -414,6 +421,7 @@ const ES_DICTIONARY: TranslationDictionary = {
           : status === 'done'
             ? `${alt} comprimida`
             : `Error al comprimir ${alt}`,
+    blockedDomainPolicyError: 'Este dominio viola nuestras políticas de contenido',
   },
   examples: {
     sectionAria: 'Ejemplos de automatizaciones',
@@ -566,6 +574,12 @@ const ES_DICTIONARY: TranslationDictionary = {
     signOut: 'Cerrar sesión',
     signOutError: 'No se pudo cerrar sesión. Intenta de nuevo.',
     usernameLabel: 'Nombre',
+    documentation: 'Documentaciones',
+    privacyAndUse: 'Políticas de privacidad y uso',
+    termsAndConditions: 'Términos y condiciones',
+    contentPolicies: 'Políticas de contenido',
+    cookiePolicies: 'Políticas de cookies',
+    comingSoon: 'Próximamente',
   },
   auth: {
     acceptTermsLabel: 'Acepto los términos y políticas de privacidad de Search Link.',
@@ -868,6 +882,7 @@ const EN_DICTIONARY: TranslationDictionary = {
           : status === 'done'
             ? `${alt} compressed`
             : `Failed to compress ${alt}`,
+    blockedDomainPolicyError: 'This domain violates our content policies',
   },
   examples: {
     sectionAria: 'Automation examples',
@@ -1021,6 +1036,12 @@ const EN_DICTIONARY: TranslationDictionary = {
     signOut: 'Sign out',
     signOutError: 'Could not sign out. Please try again.',
     usernameLabel: 'Name',
+    documentation: 'Documentation',
+    privacyAndUse: 'Privacy and Usage Policies',
+    termsAndConditions: 'Terms and Conditions',
+    contentPolicies: 'Content Policies',
+    cookiePolicies: 'Cookie Policies',
+    comingSoon: 'Coming soon',
   },
   auth: {
     acceptTermsLabel: 'I accept the Search Link terms of service and privacy policy.',
@@ -1323,6 +1344,7 @@ const PT_DICTIONARY: TranslationDictionary = {
           : status === 'done'
             ? `${alt} comprimida`
             : `Erro ao comprimir ${alt}`,
+    blockedDomainPolicyError: 'Este domínio viola nossas políticas de conteúdo',
   },
   examples: {
     sectionAria: 'Exemplos de automações',
@@ -1476,6 +1498,12 @@ const PT_DICTIONARY: TranslationDictionary = {
     signOut: 'Sair',
     signOutError: 'Não foi possível sair. Tente novamente.',
     usernameLabel: 'Nome',
+    documentation: 'Documentações',
+    privacyAndUse: 'Políticas de privacidade e uso',
+    termsAndConditions: 'Termos e condições',
+    contentPolicies: 'Políticas de conteúdo',
+    cookiePolicies: 'Políticas de cookies',
+    comingSoon: 'Em breve',
   },
   auth: {
     acceptTermsLabel:

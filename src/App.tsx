@@ -16,6 +16,7 @@ import {
   type ServiceCredentialsDisplay,
 } from './components/DualCatalogShowcase';
 import { MobileAccountMenu } from './components/MobileAccountMenu';
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import {
   MobileCatalogCarousel,
   type CompressedImageMeta,
@@ -27,6 +28,7 @@ import {
 import { SearchLinkChatDrawer } from './components/SearchLinkChatDrawer';
 import { SearchLinkLogo } from './components/SearchLinkLogo';
 import { CATALOG_SAMPLE_IMAGES, type CatalogImageItem } from './data/catalogSamples';
+import { isBlockedPolicyDomain } from '../lib/blockedDomains';
 import { resolveApiUrl } from './lib/apiConfig';
 import { useI18n } from './lib/i18n';
 import {
@@ -78,6 +80,21 @@ type BatchImageSource =
   | { kind: 'file'; file: File }
   | { kind: 'url'; url: string };
 
+const PRIVACY_POLICY_PATH = '/politicas-de-privacidad';
+const PRIVACY_POLICY_ALIASES = new Set([
+  '/politicas-de-privacidad',
+  '/politica-de-privacidad',
+  '/privacidad',
+  '/privacy',
+  '/privacidade',
+  '/politicas-de-privacidade',
+]);
+
+function isPrivacyPolicyPathname(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, '').toLowerCase();
+  return PRIVACY_POLICY_ALIASES.has(normalized);
+}
+
 export default function App() {
   const [url, setUrl] = useState('');
   const [catalogImages, setCatalogImages] = useState<CatalogImageItem[]>(
@@ -92,6 +109,11 @@ export default function App() {
   const [shouldAnimateBgEntry, setShouldAnimateBgEntry] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(() =>
     typeof window !== 'undefined' && window.location.pathname === '/login',
+  );
+  const [activeDocRoute, setActiveDocRoute] = useState<'privacy' | null>(() =>
+    typeof window !== 'undefined' && isPrivacyPolicyPathname(window.location.pathname)
+      ? 'privacy'
+      : null,
   );
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -1013,6 +1035,29 @@ export default function App() {
     }
   };
 
+  const openDocumentationRoute = (docId: 'privacy') => {
+    setIsDesktopMenuOpen(false);
+    setIsMobileMenuOpen(false);
+    setIsAuthOpen(false);
+    if (
+      typeof window !== 'undefined' &&
+      !isPrivacyPolicyPathname(window.location.pathname)
+    ) {
+      window.history.pushState({ docRoute: docId }, '', PRIVACY_POLICY_PATH);
+    }
+    setActiveDocRoute(docId);
+  };
+
+  const closeDocumentationRoute = () => {
+    setActiveDocRoute(null);
+    if (
+      typeof window !== 'undefined' &&
+      isPrivacyPolicyPathname(window.location.pathname)
+    ) {
+      window.history.pushState(null, '', '/');
+    }
+  };
+
   useEffect(() => {
     if (!supabase) return;
     let active = true;
@@ -1059,6 +1104,12 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
+      if (isPrivacyPolicyPathname(window.location.pathname)) {
+        setActiveDocRoute('privacy');
+        setIsAuthOpen(false);
+        return;
+      }
+      setActiveDocRoute(null);
       if (window.location.pathname === '/login' && !authUserRef.current) {
         setIsAuthOpen(true);
       } else {
@@ -1145,10 +1196,24 @@ export default function App() {
     activeChatServiceId,
   ]);
 
+  const rejectIfBlockedDomain = (candidate: string): boolean => {
+    if (!candidate.trim()) return false;
+    if (!isBlockedPolicyDomain(candidate).blocked) return false;
+    setUrl('');
+    setPendingDomainBatch(null);
+    setBatchNotice(null);
+    setExtractError(t.app.blockedDomainPolicyError);
+    return true;
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = url.trim();
     if (!trimmed || isExtracting) return;
+
+    if (rejectIfBlockedDomain(trimmed)) {
+      return;
+    }
 
     const currentUser = authUserRef.current;
     if (!currentUser && guestIpBlocked) {
@@ -1220,8 +1285,15 @@ export default function App() {
       const data = (await response.json().catch(() => ({}))) as {
         images?: CatalogImageItem[];
         ipBlocked?: boolean;
+        policyBlocked?: boolean;
         error?: string;
       };
+
+      if (response.status === 403 && data.policyBlocked) {
+        setUrl('');
+        setExtractError(t.app.blockedDomainPolicyError);
+        return;
+      }
 
       if (response.status === 429 && (data.ipBlocked || !currentUser)) {
         setGuestIpBlocked(true);
@@ -1671,6 +1743,10 @@ export default function App() {
 
   const isDesktopSplitActive = isFileUploadFlow && showMapBox;
 
+  if (activeDocRoute === 'privacy') {
+    return <PrivacyPolicyPage onBack={closeDocumentationRoute} />;
+  }
+
   return (
     <main
       className={`bg-white lg:bg-[#0e1013] relative min-h-dvh w-full overflow-x-hidden flex flex-row items-stretch ${
@@ -1853,8 +1929,16 @@ export default function App() {
                   type="text"
                   inputMode="url"
                   value={url}
+                  onPaste={(e) => {
+                    const pasted = e.clipboardData?.getData('text') ?? '';
+                    if (pasted && rejectIfBlockedDomain(pasted)) {
+                      e.preventDefault();
+                    }
+                  }}
                   onChange={(e) => {
-                    setUrl(e.target.value);
+                    const nextVal = e.target.value;
+                    if (rejectIfBlockedDomain(nextVal)) return;
+                    setUrl(nextVal);
                     if (extractError) setExtractError(null);
                   }}
                   onKeyDown={(e) => {
@@ -2039,6 +2123,7 @@ export default function App() {
           onOpenServiceChat={(service) => setActiveChatServiceId(service.id)}
           onRotateServiceKey={handleRotateServiceKey}
           onToggleServiceActive={handleToggleServiceActive}
+          onOpenDocumentation={openDocumentationRoute}
           onClose={() => setIsDesktopMenuOpen(false)}
           onSignOut={handleSignOut}
         />
@@ -2068,6 +2153,7 @@ export default function App() {
           onCloseLanguageModal={() => setIsMobileLanguageModalOpen(false)}
           onOpenPanel={() => setIsMobilePanelOpen(true)}
           onClosePanel={() => setIsMobilePanelOpen(false)}
+          onOpenDocumentation={openDocumentationRoute}
           onSignOut={handleSignOut}
         />
       )}

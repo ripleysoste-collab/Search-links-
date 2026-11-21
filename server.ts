@@ -3,7 +3,9 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isBlockedPolicyDomain } from './lib/blockedDomains.ts';
 import { extractImagesFromUrl } from './lib/extractor.ts';
+import { PolicyBlockedDomainError } from './lib/urlSafety.ts';
 import {
   GeminiMapError,
   mapStoredImageWithGemini,
@@ -191,6 +193,14 @@ async function startServer() {
   app.post('/api/extract', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
+      const rawUrl = typeof req.body?.url === 'string' ? req.body.url : '';
+      if (isBlockedPolicyDomain(rawUrl).blocked) {
+        return res.status(403).json({
+          policyBlocked: true,
+          error: 'Este dominio viola nuestras políticas de contenido',
+        });
+      }
+
       const authUser = await verifySupabaseBearerUser(req.headers);
       const guestQuota = checkAndConsumeGuestExtractQuota(
         req.headers,
@@ -206,7 +216,6 @@ async function startServer() {
         });
       }
 
-      const rawUrl = typeof req.body?.url === 'string' ? req.body.url : '';
       const requestedMax =
         typeof req.body?.maxResults === 'number' && Number.isFinite(req.body.maxResults)
           ? Math.max(1, Math.trunc(req.body.maxResults))
@@ -230,6 +239,12 @@ async function startServer() {
 
       return res.json(result);
     } catch (err) {
+      if (err instanceof PolicyBlockedDomainError) {
+        return res.status(403).json({
+          policyBlocked: true,
+          error: err.message,
+        });
+      }
       const message =
         err instanceof Error ? err.message : 'Ocurrió un error al analizar la página.';
       return res.status(400).json({ error: message });
@@ -452,6 +467,13 @@ async function startServer() {
           });
         }
 
+        if (sourceUrl && isBlockedPolicyDomain(sourceUrl).blocked) {
+          return res.status(403).json({
+            policyBlocked: true,
+            error: 'Este dominio viola nuestras políticas de contenido',
+          });
+        }
+
         const items: MappingQueueItemInput[] = [];
         const pendingUploads = new Map<string, PendingR2UploadPayload>();
 
@@ -473,6 +495,17 @@ async function startServer() {
               : '';
           const originalUrl =
             typeof item.originalUrl === 'string' ? item.originalUrl.trim() : undefined;
+
+          if (
+            (sourceImageUrl && isBlockedPolicyDomain(sourceImageUrl).blocked) ||
+            (originalUrl && isBlockedPolicyDomain(originalUrl).blocked)
+          ) {
+            return res.status(403).json({
+              policyBlocked: true,
+              error: 'Este dominio viola nuestras políticas de contenido',
+            });
+          }
+
           const savedPercent =
             typeof item.savedPercent === 'number' && Number.isFinite(item.savedPercent)
               ? Math.max(0, Math.min(99, Math.trunc(item.savedPercent)))
