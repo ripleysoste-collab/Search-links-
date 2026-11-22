@@ -18,6 +18,7 @@ export interface AuthenticatedRequestUser {
   userId: string;
   email: string;
   accessToken: string;
+  appMetadata?: Record<string, unknown>;
 }
 
 interface GuestExtractRecord {
@@ -35,6 +36,7 @@ interface AccountImageTracker {
 interface VerifiedTokenCacheEntry {
   userId: string;
   email: string;
+  appMetadata: Record<string, unknown>;
   expiresAt: number;
 }
 
@@ -183,6 +185,7 @@ export async function verifySupabaseBearerUser(
       userId: cached.userId,
       email: cached.email,
       accessToken: token,
+      appMetadata: cached.appMetadata,
     };
   }
   if (cached) {
@@ -195,6 +198,11 @@ export async function verifySupabaseBearerUser(
   try {
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user?.id) return null;
+
+    const appMetadata =
+      data.user.app_metadata && typeof data.user.app_metadata === 'object'
+        ? (data.user.app_metadata as Record<string, unknown>)
+        : {};
 
     const jwtExpMs = readJwtExpMs(token);
     const cacheUntil = jwtExpMs
@@ -209,6 +217,7 @@ export async function verifySupabaseBearerUser(
       verifiedTokenCache.set(tokenHash, {
         userId: data.user.id,
         email: data.user.email || '',
+        appMetadata,
         expiresAt: cacheUntil,
       });
     }
@@ -217,6 +226,7 @@ export async function verifySupabaseBearerUser(
       userId: data.user.id,
       email: data.user.email || '',
       accessToken: token,
+      appMetadata,
     };
   } catch {
     return null;

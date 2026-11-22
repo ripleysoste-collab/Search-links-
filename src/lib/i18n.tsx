@@ -117,6 +117,12 @@ export interface TranslationDictionary {
     saveImageAria: (alt: string) => string;
     unsaveImageAria: (alt: string) => string;
     removeSavedAria: (alt: string) => string;
+    cooldownNotice: (waitText: string) => string;
+    generateCardTitle: string;
+    generateCardPlusBadge: string;
+    generatingAiLabel: string;
+    plusRequiredNotice: string;
+    generatedAutoSavedBadge: string;
   };
   examples: {
     sectionAria: string;
@@ -486,6 +492,13 @@ const ES_DICTIONARY: TranslationDictionary = {
     saveImageAria: (alt) => `Guardar ${alt}`,
     unsaveImageAria: (alt) => `Quitar de Guardado: ${alt}`,
     removeSavedAria: (alt) => `Eliminar de Guardado: ${alt}`,
+    cooldownNotice: (waitText) =>
+      `Prohibido saturar servidores ajenos. Espera ${waitText} para volver a buscar.`,
+    generateCardTitle: 'Generar con IA',
+    generateCardPlusBadge: 'Es una función Plus',
+    generatingAiLabel: 'Generando con IA...',
+    plusRequiredNotice: 'Tienes que ser nivel Plus para generar.',
+    generatedAutoSavedBadge: 'Guardado',
   },
   examples: {
     sectionAria: 'Ejemplos de automatizaciones',
@@ -987,6 +1000,13 @@ const EN_DICTIONARY: TranslationDictionary = {
     saveImageAria: (alt) => `Save ${alt}`,
     unsaveImageAria: (alt) => `Remove from Saved: ${alt}`,
     removeSavedAria: (alt) => `Remove from Saved: ${alt}`,
+    cooldownNotice: (waitText) =>
+      `Excessive requests to external servers are prohibited. Wait ${waitText} before searching again.`,
+    generateCardTitle: 'Generate with AI',
+    generateCardPlusBadge: 'Plus plan feature',
+    generatingAiLabel: 'Generating with AI...',
+    plusRequiredNotice: 'You need the Plus plan to generate.',
+    generatedAutoSavedBadge: 'Saved',
   },
   examples: {
     sectionAria: 'Automation examples',
@@ -1489,6 +1509,13 @@ const PT_DICTIONARY: TranslationDictionary = {
     saveImageAria: (alt) => `Salvar ${alt}`,
     unsaveImageAria: (alt) => `Remover de Salvos: ${alt}`,
     removeSavedAria: (alt) => `Remover de Salvos: ${alt}`,
+    cooldownNotice: (waitText) =>
+      `Proibido saturar servidores externos. Aguarde ${waitText} para buscar novamente.`,
+    generateCardTitle: 'Gerar com IA',
+    generateCardPlusBadge: 'Recurso do plano Plus',
+    generatingAiLabel: 'Gerando com IA...',
+    plusRequiredNotice: 'Você precisa estar no plano Plus para gerar.',
+    generatedAutoSavedBadge: 'Salvo',
   },
   examples: {
     sectionAria: 'Exemplos de automações',

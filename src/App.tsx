@@ -33,6 +33,9 @@ import { CATALOG_SAMPLE_IMAGES, type CatalogImageItem } from './data/catalogSamp
 import { isBlockedPolicyDomain } from '../lib/blockedDomains';
 import { resolveApiUrl } from './lib/apiConfig';
 import {
+  fetchImageBankPlusAccess,
+  generateAiImageFromPrompt,
+  ImageBankClientError,
   loadSavedImageBankItems,
   saveImageBankItems,
   searchImageBank,
@@ -171,6 +174,15 @@ export default function App() {
   const [isImageBankSearching, setIsImageBankSearching] = useState(false);
   const [hasSearchedImageBank, setHasSearchedImageBank] = useState(false);
   const [imageBankError, setImageBankError] = useState<string | null>(null);
+  const [imageBankCooldownUntilMs, setImageBankCooldownUntilMs] = useState<number>(0);
+  const [showImageBankCooldownNotice, setShowImageBankCooldownNotice] = useState(false);
+  const [imageBankCooldownRemainingSec, setImageBankCooldownRemainingSec] = useState(0);
+  const [hasImageBankPlusAccess, setHasImageBankPlusAccess] = useState(false);
+  const [lastSearchedImageQuery, setLastSearchedImageQuery] = useState('');
+  const [isGeneratingAiImage, setIsGeneratingAiImage] = useState(false);
+  const [generatedAiImage, setGeneratedAiImage] = useState<ImageBankImageItem | null>(null);
+  const [showAiPlusRequiredNotice, setShowAiPlusRequiredNotice] = useState(false);
+  const [aiGenerateError, setAiGenerateError] = useState<string | null>(null);
   const [savedImageBankItems, setSavedImageBankItems] = useState<ImageBankImageItem[]>(
     () => loadSavedImageBankItems(),
   );
@@ -238,6 +250,7 @@ export default function App() {
   const imageBankMobileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageBankAbortRef = useRef<AbortController | null>(null);
+  const aiGenerateAbortRef = useRef<AbortController | null>(null);
   const extractAbortRef = useRef<AbortController | null>(null);
   const compressionAbortRef = useRef<AbortController | null>(null);
   const compressionTimerRef = useRef<number | null>(null);
@@ -289,6 +302,73 @@ export default function App() {
       window.removeEventListener('keydown', handleEscape);
     };
   }, [isMobileImageBankActive, isImageBankSavedView]);
+
+  useEffect(() => {
+    if (imageBankCooldownUntilMs <= 0) {
+      setImageBankCooldownRemainingSec(0);
+      setShowImageBankCooldownNotice(false);
+      return;
+    }
+
+    const updateRemaining = () => {
+      const remainingMs = imageBankCooldownUntilMs - Date.now();
+      if (remainingMs <= 0) {
+        setImageBankCooldownRemainingSec(0);
+        setImageBankCooldownUntilMs(0);
+        setShowImageBankCooldownNotice(false);
+      } else {
+        setImageBankCooldownRemainingSec(Math.ceil(remainingMs / 1000));
+      }
+    };
+
+    updateRemaining();
+    const timer = window.setInterval(updateRemaining, 1000);
+    return () => window.clearInterval(timer);
+  }, [imageBankCooldownUntilMs]);
+
+  const formatCooldownWaitText = (totalSeconds: number): string => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    if (mins > 0 && secs > 0) return `${mins}m ${secs}s`;
+    if (mins > 0) return `${mins}m`;
+    return `${secs}s`;
+  };
+
+  useEffect(() => {
+    let active = true;
+    if (!authUser) {
+      setHasImageBankPlusAccess(false);
+      return;
+    }
+    const isAdminOrMetaPlus =
+      authUser.email?.trim().toLowerCase() === ADMIN_EXTRACT_ONLY_EMAIL ||
+      authUser.app_metadata?.plan === 'plus' ||
+      authUser.app_metadata?.plan === 'pro' ||
+      authUser.app_metadata?.tier === 'plus' ||
+      authUser.app_metadata?.tier === 'pro';
+    if (isAdminOrMetaPlus) {
+      setHasImageBankPlusAccess(true);
+    }
+    void fetchImageBankPlusAccess()
+      .then((allowed) => {
+        if (active) setHasImageBankPlusAccess(allowed || isAdminOrMetaPlus);
+      })
+      .catch(() => {
+        if (active) setHasImageBankPlusAccess(isAdminOrMetaPlus);
+      });
+    return () => {
+      active = false;
+    };
+  }, [authUser]);
+
+  const imageBankCooldownMessage =
+    showImageBankCooldownNotice && imageBankCooldownRemainingSec > 0
+      ? t.imageBank.cooldownNotice(formatCooldownWaitText(imageBankCooldownRemainingSec))
+      : null;
+
+  const imageBankPlusNotice = showAiPlusRequiredNotice
+    ? t.imageBank.plusRequiredNotice
+    : null;
 
   const usedFreeImages = orgServices.reduce(
     (sum, srv) => sum + (srv.itemCount || srv.products?.length || 0),
@@ -1139,28 +1219,62 @@ export default function App() {
 
   const closeImageBank = () => {
     imageBankAbortRef.current?.abort();
+    aiGenerateAbortRef.current?.abort();
+    setIsGeneratingAiImage(false);
     setIsImageBankOpen(false);
     setIsImageBankSavedView(false);
+  };
+
+  const handleImageBankQueryChange = (next: string) => {
+    setImageBankQuery(next);
+    if (showAiPlusRequiredNotice) setShowAiPlusRequiredNotice(false);
+    if (aiGenerateError) setAiGenerateError(null);
+    if (!next.trim() && generatedAiImage) {
+      setGeneratedAiImage(null);
+    }
   };
 
   const handleImageBankSearch = async () => {
     const clean = imageBankQuery.trim();
     if (!clean) return;
 
+    const remainingMs = imageBankCooldownUntilMs - Date.now();
+    if (remainingMs > 0) {
+      setImageBankCooldownRemainingSec(Math.ceil(remainingMs / 1000));
+      setShowImageBankCooldownNotice(true);
+      return;
+    }
+
     imageBankAbortRef.current?.abort();
+    aiGenerateAbortRef.current?.abort();
     const controller = new AbortController();
     imageBankAbortRef.current = controller;
 
     setIsImageBankSearching(true);
     setImageBankError(null);
-    setHasSearchedImageBank(true);
+    setShowImageBankCooldownNotice(false);
+    setIsGeneratingAiImage(false);
+    setGeneratedAiImage(null);
+    setShowAiPlusRequiredNotice(false);
+    setAiGenerateError(null);
 
     try {
       const result = await searchImageBank(clean, controller.signal);
       if (controller.signal.aborted) return;
       setImageBankResults(result.items);
+      setHasSearchedImageBank(true);
+      setLastSearchedImageQuery(result.query || clean);
+      const cooldownSec = result.cooldownSeconds ?? 180;
+      setImageBankCooldownUntilMs(Date.now() + cooldownSec * 1000);
     } catch (err) {
       if (controller.signal.aborted) return;
+      if (err instanceof ImageBankClientError && err.rateLimited) {
+        const retrySec = err.retryAfterSeconds ?? 180;
+        setImageBankCooldownUntilMs(Date.now() + retrySec * 1000);
+        setImageBankCooldownRemainingSec(retrySec);
+        setShowImageBankCooldownNotice(true);
+        return;
+      }
       const message =
         err instanceof Error && err.message
           ? err.message
@@ -1169,6 +1283,52 @@ export default function App() {
     } finally {
       if (!controller.signal.aborted) {
         setIsImageBankSearching(false);
+      }
+    }
+  };
+
+  const handleGenerateAiImage = async () => {
+    const promptToUse = (lastSearchedImageQuery || imageBankQuery).trim();
+    if (!promptToUse || isGeneratingAiImage) return;
+
+    if (!hasImageBankPlusAccess) {
+      setAiGenerateError(null);
+      setShowAiPlusRequiredNotice(true);
+      return;
+    }
+
+    aiGenerateAbortRef.current?.abort();
+    const controller = new AbortController();
+    aiGenerateAbortRef.current = controller;
+
+    setShowAiPlusRequiredNotice(false);
+    setAiGenerateError(null);
+    setIsGeneratingAiImage(true);
+
+    try {
+      const item = await generateAiImageFromPrompt(promptToUse, controller.signal);
+      if (controller.signal.aborted) return;
+      setGeneratedAiImage(item);
+      setSavedImageBankItems((prev) => {
+        const next = [item, ...prev.filter((entry) => entry.id !== item.id)];
+        saveImageBankItems(next);
+        return next;
+      });
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      if (err instanceof ImageBankClientError && err.plusRequired) {
+        setHasImageBankPlusAccess(false);
+        setShowAiPlusRequiredNotice(true);
+        return;
+      }
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : t.imageBank.searchErrorFallback;
+      setAiGenerateError(message);
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsGeneratingAiImage(false);
       }
     }
   };
@@ -2029,12 +2189,18 @@ export default function App() {
       <DesktopImageBankPanel
         open={isDesktopImageBankActive}
         query={imageBankQuery}
-        onChangeQuery={setImageBankQuery}
+        onChangeQuery={handleImageBankQueryChange}
         onSearchSubmit={() => void handleImageBankSearch()}
         results={imageBankResults}
         isSearching={isImageBankSearching}
         hasSearched={hasSearchedImageBank}
         searchError={imageBankError}
+        cooldownMessage={imageBankCooldownMessage}
+        plusNotice={imageBankPlusNotice}
+        aiGenerateError={aiGenerateError}
+        onGenerateAi={() => void handleGenerateAiImage()}
+        isGeneratingAi={isGeneratingAiImage}
+        generatedAiImage={generatedAiImage}
         savedImages={savedImageBankItems}
         savedIds={savedImageBankIds}
         onToggleSaveImage={handleToggleSaveImageBankItem}
@@ -2198,7 +2364,7 @@ export default function App() {
                         type="text"
                         enterKeyHint="search"
                         value={imageBankQuery}
-                        onChange={(e) => setImageBankQuery(e.target.value)}
+                        onChange={(e) => handleImageBankQueryChange(e.target.value)}
                         placeholder={t.imageBank.placeholder}
                         aria-label={t.imageBank.inputAria}
                         spellCheck={false}
@@ -2389,6 +2555,30 @@ export default function App() {
 
           {isMobileImageBankActive ? (
             <div className="mt-2.5 px-3 text-center">
+              {imageBankPlusNotice && (
+                <p
+                  role="status"
+                  className="mb-2 px-3 py-1.5 rounded-xl bg-blue-50/95 border border-blue-200/90 text-[11px] sm:text-xs font-medium leading-snug text-blue-900"
+                >
+                  {imageBankPlusNotice}
+                </p>
+              )}
+              {aiGenerateError && (
+                <p
+                  role="alert"
+                  className="mb-2 px-3 py-1.5 rounded-xl bg-rose-50/95 border border-rose-200/90 text-[11px] sm:text-xs font-medium leading-snug text-rose-700"
+                >
+                  {aiGenerateError}
+                </p>
+              )}
+              {imageBankCooldownMessage && (
+                <p
+                  role="status"
+                  className="mb-2 px-3 py-1.5 rounded-xl bg-amber-50/95 border border-amber-200/90 text-[11px] sm:text-xs font-medium leading-snug text-amber-950"
+                >
+                  {imageBankCooldownMessage}
+                </p>
+              )}
               <p className="text-xs font-semibold tracking-tight text-black">
                 {t.imageBank.brandTitle}
               </p>
@@ -2539,6 +2729,9 @@ export default function App() {
               hasSearched={hasSearchedImageBank}
               error={imageBankError}
               onToggleSave={handleToggleSaveImageBankItem}
+              onGenerateAi={() => void handleGenerateAiImage()}
+              isGeneratingAi={isGeneratingAiImage}
+              generatedAiImage={generatedAiImage}
               variant="mobile"
             />
           </motion.section>

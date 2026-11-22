@@ -1,6 +1,7 @@
 import { resolveApiUrl } from './apiConfig';
+import { getSupabaseAccessToken } from './supabaseClient';
 
-export type ImageBankProvider = 'pixabay' | 'pexels';
+export type ImageBankProvider = 'pixabay' | 'pexels' | 'flux';
 
 export interface ImageBankImageItem {
   id: string;
@@ -17,22 +18,34 @@ export interface ImageBankImageItem {
 
 export interface ImageBankSearchResponse {
   query: string;
-  translatedQuery: string;
   providers: ImageBankProvider[];
   items: ImageBankImageItem[];
+  cooldownSeconds?: number;
 }
 
 export class ImageBankClientError extends Error {
   readonly notConfigured?: boolean;
+  readonly rateLimited?: boolean;
+  readonly plusRequired?: boolean;
+  readonly retryAfterSeconds?: number;
   readonly status: number;
 
   constructor(
     message: string,
-    options?: { notConfigured?: boolean; status?: number },
+    options?: {
+      notConfigured?: boolean;
+      rateLimited?: boolean;
+      plusRequired?: boolean;
+      retryAfterSeconds?: number;
+      status?: number;
+    },
   ) {
     super(message);
     this.name = 'ImageBankClientError';
     this.notConfigured = options?.notConfigured;
+    this.rateLimited = options?.rateLimited;
+    this.plusRequired = options?.plusRequired;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
     this.status = options?.status ?? 500;
   }
 }
@@ -76,7 +89,6 @@ export async function searchImageBank(
   if (!clean) {
     return {
       query: '',
-      translatedQuery: '',
       providers: [],
       items: [],
     };
@@ -86,10 +98,17 @@ export async function searchImageBank(
     `/api/image-bank/search?q=${encodeURIComponent(clean)}`,
   );
 
+  const token = await getSupabaseAccessToken().catch(() => null);
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
   const response = await fetch(endpoint, {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
+    headers,
     signal,
   });
 
@@ -97,8 +116,10 @@ export async function searchImageBank(
     ok?: boolean;
     error?: string;
     notConfigured?: boolean;
+    rateLimited?: boolean;
+    retryAfterSeconds?: number;
+    cooldownSeconds?: number;
     query?: string;
-    translatedQuery?: string;
     providers?: ImageBankProvider[];
     items?: ImageBankImageItem[];
   };
@@ -108,6 +129,11 @@ export async function searchImageBank(
       payload?.error || 'Failed to search image bank',
       {
         notConfigured: Boolean(payload?.notConfigured),
+        rateLimited: Boolean(payload?.rateLimited) || response.status === 429,
+        retryAfterSeconds:
+          typeof payload?.retryAfterSeconds === 'number'
+            ? payload.retryAfterSeconds
+            : undefined,
         status: response.status,
       },
     );
@@ -115,8 +141,79 @@ export async function searchImageBank(
 
   return {
     query: payload.query || clean,
-    translatedQuery: payload.translatedQuery || clean,
     providers: Array.isArray(payload.providers) ? payload.providers : [],
     items: Array.isArray(payload.items) ? payload.items : [],
+    cooldownSeconds:
+      typeof payload.cooldownSeconds === 'number'
+        ? payload.cooldownSeconds
+        : undefined,
   };
+}
+
+export async function fetchImageBankPlusAccess(): Promise<boolean> {
+  const token = await getSupabaseAccessToken().catch(() => null);
+  if (!token) return false;
+
+  const response = await fetch(resolveApiUrl('/api/image-bank/access'), {
+    method: 'GET',
+    credentials: 'include',
+    cache: 'no-store',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) return false;
+  const payload = (await response.json().catch(() => ({}))) as {
+    hasPlusAccess?: boolean;
+  };
+  return Boolean(payload?.hasPlusAccess);
+}
+
+export async function generateAiImageFromPrompt(
+  prompt: string,
+  signal?: AbortSignal,
+): Promise<ImageBankImageItem> {
+  const clean = prompt.trim();
+  if (!clean) {
+    throw new ImageBankClientError('Prompt is required.', { status: 400 });
+  }
+
+  const token = await getSupabaseAccessToken().catch(() => null);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(resolveApiUrl('/api/image-bank/generate'), {
+    method: 'POST',
+    credentials: 'include',
+    cache: 'no-store',
+    headers,
+    body: JSON.stringify({ prompt: clean }),
+    signal,
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    error?: string;
+    plusRequired?: boolean;
+    notConfigured?: boolean;
+    item?: ImageBankImageItem;
+  };
+
+  if (!response.ok || !payload?.item) {
+    throw new ImageBankClientError(
+      payload?.error || 'Failed to generate AI image',
+      {
+        plusRequired: Boolean(payload?.plusRequired) || response.status === 403,
+        notConfigured: Boolean(payload?.notConfigured),
+        status: response.status,
+      },
+    );
+  }
+
+  return payload.item;
 }

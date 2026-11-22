@@ -42,7 +42,11 @@ import {
 } from './lib/localeDetection.ts';
 import { fetchProxiedImage } from './lib/imageProxy.ts';
 import {
+  checkImageBankCooldown,
+  consumeImageBankCooldown,
+  generateFluxImageWithCloudflare,
   getImageBankConfigStatus,
+  hasImageBankPlusAccess,
   ImageBankConfigError,
   ImageBankUpstreamError,
   searchPublicImageBank,
@@ -162,6 +166,7 @@ async function startServer() {
         groq: Boolean(groqKey && !/^TU_/i.test(groqKey)),
         pixabay: imageBankStatus.pixabay,
         pexels: imageBankStatus.pexels,
+        flux: imageBankStatus.flux,
       },
     });
   });
@@ -288,10 +293,32 @@ async function startServer() {
       });
     }
 
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    const cooldown = checkImageBankCooldown(
+      req.headers,
+      authUser?.userId,
+      req.socket?.remoteAddress,
+    );
+    if (!cooldown.allowed) {
+      res.setHeader('Retry-After', String(cooldown.retryAfterSeconds));
+      return res.status(429).json({
+        rateLimited: true,
+        retryAfterSeconds: cooldown.retryAfterSeconds,
+        error: 'Prohibido saturar servidores ajenos. Espera un momento.',
+      });
+    }
+
     try {
       const result = await searchPublicImageBank(rawQuery);
+      const consumed = consumeImageBankCooldown(
+        req.headers,
+        authUser?.userId,
+        req.socket?.remoteAddress,
+      );
+      res.setHeader('Set-Cookie', consumed.cookieHeader);
       return res.json({
         ok: true,
+        cooldownSeconds: consumed.cooldownSeconds,
         ...result,
       });
     } catch (err) {
@@ -311,6 +338,62 @@ async function startServer() {
         err instanceof Error
           ? err.message
           : 'No se pudo consultar el banco público de imágenes.';
+      return res.status(502).json({ error: message });
+    }
+  });
+
+  app.get('/api/image-bank/access', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    const hasPlusAccess = authUser
+      ? hasImageBankPlusAccess(authUser.email, authUser.appMetadata)
+      : false;
+    return res.json({
+      ok: true,
+      hasPlusAccess,
+    });
+  });
+
+  app.post('/api/image-bank/generate', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser || !hasImageBankPlusAccess(authUser.email, authUser.appMetadata)) {
+      return res.status(403).json({
+        plusRequired: true,
+        error: 'Tienes que ser nivel Plus para generar.',
+      });
+    }
+
+    const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
+    if (!prompt) {
+      return res.status(400).json({
+        error: 'Escribe una descripción primero para generar la imagen.',
+      });
+    }
+
+    try {
+      const item = await generateFluxImageWithCloudflare(prompt);
+      return res.json({
+        ok: true,
+        item,
+      });
+    } catch (err) {
+      if (err instanceof ImageBankConfigError) {
+        return res.status(503).json({
+          notConfigured: true,
+          error:
+            'La generación con IA aún no está configurada en el servidor (CLOUDFLARE_WORKERS_AI_API_TOKEN).',
+        });
+      }
+      if (err instanceof ImageBankUpstreamError) {
+        return res.status(err.status).json({
+          error: err.message,
+        });
+      }
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo generar la imagen con IA.';
       return res.status(502).json({ error: message });
     }
   });

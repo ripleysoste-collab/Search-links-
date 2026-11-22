@@ -58,6 +58,12 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
               retention: 'Ventana móvil de 24 horas',
             },
             {
+              category: 'sl_img_bank_cd (Cookie HTTP-only)',
+              collectedData: 'Control de frecuencia anti-saturación',
+              processor: 'Aplica un intervalo mínimo de 3 minutos entre búsquedas en el banco público de imágenes (Pexels / Pixabay) mediante firma HMAC-SHA256',
+              retention: '3 minutos por cada consulta realizada',
+            },
+            {
               category: 'Tokens de sesión OAuth (Almacenamiento local)',
               collectedData: 'Autenticación esencial',
               processor: 'Mantiene activa y verificada tu sesión autenticada con Google a través de Supabase Auth',
@@ -98,7 +104,7 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
         number: '05',
         title: 'Base técnica y necesidad operativa',
         paragraphs: [
-          'Las cookies sl_guest_ext y sl_ia_daily están configuradas con el atributo HttpOnly, lo que impide que scripts del lado del cliente lean o manipulen su contenido, y con protección criptográfica HMAC-SHA256 para asegurar la integridad de los límites de servicio. Cuando la conexión se realiza mediante HTTPS, se transmiten únicamente sobre canales cifrados.',
+          'Las cookies sl_guest_ext, sl_ia_daily y sl_img_bank_cd están configuradas con el atributo HttpOnly, lo que impide que scripts del lado del cliente lean o manipulen su contenido, y con protección criptográfica HMAC-SHA256 para asegurar la integridad de los límites de servicio. Cuando la conexión se realiza mediante HTTPS, se transmiten únicamente sobre canales cifrados.',
           'Debido a que estas cookies y registros locales cumplen funciones estrictamente técnicas de seguridad, autenticación y preferencias explícitamente solicitadas por el usuario, resultan indispensables para prestar el servicio solicitado.',
         ],
       },
@@ -184,6 +190,12 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
               retention: '24-hour rolling window',
             },
             {
+              category: 'sl_img_bank_cd (HTTP-only cookie)',
+              collectedData: 'Anti-saturation rate control',
+              processor: 'Enforces a 3-minute cooldown interval between public image bank searches (Pexels / Pixabay) using an HMAC-SHA256 signature',
+              retention: '3 minutes per completed search',
+            },
+            {
               category: 'OAuth session tokens (Browser storage)',
               collectedData: 'Essential authentication',
               processor: 'Maintains your verified Google OAuth session safely via Supabase Auth',
@@ -224,7 +236,7 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
         number: '05',
         title: 'Security attributes and operational necessity',
         paragraphs: [
-          'Both sl_guest_ext and sl_ia_daily are issued with the HttpOnly flag—preventing client-side scripts from reading or altering them—and signed with HMAC-SHA256 to guarantee quota integrity. Over HTTPS connections, they are transmitted exclusively over encrypted channels.',
+          'The cookies sl_guest_ext, sl_ia_daily, and sl_img_bank_cd are issued with the HttpOnly flag—preventing client-side scripts from reading or altering them—and signed with HMAC-SHA256 to guarantee quota integrity. Over HTTPS connections, they are transmitted exclusively over encrypted channels.',
           'Because these cookies and local entries strictly perform security enforcement, authentication, and user-requested preferences, they are indispensable to deliver the service safely.',
         ],
       },
@@ -310,6 +322,12 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
               retention: 'Janela móvel de 24 horas',
             },
             {
+              category: 'sl_img_bank_cd (Cookie HTTP-only)',
+              collectedData: 'Controle anti-saturação',
+              processor: 'Aplica um intervalo mínimo de 3 minutos entre buscas no banco público de imagens (Pexels / Pixabay) com assinatura HMAC-SHA256',
+              retention: '3 minutos por busca realizada',
+            },
+            {
               category: 'Tokens de sessão OAuth (Armazenamento local)',
               collectedData: 'Autenticação essencial',
               processor: 'Mantém sua sessão autenticada com Google segura por meio do Supabase Auth',
@@ -350,7 +368,7 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
         number: '05',
         title: 'Atributos de segurança e necessidade técnica',
         paragraphs: [
-          'Os cookies sl_guest_ext e sl_ia_daily são configurados com a flag HttpOnly — impedindo leitura ou alteração via scripts no navegador — e assinados com HMAC-SHA256 para assegurar integridade dos limites de uso. Em conexões HTTPS, trafegam apenas por canal criptografado.',
+          'Os cookies sl_guest_ext, sl_ia_daily e sl_img_bank_cd são configurados com a flag HttpOnly — impedindo leitura ou alteração via scripts no navegador — e assinados com HMAC-SHA256 para assegurar integridade dos limites de uso. Em conexões HTTPS, trafegam apenas por canal criptografado.',
           'Por executarem funções estritamente técnicas de segurança, autenticação e preferências solicitadas pelo próprio usuário, esses registros são indispensáveis para fornecer o serviço.',
         ],
       },
