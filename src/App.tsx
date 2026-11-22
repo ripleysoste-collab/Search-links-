@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
-import { Link2, Loader2, Upload, X } from 'lucide-react';
+import { Bookmark, Link2, Loader2, PenLine, Upload, X } from 'lucide-react';
 import desktopDesertBg from './assets/images/bg_desert_desktop_1794853953945.jpg';
 import { AuthDrawer } from './components/AuthDrawer';
 import { AutomationExamplesSection } from './components/AutomationExamplesSection';
 import { DesktopAccountMenu } from './components/DesktopAccountMenu';
+import { DesktopImageBankPanel } from './components/DesktopImageBankPanel';
+import { ImageBankResultsGrid, ImageBankSavedGrid } from './components/ImageBankGrid';
 import type {
   OrganizationProfile,
   OrganizationServiceItem,
@@ -30,6 +32,12 @@ import { SearchLinkLogo } from './components/SearchLinkLogo';
 import { CATALOG_SAMPLE_IMAGES, type CatalogImageItem } from './data/catalogSamples';
 import { isBlockedPolicyDomain } from '../lib/blockedDomains';
 import { resolveApiUrl } from './lib/apiConfig';
+import {
+  loadSavedImageBankItems,
+  saveImageBankItems,
+  searchImageBank,
+  type ImageBankImageItem,
+} from './lib/imageBankClient';
 import { useI18n } from './lib/i18n';
 import {
   blobToDataUrl,
@@ -157,6 +165,19 @@ export default function App() {
       : null,
   );
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
+  const [isImageBankOpen, setIsImageBankOpen] = useState(false);
+  const [imageBankQuery, setImageBankQuery] = useState('');
+  const [imageBankResults, setImageBankResults] = useState<ImageBankImageItem[]>([]);
+  const [isImageBankSearching, setIsImageBankSearching] = useState(false);
+  const [hasSearchedImageBank, setHasSearchedImageBank] = useState(false);
+  const [imageBankError, setImageBankError] = useState<string | null>(null);
+  const [savedImageBankItems, setSavedImageBankItems] = useState<ImageBankImageItem[]>(
+    () => loadSavedImageBankItems(),
+  );
+  const [isImageBankSavedView, setIsImageBankSavedView] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true,
+  );
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileAccountModalOpen, setIsMobileAccountModalOpen] = useState(false);
   const [isMobileLanguageModalOpen, setIsMobileLanguageModalOpen] = useState(false);
@@ -214,7 +235,9 @@ export default function App() {
   const [guestIpBlocked, setGuestIpBlocked] = useState(false);
   const authUserRef = useRef<User | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageBankMobileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageBankAbortRef = useRef<AbortController | null>(null);
   const extractAbortRef = useRef<AbortController | null>(null);
   const compressionAbortRef = useRef<AbortController | null>(null);
   const compressionTimerRef = useRef<number | null>(null);
@@ -224,6 +247,48 @@ export default function App() {
   const docReturnToAuthRef = useRef(false);
   const shouldReduceMotion = useReducedMotion();
   const { t } = useI18n();
+
+  const savedImageBankIds = useMemo(
+    () => new Set(savedImageBankItems.map((item) => item.id)),
+    [savedImageBankItems],
+  );
+
+  const isMobileImageBankActive = isImageBankOpen && !isDesktopViewport;
+  const isDesktopImageBankActive = isImageBankOpen && isDesktopViewport;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const syncViewport = () => setIsDesktopViewport(mq.matches);
+    syncViewport();
+    mq.addEventListener('change', syncViewport);
+    return () => mq.removeEventListener('change', syncViewport);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobileImageBankActive) return;
+    const focusTimer = window.setTimeout(() => {
+      if (!isImageBankSavedView) {
+        imageBankMobileInputRef.current?.focus();
+      }
+    }, 220);
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (isImageBankSavedView) {
+          setIsImageBankSavedView(false);
+        } else {
+          setIsImageBankOpen(false);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [isMobileImageBankActive, isImageBankSavedView]);
 
   const usedFreeImages = orgServices.reduce(
     (sum, srv) => sum + (srv.itemCount || srv.products?.length || 0),
@@ -1060,6 +1125,8 @@ export default function App() {
 
   const openAuthFlow = () => {
     if (authUserRef.current) return;
+    setIsImageBankOpen(false);
+    setIsImageBankSavedView(false);
     if (
       typeof window !== 'undefined' &&
       window.innerWidth < 1024 &&
@@ -1068,6 +1135,75 @@ export default function App() {
       window.history.pushState({ authRoute: true }, '', '/login');
     }
     setIsAuthOpen(true);
+  };
+
+  const closeImageBank = () => {
+    imageBankAbortRef.current?.abort();
+    setIsImageBankOpen(false);
+    setIsImageBankSavedView(false);
+  };
+
+  const handleImageBankSearch = async () => {
+    const clean = imageBankQuery.trim();
+    if (!clean) return;
+
+    imageBankAbortRef.current?.abort();
+    const controller = new AbortController();
+    imageBankAbortRef.current = controller;
+
+    setIsImageBankSearching(true);
+    setImageBankError(null);
+    setHasSearchedImageBank(true);
+
+    try {
+      const result = await searchImageBank(clean, controller.signal);
+      if (controller.signal.aborted) return;
+      setImageBankResults(result.items);
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : t.imageBank.searchErrorFallback;
+      setImageBankError(message);
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsImageBankSearching(false);
+      }
+    }
+  };
+
+  const handleToggleSaveImageBankItem = (item: ImageBankImageItem) => {
+    setSavedImageBankItems((prev) => {
+      const exists = prev.some((entry) => entry.id === item.id);
+      const next = exists
+        ? prev.filter((entry) => entry.id !== item.id)
+        : [item, ...prev];
+      saveImageBankItems(next);
+      return next;
+    });
+  };
+
+  const handleRemoveSavedImageBankItem = (id: string) => {
+    setSavedImageBankItems((prev) => {
+      const next = prev.filter((entry) => entry.id !== id);
+      saveImageBankItems(next);
+      return next;
+    });
+  };
+
+  const handleToggleImageBank = () => {
+    setIsImageBankOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        imageBankAbortRef.current?.abort();
+        setIsImageBankSavedView(false);
+      } else if (isDesktopViewport) {
+        setIsDesktopMenuOpen(false);
+        setIsAuthOpen(false);
+      }
+      return next;
+    });
   };
 
   const closeAuthFlow = () => {
@@ -1889,7 +2025,28 @@ export default function App() {
         </motion.div>
       )}
 
-      {/* Primary workspace column: shifts smoothly left when the 25% desktop menu docks on the right */}
+      {/* Desktop-only left-to-right 50% Image Bank panel with matching background */}
+      <DesktopImageBankPanel
+        open={isDesktopImageBankActive}
+        query={imageBankQuery}
+        onChangeQuery={setImageBankQuery}
+        onSearchSubmit={() => void handleImageBankSearch()}
+        results={imageBankResults}
+        isSearching={isImageBankSearching}
+        hasSearched={hasSearchedImageBank}
+        searchError={imageBankError}
+        savedImages={savedImageBankItems}
+        savedIds={savedImageBankIds}
+        onToggleSaveImage={handleToggleSaveImageBankItem}
+        onRemoveSavedImage={handleRemoveSavedImageBankItem}
+        showSaved={isImageBankSavedView}
+        onToggleSaved={() => setIsImageBankSavedView((prev) => !prev)}
+        onCloseSaved={() => setIsImageBankSavedView(false)}
+        backgroundUrl={activeBgImage?.url || desktopDesertBg}
+        onClose={closeImageBank}
+      />
+
+      {/* Primary workspace column: shifts smoothly left/right when either 50% desktop panel opens */}
       <div
         className={`relative z-10 flex-1 min-w-0 flex flex-col items-center px-4 sm:px-5 lg:px-6 pt-3.5 sm:pt-4 lg:pt-5 pb-6 lg:pb-8 ${
           isDesktopSplitActive ? 'lg:h-dvh lg:overflow-hidden' : 'min-h-dvh'
@@ -1935,27 +2092,54 @@ export default function App() {
               : 'max-w-3xl mx-auto'
           }`}
         >
-          <div className="flex items-center gap-2.5 sm:gap-3 w-full">
-            <button
+          <div className="flex items-center w-full">
+            <motion.button
               type="button"
               onClick={() => {
-                if (!authUser) return;
+                if (!authUser || isMobileImageBankActive) return;
                 fileInputRef.current?.click();
               }}
-              disabled={isExtracting}
-              aria-disabled={!authUser}
+              disabled={isExtracting || isMobileImageBankActive}
+              aria-disabled={!authUser || isMobileImageBankActive}
+              aria-hidden={isMobileImageBankActive}
+              tabIndex={isMobileImageBankActive ? -1 : undefined}
               aria-label={t.app.uploadImagesAria}
               title={authUser ? t.app.uploadImagesTitle : undefined}
+              initial={false}
+              animate={{
+                width: isMobileImageBankActive
+                  ? 0
+                  : isDesktopSplitActive && isDesktopViewport
+                    ? 44
+                    : 48,
+                marginRight: isMobileImageBankActive
+                  ? 0
+                  : isDesktopViewport
+                    ? 12
+                    : 10,
+                opacity: isMobileImageBankActive ? 0 : 1,
+                scale: isMobileImageBankActive ? 0.65 : 1,
+                borderWidth: isMobileImageBankActive ? 0 : 1,
+              }}
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0 }
+                  : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
+              }
               className={`${
-                isDesktopSplitActive ? 'h-12 w-12 lg:h-11 lg:w-11' : 'h-12 w-12'
-              } shrink-0 rounded-full flex items-center justify-center bg-white/40 lg:bg-white/95 backdrop-blur-xl lg:backdrop-blur-md border border-slate-900/12 lg:border-white/85 ring-1 ring-inset ring-white/85 lg:ring-0 text-blue-600/85 lg:text-slate-600 shadow-[0_8px_28px_-6px_rgba(37,99,235,0.12),0_2px_8px_-2px_rgba(15,23,42,0.06)] lg:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.4)] transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 lg:focus-visible:ring-white disabled:opacity-60 disabled:cursor-not-allowed ${
+                isDesktopSplitActive ? 'h-12 lg:h-11' : 'h-12'
+              } ${
+                isMobileImageBankActive
+                  ? 'overflow-hidden pointer-events-none'
+                  : 'ring-1 ring-inset ring-white/85 lg:ring-0'
+              } shrink-0 rounded-full flex items-center justify-center bg-white/40 lg:bg-white/95 backdrop-blur-xl lg:backdrop-blur-md border border-slate-900/12 lg:border-white/85 text-blue-600/85 lg:text-slate-600 shadow-[0_8px_28px_-6px_rgba(37,99,235,0.12),0_2px_8px_-2px_rgba(15,23,42,0.06)] lg:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.4)] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 lg:focus-visible:ring-white disabled:opacity-60 disabled:cursor-not-allowed ${
                 authUser
                   ? 'hover:bg-white/75 lg:hover:bg-white hover:text-blue-700 lg:hover:text-slate-900 active:scale-95 cursor-pointer'
                   : 'opacity-45 lg:opacity-55 cursor-default'
               }`}
             >
-              <Upload className="w-4.5 h-4.5" aria-hidden="true" />
-            </button>
+              <Upload className="w-4.5 h-4.5 shrink-0" aria-hidden="true" />
+            </motion.button>
 
             <input
               ref={fileInputRef}
@@ -1970,118 +2154,315 @@ export default function App() {
             />
 
             <form
-              onSubmit={handleSubmit}
+              onSubmit={
+                isMobileImageBankActive
+                  ? (e) => {
+                      e.preventDefault();
+                      void handleImageBankSearch();
+                    }
+                  : handleSubmit
+              }
               role="search"
-              aria-label={t.app.pasteUrlFormAria}
+              aria-label={
+                isMobileImageBankActive
+                  ? t.imageBank.panelAria
+                  : t.app.pasteUrlFormAria
+              }
               className="flex-1 min-w-0"
             >
               <div
-                className={`group flex items-center gap-2.5 lg:gap-3 ${
+                className={`group flex items-center ${
                   isDesktopSplitActive ? 'h-12 lg:h-11' : 'h-12'
                 } w-full rounded-full px-4 lg:px-4.5 bg-white/40 lg:bg-white/95 backdrop-blur-xl lg:backdrop-blur-md border border-slate-900/12 lg:border-white/85 ring-1 ring-inset ring-white/85 lg:ring-0 shadow-[0_8px_28px_-6px_rgba(37,99,235,0.12),0_2px_8px_-2px_rgba(15,23,42,0.06)] lg:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.4)] transition-all duration-150 focus-within:bg-white/75 lg:focus-within:bg-white focus-within:border-blue-500/45 lg:focus-within:border-white focus-within:shadow-[0_10px_34px_-6px_rgba(37,99,235,0.2)] lg:focus-within:shadow-[0_14px_42px_-6px_rgba(0,0,0,0.48)]`}
               >
-                <Link2
-                  className="w-4 h-4 text-blue-600/75 lg:text-slate-400 shrink-0 transition-colors duration-150 group-focus-within:text-blue-600 lg:group-focus-within:text-slate-700"
-                  aria-hidden="true"
-                />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  inputMode="url"
-                  value={url}
-                  onPaste={(e) => {
-                    const pasted = e.clipboardData?.getData('text') ?? '';
-                    if (pasted && rejectIfBlockedDomain(pasted)) {
-                      e.preventDefault();
-                    }
-                  }}
-                  onChange={(e) => {
-                    const nextVal = e.target.value;
-                    if (rejectIfBlockedDomain(nextVal)) return;
-                    setUrl(nextVal);
-                    if (extractError) setExtractError(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
-                      e.currentTarget.blur();
-                    }
-                  }}
-                  placeholder={t.app.urlPlaceholder}
-                  aria-label={t.app.urlInputAria}
-                  autoComplete="url"
-                  spellCheck={false}
-                  className="flex-1 min-w-0 bg-transparent text-[14px] sm:text-[15px] font-normal text-slate-900 placeholder:text-slate-500 lg:placeholder:text-slate-400 focus:outline-none"
-                />
-                {isExtracting ? (
-                  <Loader2
-                    className="w-4 h-4 text-blue-600 lg:text-slate-700 animate-spin shrink-0"
-                    aria-label={t.app.extractingAria}
-                  />
-                ) : (
-                  url.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUrl('');
-                        setExtractError(null);
-                      }}
-                      aria-label={t.app.clearUrlAria}
-                      className="flex items-center justify-center w-7 h-7 -mr-1.5 rounded-full text-slate-500 lg:text-slate-400 hover:text-slate-800 hover:bg-white/60 lg:hover:bg-slate-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 lg:focus-visible:ring-slate-400 shrink-0"
+                <AnimatePresence mode="wait" initial={false}>
+                  {isMobileImageBankActive ? (
+                    <motion.div
+                      key="mobile-image-bank-bar"
+                      initial={
+                        shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }
+                      }
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={
+                        shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }
+                      }
+                      transition={{ duration: shouldReduceMotion ? 0 : 0.18 }}
+                      className="flex items-center gap-2.5 w-full min-w-0"
                     >
-                      <X className="w-3.5 h-3.5" aria-hidden="true" />
-                    </button>
-                  )
-                )}
+                      <PenLine
+                        className="w-4 h-4 text-blue-600/85 shrink-0"
+                        aria-hidden="true"
+                      />
+                      <input
+                        ref={imageBankMobileInputRef}
+                        type="text"
+                        enterKeyHint="search"
+                        value={imageBankQuery}
+                        onChange={(e) => setImageBankQuery(e.target.value)}
+                        placeholder={t.imageBank.placeholder}
+                        aria-label={t.imageBank.inputAria}
+                        spellCheck={false}
+                        className="flex-1 min-w-0 bg-transparent text-[14px] sm:text-[15px] font-normal text-slate-900 placeholder:text-slate-500 focus:outline-none"
+                      />
+                      {isImageBankSearching && (
+                        <Loader2
+                          className="w-4 h-4 text-blue-600 animate-spin shrink-0"
+                          aria-label={t.imageBank.searchingAria}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={closeImageBank}
+                        aria-label={t.imageBank.closeAria}
+                        className="flex items-center justify-center w-7 h-7 -mr-1.5 rounded-full text-slate-500 hover:text-slate-900 hover:bg-white/60 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 cursor-pointer shrink-0"
+                      >
+                        <X className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="url-input-bar"
+                      initial={
+                        shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }
+                      }
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={
+                        shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.98 }
+                      }
+                      transition={{ duration: shouldReduceMotion ? 0 : 0.18 }}
+                      className="flex items-center gap-2.5 lg:gap-3 w-full min-w-0"
+                    >
+                      <Link2
+                        className="w-4 h-4 text-blue-600/75 lg:text-slate-400 shrink-0 transition-colors duration-150 group-focus-within:text-blue-600 lg:group-focus-within:text-slate-700"
+                        aria-hidden="true"
+                      />
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        inputMode="url"
+                        value={url}
+                        onPaste={(e) => {
+                          const pasted = e.clipboardData?.getData('text') ?? '';
+                          if (pasted && rejectIfBlockedDomain(pasted)) {
+                            e.preventDefault();
+                          }
+                        }}
+                        onChange={(e) => {
+                          const nextVal = e.target.value;
+                          if (rejectIfBlockedDomain(nextVal)) return;
+                          setUrl(nextVal);
+                          if (extractError) setExtractError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            e.currentTarget.blur();
+                          }
+                        }}
+                        placeholder={t.app.urlPlaceholder}
+                        aria-label={t.app.urlInputAria}
+                        autoComplete="url"
+                        spellCheck={false}
+                        className="flex-1 min-w-0 bg-transparent text-[14px] sm:text-[15px] font-normal text-slate-900 placeholder:text-slate-500 lg:placeholder:text-slate-400 focus:outline-none"
+                      />
+                      {isExtracting ? (
+                        <Loader2
+                          className="w-4 h-4 text-blue-600 lg:text-slate-700 animate-spin shrink-0"
+                          aria-label={t.app.extractingAria}
+                        />
+                      ) : (
+                        url.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUrl('');
+                              setExtractError(null);
+                            }}
+                            aria-label={t.app.clearUrlAria}
+                            className="flex items-center justify-center w-7 h-7 -mr-1.5 rounded-full text-slate-500 lg:text-slate-400 hover:text-slate-800 hover:bg-white/60 lg:hover:bg-slate-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 lg:focus-visible:ring-slate-400 shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        )
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </form>
+
+            {/* Symmetric right-side icon button for Pexels Image Bank */}
+            <motion.button
+              type="button"
+              onClick={handleToggleImageBank}
+              disabled={isMobileImageBankActive}
+              aria-hidden={isMobileImageBankActive}
+              tabIndex={isMobileImageBankActive ? -1 : undefined}
+              aria-expanded={isImageBankOpen}
+              aria-label={t.imageBank.openAria}
+              title={t.imageBank.openTitle}
+              initial={false}
+              animate={{
+                width: isMobileImageBankActive
+                  ? 0
+                  : isDesktopSplitActive && isDesktopViewport
+                    ? 44
+                    : 48,
+                marginLeft: isMobileImageBankActive
+                  ? 0
+                  : isDesktopViewport
+                    ? 12
+                    : 10,
+                opacity: isMobileImageBankActive ? 0 : 1,
+                scale: isMobileImageBankActive ? 0.65 : 1,
+                borderWidth: isMobileImageBankActive ? 0 : 1,
+              }}
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0 }
+                  : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
+              }
+              className={`${
+                isDesktopSplitActive ? 'h-12 lg:h-11' : 'h-12'
+              } ${
+                isMobileImageBankActive
+                  ? 'overflow-hidden pointer-events-none'
+                  : 'ring-1 ring-inset ring-white/85 lg:ring-0'
+              } shrink-0 rounded-full flex items-center justify-center backdrop-blur-xl lg:backdrop-blur-md border shadow-[0_8px_28px_-6px_rgba(37,99,235,0.12),0_2px_8px_-2px_rgba(15,23,42,0.06)] lg:shadow-[0_12px_36px_-6px_rgba(0,0,0,0.4)] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 lg:focus-visible:ring-white cursor-pointer hover:bg-white/75 lg:hover:bg-white hover:text-blue-700 lg:hover:text-slate-900 active:scale-95 ${
+                isDesktopImageBankActive
+                  ? 'bg-white/75 lg:bg-white border-blue-500/40 lg:border-white text-blue-700 lg:text-slate-950'
+                  : 'bg-white/40 lg:bg-white/95 border-slate-900/12 lg:border-white/85 text-blue-600/85 lg:text-slate-600'
+              }`}
+            >
+              <PenLine className="w-4.5 h-4.5 shrink-0" aria-hidden="true" />
+            </motion.button>
+
+            {/* Mobile-only Saved Images icon button right next to the Pexels input */}
+            <motion.button
+              type="button"
+              onClick={() => {
+                if (!isMobileImageBankActive) return;
+                setIsImageBankSavedView((prev) => !prev);
+              }}
+              disabled={!isMobileImageBankActive}
+              aria-hidden={!isMobileImageBankActive}
+              aria-pressed={isImageBankSavedView}
+              tabIndex={isMobileImageBankActive ? undefined : -1}
+              aria-label={t.imageBank.savedAria}
+              title={t.imageBank.savedTitle}
+              initial={false}
+              animate={{
+                width: isMobileImageBankActive ? 48 : 0,
+                marginLeft: isMobileImageBankActive ? 10 : 0,
+                opacity: isMobileImageBankActive ? 1 : 0,
+                scale: isMobileImageBankActive ? 1 : 0.65,
+                borderWidth: isMobileImageBankActive ? 1 : 0,
+              }}
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0 }
+                  : { duration: 0.36, ease: [0.22, 1, 0.36, 1] }
+              }
+              className={`relative lg:hidden h-12 ${
+                isMobileImageBankActive
+                  ? 'ring-1 ring-inset ring-white/85'
+                  : 'overflow-hidden pointer-events-none'
+              } shrink-0 rounded-full flex items-center justify-center backdrop-blur-xl border shadow-[0_8px_28px_-6px_rgba(37,99,235,0.12),0_2px_8px_-2px_rgba(15,23,42,0.06)] transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60 cursor-pointer active:scale-95 ${
+                isImageBankSavedView
+                  ? 'bg-slate-900 border-slate-900 text-white'
+                  : 'bg-white/40 border-slate-900/12 text-blue-600/85 hover:bg-white/75 hover:text-blue-700'
+              }`}
+            >
+              <Bookmark
+                className={`w-4.5 h-4.5 shrink-0 ${isImageBankSavedView ? 'fill-current' : ''}`}
+                aria-hidden="true"
+              />
+              {isMobileImageBankActive && savedImageBankItems.length > 0 && !isImageBankSavedView && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-slate-950 text-white text-[10px] font-semibold flex items-center justify-center tabular-nums shadow"
+                >
+                  {savedImageBankItems.length}
+                </span>
+              )}
+            </motion.button>
           </div>
 
-          {!authUser && guestIpBlocked ? (
-            <p
-              role="alert"
-              className="mt-2 px-3 text-[11px] sm:text-xs font-medium leading-snug text-rose-600 lg:text-rose-200 lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
-            >
-              {t.app.guestIpBlockedError}
-            </p>
-          ) : extractError ? (
-            <p
-              role="alert"
-              className="mt-2 px-4 text-xs font-medium text-rose-600 lg:text-rose-200 lg:drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)] text-center"
-            >
-              {extractError}
-            </p>
-          ) : pendingDomainBatch ? (
-            <p
-              role="status"
-              className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
-            >
-              <span>{t.app.domainPromptQuestion}</span>{' '}
-              <span className="inline-flex items-center gap-3.5 ml-1.5">
-                <button
-                  type="button"
-                  onClick={handleCancelDomainBatch}
-                  className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-red-600 lg:text-red-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                >
-                  {t.app.domainPromptCancel}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDomainContinue}
-                  className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-blue-600 lg:text-sky-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                >
-                  {t.app.domainPromptContinue}
-                </button>
-              </span>
-            </p>
-          ) : (
-            batchNotice && (
-              <p
-                role="status"
-                className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
-              >
-                {batchNotice}
+          {isMobileImageBankActive ? (
+            <div className="mt-2.5 px-3 text-center">
+              <p className="text-xs font-semibold tracking-tight text-black">
+                {t.imageBank.brandTitle}
               </p>
-            )
+              <p className="mt-0.5 text-[11px] sm:text-xs font-normal leading-snug text-black">
+                {t.imageBank.publicBankNotice}{' '}
+                <a
+                  href="https://www.pexels.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-700 hover:underline font-medium"
+                >
+                  {t.imageBank.publicBankLinkLabel}
+                </a>
+                {' · '}
+                <a
+                  href="https://pixabay.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-700 hover:underline font-medium"
+                >
+                  {t.imageBank.publicBankSecondLinkLabel}
+                </a>
+              </p>
+            </div>
+          ) : (
+            <>
+              {!authUser && guestIpBlocked ? (
+                <p
+                  role="alert"
+                  className="mt-2 px-3 text-[11px] sm:text-xs font-medium leading-snug text-rose-600 lg:text-rose-200 lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
+                >
+                  {t.app.guestIpBlockedError}
+                </p>
+              ) : extractError ? (
+                <p
+                  role="alert"
+                  className="mt-2 px-4 text-xs font-medium text-rose-600 lg:text-rose-200 lg:drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)] text-center"
+                >
+                  {extractError}
+                </p>
+              ) : pendingDomainBatch ? (
+                <p
+                  role="status"
+                  className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
+                >
+                  <span>{t.app.domainPromptQuestion}</span>{' '}
+                  <span className="inline-flex items-center gap-3.5 ml-1.5">
+                    <button
+                      type="button"
+                      onClick={handleCancelDomainBatch}
+                      className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-red-600 lg:text-red-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                    >
+                      {t.app.domainPromptCancel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmDomainContinue}
+                      className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-blue-600 lg:text-sky-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                    >
+                      {t.app.domainPromptContinue}
+                    </button>
+                  </span>
+                </p>
+              ) : (
+                batchNotice && (
+                  <p
+                    role="status"
+                    className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
+                  >
+                    {batchNotice}
+                  </p>
+                )
+              )}
+            </>
           )}
         </motion.div>
 
@@ -2092,6 +2473,7 @@ export default function App() {
             expanded={authUser ? isDesktopMenuOpen : isAuthOpen}
             user={authUser}
             onClick={() => {
+              closeImageBank();
               if (authUser) {
                 setIsDesktopMenuOpen((prev) => !prev);
               } else {
@@ -2109,7 +2491,9 @@ export default function App() {
         activeBackgroundId={activeBgImage?.id ?? null}
         onSelectBackground={handleSelectBackground}
         suspendShortcuts={
-          (isAuthOpen && !authUser) || (isDesktopMenuOpen && Boolean(authUser))
+          (isAuthOpen && !authUser) ||
+          (isDesktopMenuOpen && Boolean(authUser)) ||
+          isImageBankOpen
         }
         isFileUploadFlow={isFileUploadFlow}
         showCompressionBox={showCompressionBox}
@@ -2136,39 +2520,72 @@ export default function App() {
         visible={!hasSearched && !isFileUploadFlow && !isExtracting}
       />
 
-      {/* Mobile-only swipeable boxes with Stage 2–5 auto-pan + unboxed metadata / JSON below */}
-      <MobileCatalogCarousel
-        key={isReadOnlyReplay ? `mobile-replay-${catalogVersion}` : 'mobile-live'}
-        images={catalogImages}
-        isUnified={hasSearched}
-        isExtracting={isExtracting}
-        extractError={extractError}
-        hasExtractedResults={catalogVersion > 0}
-        showCompressionBox={showCompressionBox}
-        compressionStatuses={compressionStatuses}
-        showUploadBox={showUploadBox}
-        uploadStatuses={uploadStatuses}
-        showReceiveBox={showReceiveBox}
-        receiveStatuses={receiveStatuses}
-        showMapBox={showMapBox}
-        mapStatuses={mapStatuses}
-        mappedResults={mappedResults}
-        compressionResults={compressionResults}
-        isReadOnlyReplay={isReadOnlyReplay}
-        serviceCredentials={activeServiceCredentials}
-        organizationName={orgProfile.name}
-        jobStatus={activeJobStatus}
-        planBRolledBack={jobPlanBRolledBack}
-        policyBlocked={jobPolicyBlocked}
-        jobNotice={jobLifecycleNotice}
-        onOpenOrganization={() => {
-          if (authUser) {
-            setIsMobilePanelOpen(true);
-          } else {
-            openAuthFlow();
-          }
-        }}
-      />
+      {/* Mobile-only: either empty open gallery canvas when unified Image Bank is active, or swipeable catalog carousel */}
+      <AnimatePresence mode="wait" initial={false}>
+        {isMobileImageBankActive ? (
+          <motion.section
+            key="mobile-image-bank-empty-canvas"
+            aria-label={t.imageBank.panelAria}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.22 }}
+            className="lg:hidden relative z-10 w-full flex-1 min-h-0 pt-5 pb-6"
+          >
+            <ImageBankResultsGrid
+              items={imageBankResults}
+              savedIds={savedImageBankIds}
+              isSearching={isImageBankSearching}
+              hasSearched={hasSearchedImageBank}
+              error={imageBankError}
+              onToggleSave={handleToggleSaveImageBankItem}
+              variant="mobile"
+            />
+          </motion.section>
+        ) : (
+          <motion.div
+            key="mobile-catalog-wrapper"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.2 }}
+            className="lg:hidden w-full"
+          >
+            <MobileCatalogCarousel
+              key={isReadOnlyReplay ? `mobile-replay-${catalogVersion}` : 'mobile-live'}
+              images={catalogImages}
+              isUnified={hasSearched}
+              isExtracting={isExtracting}
+              extractError={extractError}
+              hasExtractedResults={catalogVersion > 0}
+              showCompressionBox={showCompressionBox}
+              compressionStatuses={compressionStatuses}
+              showUploadBox={showUploadBox}
+              uploadStatuses={uploadStatuses}
+              showReceiveBox={showReceiveBox}
+              receiveStatuses={receiveStatuses}
+              showMapBox={showMapBox}
+              mapStatuses={mapStatuses}
+              mappedResults={mappedResults}
+              compressionResults={compressionResults}
+              isReadOnlyReplay={isReadOnlyReplay}
+              serviceCredentials={activeServiceCredentials}
+              organizationName={orgProfile.name}
+              jobStatus={activeJobStatus}
+              planBRolledBack={jobPlanBRolledBack}
+              policyBlocked={jobPolicyBlocked}
+              jobNotice={jobLifecycleNotice}
+              onOpenOrganization={() => {
+                if (authUser) {
+                  setIsMobilePanelOpen(true);
+                } else {
+                  openAuthFlow();
+                }
+              }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       </div>
 
       {/* Desktop-only push-docked right menu (expands 25% -> 50% rounded on account / organization views) */}
@@ -2238,6 +2655,44 @@ export default function App() {
         onClose={closeAuthFlow}
         onOpenLegalDoc={(docId) => openDocumentationRoute(docId, true)}
       />
+
+      {/* Mobile-only full-screen white Guardado interface opened from the saved icon */}
+      <AnimatePresence>
+        {isMobileImageBankActive && isImageBankSavedView && (
+          <motion.div
+            key="mobile-image-bank-saved-fullscreen"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.imageBank.savedFullTitle}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 18 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-50 lg:hidden bg-white flex flex-col"
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3.5 border-b border-slate-200/75 bg-white shrink-0">
+              <h2 className="text-base font-semibold tracking-tight text-slate-950">
+                {t.imageBank.savedFullTitle}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setIsImageBankSavedView(false)}
+                aria-label={t.imageBank.closeSavedAria}
+                className="w-9 h-9 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
+              >
+                <X className="w-4.5 h-4.5" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
+              <ImageBankSavedGrid
+                items={savedImageBankItems}
+                onRemove={handleRemoveSavedImageBankItem}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </main>
   );
 }

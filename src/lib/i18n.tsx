@@ -94,6 +94,30 @@ export interface TranslationDictionary {
     compressionStatusAria: (status: string, alt: string) => string;
     blockedDomainPolicyError: string;
   };
+  imageBank: {
+    openAria: string;
+    openTitle: string;
+    brandTitle: string;
+    publicBankNotice: string;
+    publicBankLinkLabel: string;
+    publicBankSecondLinkLabel: string;
+    savedAria: string;
+    savedTitle: string;
+    savedFullTitle: string;
+    closeSavedAria: string;
+    savedEmptyHint: string;
+    placeholder: string;
+    inputAria: string;
+    clearQueryAria: string;
+    closeAria: string;
+    panelAria: string;
+    searchingAria: string;
+    noResultsNotice: string;
+    searchErrorFallback: string;
+    saveImageAria: (alt: string) => string;
+    unsaveImageAria: (alt: string) => string;
+    removeSavedAria: (alt: string) => string;
+  };
   examples: {
     sectionAria: string;
     sectionTitle: string;
@@ -437,6 +461,31 @@ const ES_DICTIONARY: TranslationDictionary = {
             ? `${alt} comprimida`
             : `Error al comprimir ${alt}`,
     blockedDomainPolicyError: 'Este dominio viola nuestras políticas de contenido',
+  },
+  imageBank: {
+    openAria: 'Buscar imágenes en banco de imágenes',
+    openTitle: 'Buscar imágenes',
+    brandTitle: 'Search Link Pexels',
+    publicBankNotice:
+      'Este servicio utiliza los bancos públicos de Pexels y Pixabay. Al usarlas, aceptas que pertenecen a dichos bancos públicos y no a ti ni a Search Link, pero cuentas con permiso de uso. Si quieres ver:',
+    publicBankLinkLabel: 'pexels.com',
+    publicBankSecondLinkLabel: 'pixabay.com',
+    savedAria: 'Ver imágenes guardadas',
+    savedTitle: 'Guardado',
+    savedFullTitle: 'Guardado',
+    closeSavedAria: 'Cerrar Guardado',
+    savedEmptyHint: 'Aquí verás las imágenes que guardes para tus catálogos.',
+    placeholder: 'Describe la imagen que buscas...',
+    inputAria: 'Descripción de la imagen que buscas',
+    clearQueryAria: 'Limpiar búsqueda',
+    closeAria: 'Cerrar buscador de imágenes',
+    panelAria: 'Buscador de imágenes',
+    searchingAria: 'Buscando imágenes',
+    noResultsNotice: 'No encontramos imágenes para esa búsqueda. Prueba con otra descripción.',
+    searchErrorFallback: 'No se pudo completar la búsqueda en el banco público.',
+    saveImageAria: (alt) => `Guardar ${alt}`,
+    unsaveImageAria: (alt) => `Quitar de Guardado: ${alt}`,
+    removeSavedAria: (alt) => `Eliminar de Guardado: ${alt}`,
   },
   examples: {
     sectionAria: 'Ejemplos de automatizaciones',
@@ -914,6 +963,31 @@ const EN_DICTIONARY: TranslationDictionary = {
             : `Failed to compress ${alt}`,
     blockedDomainPolicyError: 'This domain violates our content policies',
   },
+  imageBank: {
+    openAria: 'Search image bank',
+    openTitle: 'Search images',
+    brandTitle: 'Search Link Pexels',
+    publicBankNotice:
+      'This service uses the Pexels and Pixabay public image banks. By using them, you agree they belong to those public banks and neither to you nor Search Link, with permission to use. See:',
+    publicBankLinkLabel: 'pexels.com',
+    publicBankSecondLinkLabel: 'pixabay.com',
+    savedAria: 'View saved images',
+    savedTitle: 'Saved',
+    savedFullTitle: 'Saved',
+    closeSavedAria: 'Close Saved',
+    savedEmptyHint: 'Images you save for your catalogs will appear here.',
+    placeholder: 'Describe the image you are looking for...',
+    inputAria: 'Description of the image you are looking for',
+    clearQueryAria: 'Clear search',
+    closeAria: 'Close image search',
+    panelAria: 'Image search',
+    searchingAria: 'Searching images',
+    noResultsNotice: 'No images found for that query. Try a different description.',
+    searchErrorFallback: 'Unable to complete public image bank search.',
+    saveImageAria: (alt) => `Save ${alt}`,
+    unsaveImageAria: (alt) => `Remove from Saved: ${alt}`,
+    removeSavedAria: (alt) => `Remove from Saved: ${alt}`,
+  },
   examples: {
     sectionAria: 'Automation examples',
     sectionTitle: 'Automation examples',
@@ -1390,6 +1464,31 @@ const PT_DICTIONARY: TranslationDictionary = {
             ? `${alt} comprimida`
             : `Erro ao comprimir ${alt}`,
     blockedDomainPolicyError: 'Este domínio viola nossas políticas de conteúdo',
+  },
+  imageBank: {
+    openAria: 'Buscar imagens no banco de imagens',
+    openTitle: 'Buscar imagens',
+    brandTitle: 'Search Link Pexels',
+    publicBankNotice:
+      'Este serviço utiliza os bancos públicos do Pexels e Pixabay. Ao usá-las, você aceita que pertencem a esses bancos públicos e não a você nem ao Search Link, com permissão de uso. Veja:',
+    publicBankLinkLabel: 'pexels.com',
+    publicBankSecondLinkLabel: 'pixabay.com',
+    savedAria: 'Ver imagens salvas',
+    savedTitle: 'Salvos',
+    savedFullTitle: 'Salvos',
+    closeSavedAria: 'Fechar Salvos',
+    savedEmptyHint: 'Aqui você verá as imagens salvas para os seus catálogos.',
+    placeholder: 'Descreva a imagem que procura...',
+    inputAria: 'Descrição da imagem que procura',
+    clearQueryAria: 'Limpar busca',
+    closeAria: 'Fechar buscador de imagens',
+    panelAria: 'Buscador de imagens',
+    searchingAria: 'Buscando imagens',
+    noResultsNotice: 'Nenhuma imagem encontrada para essa busca. Tente outra descrição.',
+    searchErrorFallback: 'Não foi possível concluir a busca no banco público.',
+    saveImageAria: (alt) => `Salvar ${alt}`,
+    unsaveImageAria: (alt) => `Remover de Salvos: ${alt}`,
+    removeSavedAria: (alt) => `Remover de Salvos: ${alt}`,
   },
   examples: {
     sectionAria: 'Exemplos de automações',

@@ -42,6 +42,12 @@ import {
 } from './lib/localeDetection.ts';
 import { fetchProxiedImage } from './lib/imageProxy.ts';
 import {
+  getImageBankConfigStatus,
+  ImageBankConfigError,
+  ImageBankUpstreamError,
+  searchPublicImageBank,
+} from './lib/imageBank.ts';
+import {
   deleteImageFromR2,
   getMissingR2EnvNames,
   isR2Configured,
@@ -144,6 +150,7 @@ async function startServer() {
     res.setHeader('Cache-Control', 'no-store');
     const geminiKey = (process.env.GEMINI_API_KEY || '').trim();
     const groqKey = (process.env.GROQ_API_KEY || '').trim();
+    const imageBankStatus = getImageBankConfigStatus();
     return res.json({
       ok: true,
       service: 'search-link-api',
@@ -153,6 +160,8 @@ async function startServer() {
         missingR2: getMissingR2EnvNames(),
         gemini: Boolean(geminiKey && !/^TU_/i.test(geminiKey)),
         groq: Boolean(groqKey && !/^TU_/i.test(groqKey)),
+        pixabay: imageBankStatus.pixabay,
+        pexels: imageBankStatus.pexels,
       },
     });
   });
@@ -267,6 +276,42 @@ async function startServer() {
       return res.send(buffer);
     } catch {
       return res.status(502).send('Image fetch failed');
+    }
+  });
+
+  app.get('/api/image-bank/search', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const rawQuery = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    if (!rawQuery) {
+      return res.status(400).json({
+        error: 'Escribe una descripción para buscar imágenes.',
+      });
+    }
+
+    try {
+      const result = await searchPublicImageBank(rawQuery);
+      return res.json({
+        ok: true,
+        ...result,
+      });
+    } catch (err) {
+      if (err instanceof ImageBankConfigError) {
+        return res.status(503).json({
+          notConfigured: true,
+          error:
+            'El banco público de imágenes aún no tiene configurada la variable PIXABAY_API_KEY en el servidor.',
+        });
+      }
+      if (err instanceof ImageBankUpstreamError) {
+        return res.status(err.status).json({
+          error: err.message,
+        });
+      }
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'No se pudo consultar el banco público de imágenes.';
+      return res.status(502).json({ error: message });
     }
   });
 
