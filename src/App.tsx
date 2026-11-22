@@ -2124,6 +2124,7 @@ export default function App() {
         compressionResults={compressionResults}
         isReadOnlyReplay={isReadOnlyReplay}
         serviceCredentials={activeServiceCredentials}
+        organizationName={orgProfile.name}
         jobStatus={activeJobStatus}
         planBRolledBack={jobPlanBRolledBack}
         policyBlocked={jobPolicyBlocked}
@@ -2155,6 +2156,7 @@ export default function App() {
         compressionResults={compressionResults}
         isReadOnlyReplay={isReadOnlyReplay}
         serviceCredentials={activeServiceCredentials}
+        organizationName={orgProfile.name}
         jobStatus={activeJobStatus}
         planBRolledBack={jobPlanBRolledBack}
         policyBlocked={jobPolicyBlocked}

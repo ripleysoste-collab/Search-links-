@@ -27,6 +27,7 @@ import {
   generateAndDownloadCatalogPdf,
   type CatalogPdfExportKind,
 } from '../lib/pdfExport';
+import { downloadServiceSchemaZip } from '../lib/schemaExport';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import { useI18n } from '../lib/i18n';
 
@@ -68,6 +69,7 @@ interface MobileCatalogCarouselProps {
   onOpenOrganization?: () => void;
   isReadOnlyReplay?: boolean;
   serviceCredentials?: ServiceCredentialsDisplay | null;
+  organizationName?: string;
   jobStatus?: MappingQueueJobStatus | null;
   planBRolledBack?: boolean;
   policyBlocked?: boolean;
@@ -100,6 +102,7 @@ export function MobileCatalogCarousel({
   onOpenOrganization,
   isReadOnlyReplay = false,
   serviceCredentials = null,
+  organizationName,
   jobStatus = null,
   planBRolledBack = false,
   policyBlocked = false,
@@ -557,6 +560,24 @@ export function MobileCatalogCarousel({
     } finally {
       setExportingPdfKind(null);
     }
+  };
+
+  const handleDownloadSchemaZip = () => {
+    const categories = Object.values(mappedResults)
+      .map((entry) => entry?.categoria)
+      .filter((c): c is string => Boolean(c && c.trim()));
+    downloadServiceSchemaZip({
+      serviceName:
+        serviceCredentials?.serviceName ||
+        images[0]?.alt ||
+        t.common.productFallback,
+      serviceSlug: serviceCredentials?.slug,
+      endpointUrl: serviceCredentials?.endpointUrl,
+      organizationName,
+      categories,
+      totalProducts: images.length,
+      locale,
+    });
   };
 
   const isDenseMobileGrid = images.length > 12;
@@ -1503,6 +1524,16 @@ export function MobileCatalogCarousel({
                               className="w-full py-2 text-left text-[13px] font-normal text-blue-600 active:opacity-65 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:underline"
                             >
                               {t.pipeline.pdfActions.openEditor}
+                            </button>
+                          </li>
+
+                          <li>
+                            <button
+                              type="button"
+                              onClick={handleDownloadSchemaZip}
+                              className="w-full py-2 text-left text-[13px] font-normal text-blue-600 active:opacity-65 transition-opacity cursor-pointer focus-visible:outline-none focus-visible:underline"
+                            >
+                              {t.pipeline.pdfActions.schema}
                             </button>
                           </li>
                         </ul>

@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
-import { ArrowLeft, Calendar, Check, ChevronDown, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, ChevronDown, Copy, FileArchive, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
 
 import {
   DesktopOrganizationView,
@@ -9,6 +9,12 @@ import {
   type OrganizationServiceItem,
 } from './DesktopOrganizationView';
 import { DesktopStoreView } from './DesktopStoreView';
+import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
+import {
+  buildSchemaInputFromService,
+  buildServiceOpenApiSchemaJson,
+  downloadServiceSchemaZip,
+} from '../lib/schemaExport';
 import {
   formatCreationDate,
   LANGUAGE_OPTIONS,
@@ -38,6 +44,7 @@ type DesktopMenuView =
   | 'google-account'
   | 'organization'
   | 'store'
+  | 'schema'
   | 'language';
 
 function getUserDisplayInfo(
@@ -89,6 +96,10 @@ export function DesktopAccountMenu({
   const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
     null,
   );
+  const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
+    null,
+  );
+  const [schemaCopied, setSchemaCopied] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
@@ -110,19 +121,69 @@ export function DesktopAccountMenu({
       setView('menu');
       setDocsExpanded(false);
       setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
+      setSchemaCopied(false);
       setConfirmSignOut(false);
       setSigningOut(false);
       setSignOutError(null);
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open || view !== 'schema') return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setView('organization');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, view]);
+
   const selectedStoreService =
     services.find((srv) => srv.id === selectedStoreServiceId) ?? services[0] ?? null;
+
+  const selectedSchemaService =
+    services.find((srv) => srv.id === selectedSchemaServiceId) ?? services[0] ?? null;
+
+  const activeSchemaInput = useMemo(
+    () =>
+      selectedSchemaService
+        ? buildSchemaInputFromService(selectedSchemaService, orgProfile.name, locale)
+        : null,
+    [selectedSchemaService, orgProfile.name, locale],
+  );
+
+  const schemaJsonText = useMemo(
+    () => (activeSchemaInput ? buildServiceOpenApiSchemaJson(activeSchemaInput) : ''),
+    [activeSchemaInput],
+  );
+
+  const tokenizedSchemaLines = useMemo(
+    () =>
+      schemaJsonText
+        ? schemaJsonText.split('\n').map((line) => tokenizeJsonLine(line))
+        : [],
+    [schemaJsonText],
+  );
+
+  const handleCopySchema = async () => {
+    if (!schemaJsonText) return;
+    try {
+      await navigator.clipboard.writeText(schemaJsonText);
+      setSchemaCopied(true);
+      window.setTimeout(() => setSchemaCopied(false), 1600);
+    } catch {
+      setSchemaCopied(false);
+    }
+  };
 
   const isExpandedPanelView =
     view === 'google-account' ||
     view === 'organization' ||
     view === 'store' ||
+    view === 'schema' ||
     view === 'language';
   const topTitle =
     view === 'google-account'
@@ -131,9 +192,11 @@ export function DesktopAccountMenu({
         ? t.menu.organization
         : view === 'store'
           ? t.menu.myStore
-          : view === 'language'
-            ? t.menu.language
-            : t.menu.account;
+          : view === 'schema'
+            ? t.org.schemaTitle
+            : view === 'language'
+              ? t.menu.language
+              : t.menu.account;
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -201,40 +264,95 @@ export function DesktopAccountMenu({
         >
           <div className="w-full min-w-[270px] h-full flex flex-col">
             {/* Top bar */}
-            <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-200/75 shrink-0">
-              <div className="flex items-center gap-2.5 min-w-0">
-                {isExpandedPanelView && (
+            {view === 'schema' && selectedSchemaService ? (
+              <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-200/75 bg-white shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-semibold tracking-tight text-slate-950 shrink-0">
+                    {t.org.schemaTitle}
+                  </span>
+                  <span className="text-xs text-slate-400 truncate">
+                    · {selectedSchemaService.name}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopySchema()}
+                    aria-label={t.org.copySchemaAria}
+                    title={t.common.copy}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
+                  >
+                    {schemaCopied ? (
+                      <Check
+                        className="w-4 h-4 text-emerald-600 stroke-[2.5]"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <Copy className="w-4 h-4" aria-hidden="true" />
+                    )}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
-                      setConfirmSignOut(false);
-                      setSignOutError(null);
-                      setView(view === 'store' ? 'organization' : 'menu');
+                      if (activeSchemaInput) {
+                        downloadServiceSchemaZip(activeSchemaInput);
+                      }
                     }}
-                    aria-label={
-                      view === 'store'
-                        ? t.menu.backToOrgAria
-                        : t.menu.backToMenuAria
-                    }
-                    className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
+                    aria-label={t.org.downloadSchemaZipAria}
+                    title={t.org.downloadSchemaZipTitle}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
                   >
-                    <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                    <FileArchive className="w-4 h-4" aria-hidden="true" />
                   </button>
-                )}
-                <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
-                  {topTitle}
-                </span>
-              </div>
 
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label={t.menu.closeMenuAria}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
-              >
-                <X className="w-4 h-4" aria-hidden="true" />
-              </button>
-            </div>
+                  <button
+                    type="button"
+                    onClick={() => setView('organization')}
+                    aria-label={t.org.backToOrgSchemaAria}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-200/75 shrink-0">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  {isExpandedPanelView && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmSignOut(false);
+                        setSignOutError(null);
+                        setView(view === 'store' ? 'organization' : 'menu');
+                      }}
+                      aria-label={
+                        view === 'store'
+                          ? t.menu.backToOrgAria
+                          : t.menu.backToMenuAria
+                      }
+                      className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
+                    >
+                      <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  )}
+                  <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
+                    {topTitle}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label={t.menu.closeMenuAria}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </div>
+            )}
 
             <AnimatePresence mode="wait" initial={false}>
               {view === 'menu' ? (
@@ -384,6 +502,11 @@ export function DesktopAccountMenu({
                       setView('store');
                     }}
                     onViewServiceHistory={onViewServiceHistory}
+                    onOpenSchema={(service) => {
+                      setSchemaCopied(false);
+                      setSelectedSchemaServiceId(service.id);
+                      setView('schema');
+                    }}
                     onOpenServiceChat={onOpenServiceChat}
                     onRotateServiceKey={onRotateServiceKey}
                     onToggleServiceActive={onToggleServiceActive}
@@ -403,6 +526,50 @@ export function DesktopAccountMenu({
                     organizationName={orgProfile.name}
                     organizationLogoUrl={orgProfile.logoUrl || info.photoUrl}
                   />
+                </motion.div>
+              ) : view === 'schema' && selectedSchemaService ? (
+                <motion.div
+                  key="desktop-schema-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <div
+                    aria-readonly="true"
+                    className="flex-1 min-h-0 overflow-auto py-4 px-4 font-mono text-[12px] leading-[1.65] select-text"
+                  >
+                    <div className="min-w-max">
+                      {tokenizedSchemaLines.map((tokens, idx) => (
+                        <div
+                          key={`desktop-schema-line-${idx}`}
+                          className="flex items-start px-1.5"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="w-8 pr-3 text-right text-[11px] text-slate-300 select-none shrink-0 tabular-nums"
+                          >
+                            {idx + 1}
+                          </span>
+                          <pre className="whitespace-pre font-mono">
+                            {tokens.length === 0 ? (
+                              <span>{' '}</span>
+                            ) : (
+                              tokens.map((tok, tIdx) => (
+                                <span
+                                  key={`desktop-schema-tok-${idx}-${tIdx}`}
+                                  className={LIGHT_TOKEN_CLASSES[tok.type]}
+                                >
+                                  {tok.text}
+                                </span>
+                              ))
+                            )}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </motion.div>
               ) : view === 'language' ? (
                 <motion.div

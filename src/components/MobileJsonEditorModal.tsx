@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { Check, Copy, X } from 'lucide-react';
+import { Check, Copy, FileArchive, X } from 'lucide-react';
 import { useI18n } from '../lib/i18n';
 
 interface MobileJsonEditorModalProps {
   jsonText: string;
   onClose: () => void;
+  onDownloadZip?: () => void;
+  downloadZipAria?: string;
+  downloadZipTitle?: string;
+  copyAria?: string;
+  copyTitle?: string;
+  closeAria?: string;
+  ariaLabel?: string;
 }
 
 export type JsonTokenType =
@@ -78,6 +85,13 @@ export const LIGHT_TOKEN_CLASSES: Record<JsonTokenType, string> = {
 export function MobileJsonEditorModal({
   jsonText,
   onClose,
+  onDownloadZip,
+  downloadZipAria,
+  downloadZipTitle,
+  copyAria,
+  copyTitle,
+  closeAria,
+  ariaLabel,
 }: MobileJsonEditorModalProps) {
   const shouldReduceMotion = useReducedMotion();
   const { t } = useI18n();
@@ -114,20 +128,20 @@ export function MobileJsonEditorModal({
     <motion.section
       role="dialog"
       aria-modal="true"
-      aria-label={t.pipeline.readOnlyEditorAria}
+      aria-label={ariaLabel || t.pipeline.readOnlyEditorAria}
       initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
       transition={{ duration: shouldReduceMotion ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed inset-0 z-50 lg:hidden bg-white text-slate-900 flex flex-col"
+      className="fixed inset-0 z-[60] lg:hidden bg-white text-slate-900 flex flex-col"
     >
-      {/* Bare Copy & Close icons top-right directly over the white canvas — no bar or box */}
+      {/* Bare Copy, optional ZIP Download & Close icons top-right directly over the white canvas */}
       <div className="fixed top-3.5 right-4 z-10 flex items-center gap-3">
         <button
           type="button"
           onClick={() => void handleCopyAll()}
-          aria-label={t.pipeline.copyAllJsonAria}
-          title={t.pipeline.copyJsonTitle}
+          aria-label={copyAria || t.pipeline.copyAllJsonAria}
+          title={copyTitle || t.pipeline.copyJsonTitle}
           className="p-1 text-slate-400 hover:text-slate-800 active:opacity-60 transition-colors cursor-pointer"
         >
           {copied ? (
@@ -137,10 +151,22 @@ export function MobileJsonEditorModal({
           )}
         </button>
 
+        {onDownloadZip && (
+          <button
+            type="button"
+            onClick={onDownloadZip}
+            aria-label={downloadZipAria || t.org.downloadSchemaZipAria}
+            title={downloadZipTitle || t.org.downloadSchemaZipTitle}
+            className="p-1 text-slate-400 hover:text-slate-800 active:opacity-60 transition-colors cursor-pointer"
+          >
+            <FileArchive className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onClose}
-          aria-label={t.pipeline.closeEditorTitle}
+          aria-label={closeAria || t.pipeline.closeEditorTitle}
           className="p-1 text-slate-500 hover:text-slate-950 active:opacity-60 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" aria-hidden="true" />

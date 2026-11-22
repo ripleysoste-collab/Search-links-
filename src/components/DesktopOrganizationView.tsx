@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
-  Bot,
   Camera,
   Check,
   Copy,
-  History,
   Loader2,
+  MoreHorizontal,
   Pencil,
   Play,
   Plus,
@@ -84,6 +83,7 @@ interface DesktopOrganizationViewProps {
   onNewProduct: () => void;
   onOpenStore: (service: OrganizationServiceItem) => void;
   onViewServiceHistory: (service: OrganizationServiceItem) => void;
+  onOpenSchema: (service: OrganizationServiceItem) => void;
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
@@ -106,6 +106,7 @@ export function DesktopOrganizationView({
   onNewProduct,
   onOpenStore,
   onViewServiceHistory,
+  onOpenSchema,
   onOpenServiceChat,
   onRotateServiceKey,
   onToggleServiceActive,
@@ -141,6 +142,9 @@ export function DesktopOrganizationView({
     useState<CoreEndpointTestResult | null>(null);
   const [logoImgFailed, setLogoImgFailed] = useState(false);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
+  const [openActionMenuServiceId, setOpenActionMenuServiceId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setOrgNameInput(orgProfile.name);
@@ -163,6 +167,27 @@ export function DesktopOrganizationView({
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, [storePickerOpen]);
+
+  useEffect(() => {
+    if (!openActionMenuServiceId) return;
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('[data-service-action-menu]')) {
+        setOpenActionMenuServiceId(null);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpenActionMenuServiceId(null);
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [openActionMenuServiceId]);
 
   const handleOnboardingLogoChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -826,28 +851,91 @@ export function DesktopOrganizationView({
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1 shrink-0">
-                      {onOpenServiceChat && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenServiceChat(service)}
-                          aria-label={t.org.testChatAria(service.name)}
-                          title={t.org.testChatTitle}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60"
-                        >
-                          <Bot className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      )}
-
+                    <div data-service-action-menu className="relative shrink-0">
                       <button
                         type="button"
-                        onClick={() => onViewServiceHistory(service)}
-                        aria-label={t.org.viewHistoryAria(service.name)}
-                        title={t.org.viewHistoryTitle}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/60"
+                        onClick={() =>
+                          setOpenActionMenuServiceId((prev) =>
+                            prev === service.id ? null : service.id,
+                          )
+                        }
+                        aria-haspopup="menu"
+                        aria-expanded={openActionMenuServiceId === service.id}
+                        aria-label={t.org.moreActionsAria(service.name)}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
+                          openActionMenuServiceId === service.id
+                            ? 'bg-white text-slate-950 shadow-2xs'
+                            : 'text-slate-400 hover:text-slate-900 hover:bg-white'
+                        }`}
                       >
-                        <History className="w-3.5 h-3.5" aria-hidden="true" />
+                        <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
                       </button>
+
+                      <AnimatePresence>
+                        {openActionMenuServiceId === service.id && (
+                          <motion.div
+                            role="menu"
+                            aria-label={t.org.moreActionsAria(service.name)}
+                            initial={
+                              shouldReduceMotion
+                                ? { opacity: 0 }
+                                : { opacity: 0, scale: 0.96, y: 4 }
+                            }
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={
+                              shouldReduceMotion
+                                ? { opacity: 0 }
+                                : { opacity: 0, scale: 0.96, y: 4 }
+                            }
+                            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                            className="absolute right-0 bottom-full mb-1.5 w-36 rounded-2xl border border-slate-200/95 bg-white shadow-[0_18px_44px_-12px_rgba(15,23,42,0.24)] p-1 z-30"
+                          >
+                            <ul className="divide-y divide-slate-100">
+                              {onOpenServiceChat && (
+                                <li>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenuServiceId(null);
+                                      onOpenServiceChat(service);
+                                    }}
+                                    className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer"
+                                  >
+                                    {t.org.menuSearchAi}
+                                  </button>
+                                </li>
+                              )}
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setOpenActionMenuServiceId(null);
+                                    onViewServiceHistory(service);
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer"
+                                >
+                                  {t.org.menuViewProcess}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setOpenActionMenuServiceId(null);
+                                    onOpenSchema(service);
+                                  }}
+                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer"
+                                >
+                                  {t.org.menuViewSchema}
+                                </button>
+                              </li>
+                            </ul>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                 </li>

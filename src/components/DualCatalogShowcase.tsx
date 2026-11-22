@@ -18,6 +18,7 @@ import {
   generateAndDownloadCatalogPdf,
   type CatalogPdfExportKind,
 } from '../lib/pdfExport';
+import { downloadServiceSchemaZip } from '../lib/schemaExport';
 import { DesktopUploadSequence } from './DesktopUploadSequence';
 import type {
   CompressedImageMeta,
@@ -54,6 +55,7 @@ interface DualCatalogShowcaseProps {
   compressionResults?: Record<string, CompressedImageMeta>;
   isReadOnlyReplay?: boolean;
   serviceCredentials?: ServiceCredentialsDisplay | null;
+  organizationName?: string;
   jobStatus?: MappingQueueJobStatus | null;
   planBRolledBack?: boolean;
   policyBlocked?: boolean;
@@ -193,6 +195,7 @@ export function DualCatalogShowcase({
   compressionResults = {},
   isReadOnlyReplay = false,
   serviceCredentials = null,
+  organizationName,
   jobStatus = null,
   planBRolledBack = false,
   policyBlocked = false,
@@ -336,6 +339,24 @@ export function DualCatalogShowcase({
     } finally {
       setExportingPdfKind(null);
     }
+  };
+
+  const handleDownloadSchemaZip = () => {
+    const categories = Object.values(mappedResults)
+      .map((entry) => entry?.categoria)
+      .filter((c): c is string => Boolean(c && c.trim()));
+    downloadServiceSchemaZip({
+      serviceName:
+        serviceCredentials?.serviceName ||
+        images[0]?.alt ||
+        t.common.productFallback,
+      serviceSlug: serviceCredentials?.slug,
+      endpointUrl: serviceCredentials?.endpointUrl,
+      organizationName,
+      categories,
+      totalProducts: images.length,
+      locale,
+    });
   };
 
   // Fullscreen edge-to-edge image viewer state
@@ -1112,6 +1133,16 @@ export function DualCatalogShowcase({
                         className="w-full py-2.5 text-left text-[13.5px] font-normal text-blue-600 hover:text-blue-700 active:opacity-70 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
                       >
                         {t.pipeline.pdfActions.openEditor}
+                      </button>
+                    </li>
+
+                    <li>
+                      <button
+                        type="button"
+                        onClick={handleDownloadSchemaZip}
+                        className="w-full py-2.5 text-left text-[13.5px] font-normal text-blue-600 hover:text-blue-700 active:opacity-70 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline"
+                      >
+                        {t.pipeline.pdfActions.schema}
                       </button>
                     </li>
                   </ul>

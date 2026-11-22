@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
 import { ArrowLeft, Calendar, Check, ChevronDown, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
@@ -8,6 +8,12 @@ import type {
 } from './DesktopOrganizationView';
 import { MobileOrganizationView } from './MobileOrganizationView';
 import { MobileStoreView } from './MobileStoreView';
+import { MobileJsonEditorModal } from './MobileJsonEditorModal';
+import {
+  buildSchemaInputFromService,
+  buildServiceOpenApiSchemaJson,
+  downloadServiceSchemaZip,
+} from '../lib/schemaExport';
 import {
   formatCreationDate,
   LANGUAGE_OPTIONS,
@@ -105,6 +111,9 @@ export function MobileAccountMenu({
   const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
     null,
   );
+  const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
+    null,
+  );
 
   const info = getUserDisplayInfo(
     user,
@@ -116,6 +125,27 @@ export function MobileAccountMenu({
   const selectedStoreService =
     services.find((srv) => srv.id === selectedStoreServiceId) ?? services[0] ?? null;
 
+  const selectedSchemaService = useMemo(
+    () =>
+      selectedSchemaServiceId
+        ? services.find((srv) => srv.id === selectedSchemaServiceId) ?? null
+        : null,
+    [selectedSchemaServiceId, services],
+  );
+
+  const activeSchemaInput = useMemo(
+    () =>
+      selectedSchemaService
+        ? buildSchemaInputFromService(selectedSchemaService, orgProfile.name, locale)
+        : null,
+    [selectedSchemaService, orgProfile.name, locale],
+  );
+
+  const schemaJsonText = useMemo(
+    () => (activeSchemaInput ? buildServiceOpenApiSchemaJson(activeSchemaInput) : ''),
+    [activeSchemaInput],
+  );
+
   useEffect(() => {
     setImgFailed(false);
   }, [info.photoUrl]);
@@ -124,6 +154,7 @@ export function MobileAccountMenu({
     if (!panelOpen) {
       setPanelSubView('organization');
       setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
     }
   }, [panelOpen]);
 
@@ -609,12 +640,30 @@ export function MobileAccountMenu({
                   setPanelSubView('store');
                 }}
                 onViewServiceHistory={onViewServiceHistory}
+                onOpenSchema={(service) => setSelectedSchemaServiceId(service.id)}
                 onOpenServiceChat={onOpenServiceChat}
                 onRotateServiceKey={onRotateServiceKey}
                 onToggleServiceActive={onToggleServiceActive}
               />
             )}
           </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* Mobile full-screen white Schema Viewer modal (Copy, ZIP download, X to return) */}
+      <AnimatePresence>
+        {panelOpen && selectedSchemaService && activeSchemaInput && (
+          <MobileJsonEditorModal
+            jsonText={schemaJsonText}
+            ariaLabel={t.org.schemaTitle}
+            copyAria={t.org.copySchemaAria}
+            copyTitle={t.common.copy}
+            downloadZipAria={t.org.downloadSchemaZipAria}
+            downloadZipTitle={t.org.downloadSchemaZipTitle}
+            closeAria={t.org.backToOrgSchemaAria}
+            onDownloadZip={() => downloadServiceSchemaZip(activeSchemaInput)}
+            onClose={() => setSelectedSchemaServiceId(null)}
+          />
         )}
       </AnimatePresence>
 

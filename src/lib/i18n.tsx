@@ -265,6 +265,15 @@ export interface TranslationDictionary {
     viewStoreTitle: string;
     welcomeSubtitle: string;
     welcomeTitle: string;
+    moreActionsAria: (name: string) => string;
+    menuSearchAi: string;
+    menuViewProcess: string;
+    menuViewSchema: string;
+    schemaTitle: string;
+    copySchemaAria: string;
+    downloadSchemaZipAria: string;
+    downloadSchemaZipTitle: string;
+    backToOrgSchemaAria: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -326,6 +335,7 @@ export interface TranslationDictionary {
       metadata: string;
       all: string;
       openEditor: string;
+      schema: string;
     };
     productJsonLabel: string;
     readOnlyEditorAria: string;
@@ -705,6 +715,15 @@ const ES_DICTIONARY: TranslationDictionary = {
     welcomeSubtitle:
       'Centraliza tus catálogos, API Keys y chatbot Search Link IA en un solo lugar.',
     welcomeTitle: 'Bienvenido a tu Organización',
+    moreActionsAria: (name) => `Más opciones para ${name}`,
+    menuSearchAi: 'Search IA',
+    menuViewProcess: 'Ver proceso',
+    menuViewSchema: 'Ver esquema',
+    schemaTitle: 'Esquema',
+    copySchemaAria: 'Copiar esquema',
+    downloadSchemaZipAria: 'Descargar esquema en ZIP',
+    downloadSchemaZipTitle: 'Descargar ZIP',
+    backToOrgSchemaAria: 'Volver a Organización',
   },
   store: {
     emptyDescDesktop:
@@ -791,6 +810,7 @@ const ES_DICTIONARY: TranslationDictionary = {
       metadata: 'Descargar PDF de Metadatos',
       all: 'Descargar Catálogo Completo (PDF)',
       openEditor: 'Ver JSON en el editor',
+      schema: 'Descargar esquema',
     },
     productJsonLabel: 'JSON del producto',
     readOnlyEditorAria: 'Editor de JSON en solo lectura',
@@ -1173,6 +1193,15 @@ const EN_DICTIONARY: TranslationDictionary = {
     welcomeSubtitle:
       'Centralize your catalogs, API Keys, and Search Link AI chatbot in one place.',
     welcomeTitle: 'Welcome to your Organization',
+    moreActionsAria: (name) => `More options for ${name}`,
+    menuSearchAi: 'Search AI',
+    menuViewProcess: 'View process',
+    menuViewSchema: 'View schema',
+    schemaTitle: 'Schema',
+    copySchemaAria: 'Copy schema',
+    downloadSchemaZipAria: 'Download schema ZIP',
+    downloadSchemaZipTitle: 'Download ZIP',
+    backToOrgSchemaAria: 'Back to Organization',
   },
   store: {
     emptyDescDesktop: 'This service does not have any saved products yet.',
@@ -1258,6 +1287,7 @@ const EN_DICTIONARY: TranslationDictionary = {
       metadata: 'Download Metadata PDF',
       all: 'Download Full Catalog (PDF)',
       openEditor: 'View JSON in editor',
+      schema: 'Download schema',
     },
     productJsonLabel: 'Product JSON',
     readOnlyEditorAria: 'Read-only JSON editor',
@@ -1641,6 +1671,15 @@ const PT_DICTIONARY: TranslationDictionary = {
     welcomeSubtitle:
       'Centralize seus catálogos, API Keys e chatbot Search Link IA em um só lugar.',
     welcomeTitle: 'Bem-vindo à sua Organização',
+    moreActionsAria: (name) => `Mais opções para ${name}`,
+    menuSearchAi: 'Search IA',
+    menuViewProcess: 'Ver processo',
+    menuViewSchema: 'Ver esquema',
+    schemaTitle: 'Esquema',
+    copySchemaAria: 'Copiar esquema',
+    downloadSchemaZipAria: 'Baixar esquema em ZIP',
+    downloadSchemaZipTitle: 'Baixar ZIP',
+    backToOrgSchemaAria: 'Voltar para Organização',
   },
   store: {
     emptyDescDesktop:
@@ -1727,6 +1766,7 @@ const PT_DICTIONARY: TranslationDictionary = {
       metadata: 'Baixar PDF de Metadados',
       all: 'Baixar Catálogo Completo (PDF)',
       openEditor: 'Ver JSON no editor',
+      schema: 'Baixar esquema',
     },
     productJsonLabel: 'JSON do produto',
     readOnlyEditorAria: 'Editor JSON somente leitura',
