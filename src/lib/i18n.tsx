@@ -195,6 +195,7 @@ export interface TranslationDictionary {
     termsAndConditions: string;
     contentPolicies: string;
     cookiePolicies: string;
+    agencyMode: string;
     comingSoon: string;
   };
   auth: {
@@ -664,6 +665,7 @@ const ES_DICTIONARY: TranslationDictionary = {
     termsAndConditions: 'Términos y condiciones',
     contentPolicies: 'Políticas de contenido',
     cookiePolicies: 'Políticas de cookies',
+    agencyMode: 'Modo Agencia',
     comingSoon: 'Próximamente',
   },
   auth: {
@@ -1177,6 +1179,7 @@ const EN_DICTIONARY: TranslationDictionary = {
     termsAndConditions: 'Terms and Conditions',
     contentPolicies: 'Content Policies',
     cookiePolicies: 'Cookie Policies',
+    agencyMode: 'Agency Mode',
     comingSoon: 'Coming soon',
   },
   auth: {
@@ -1690,6 +1693,7 @@ const PT_DICTIONARY: TranslationDictionary = {
     termsAndConditions: 'Termos e condições',
     contentPolicies: 'Políticas de conteúdo',
     cookiePolicies: 'Políticas de cookies',
+    agencyMode: 'Modo Agência',
     comingSoon: 'Em breve',
   },
   auth: {

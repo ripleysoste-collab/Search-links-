@@ -95,6 +95,7 @@ const PRIVACY_POLICY_PATH = '/politicas-de-privacidad';
 const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
 const CONTENT_POLICY_PATH = '/politicas-de-contenido';
 const COOKIE_POLICY_PATH = '/politicas-de-cookies';
+const AGENCY_MODE_PATH = '/modo-agencia';
 const IMAGE_BANK_PATH = '/banco-publico';
 
 function isImageBankPathname(pathname: string): boolean {
@@ -140,12 +141,21 @@ const COOKIE_POLICY_ALIASES = new Set([
   '/cookies',
 ]);
 
+const AGENCY_MODE_ALIASES = new Set([
+  '/modo-agencia',
+  '/modo-desarrollador',
+  '/agency-mode',
+  '/developer-mode',
+  '/modo-agencia-desarrollo',
+]);
+
 function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
   const normalized = pathname.replace(/\/+$/, '').toLowerCase();
   if (PRIVACY_POLICY_ALIASES.has(normalized)) return 'privacy';
   if (TERMS_ALIASES.has(normalized)) return 'terms';
   if (CONTENT_POLICY_ALIASES.has(normalized)) return 'content';
   if (COOKIE_POLICY_ALIASES.has(normalized)) return 'cookies';
+  if (AGENCY_MODE_ALIASES.has(normalized)) return 'agency';
   return null;
 }
 
@@ -153,6 +163,7 @@ function getCanonicalLegalDocPath(docId: LegalDocId): string {
   if (docId === 'terms') return TERMS_AND_CONDITIONS_PATH;
   if (docId === 'content') return CONTENT_POLICY_PATH;
   if (docId === 'cookies') return COOKIE_POLICY_PATH;
+  if (docId === 'agency') return AGENCY_MODE_PATH;
   return PRIVACY_POLICY_PATH;
 }
 
