@@ -80,6 +80,10 @@ export interface TranslationDictionary {
     domainPromptQuestion: string;
     domainPromptCancel: string;
     domainPromptContinue: string;
+    savedCatalogPromptQuestion: string;
+    savedCatalogPromptAccept: string;
+    noSavedCatalogImagesError: string;
+    savedCatalogAuthRequiredError: string;
     invalidImageFilesError: string;
     uploadImageError: string;
     mapImageError: string;
@@ -435,6 +439,10 @@ const ES_DICTIONARY: TranslationDictionary = {
       'Si lo deseas, puedes detenerlo y subir desde almacenamiento.',
     domainPromptCancel: 'Cancelar',
     domainPromptContinue: 'Continuar',
+    savedCatalogPromptQuestion: '¿Estás seguro de usar las imágenes del catálogo?',
+    savedCatalogPromptAccept: 'Aceptar',
+    noSavedCatalogImagesError: 'No encontramos imágenes guardadas.',
+    savedCatalogAuthRequiredError: 'Inicia sesión con Google para procesar tu catálogo.',
     invalidImageFilesError: 'Por favor selecciona archivos de imagen válidos.',
     uploadImageError: 'Error al subir la imagen.',
     mapImageError: 'Error al renderizar y mapear la imagen con IA.',
@@ -493,7 +501,7 @@ const ES_DICTIONARY: TranslationDictionary = {
     unsaveImageAria: (alt) => `Quitar de Guardado: ${alt}`,
     removeSavedAria: (alt) => `Eliminar de Guardado: ${alt}`,
     cooldownNotice: (waitText) =>
-      `Prohibido saturar servidores ajenos. Espera ${waitText} para volver a buscar.`,
+      `Prohibido saturar servidores ajenos. Espera ${waitText}`,
     generateCardTitle: 'Generar con IA',
     generateCardPlusBadge: 'Es una función Plus',
     generatingAiLabel: 'Generando con IA...',
@@ -943,6 +951,10 @@ const EN_DICTIONARY: TranslationDictionary = {
       "If you'd like, you can stop here and upload from storage.",
     domainPromptCancel: 'Cancel',
     domainPromptContinue: 'Continue',
+    savedCatalogPromptQuestion: 'Are you sure you want to use the catalog images?',
+    savedCatalogPromptAccept: 'Accept',
+    noSavedCatalogImagesError: 'No saved images found.',
+    savedCatalogAuthRequiredError: 'Sign in with Google to process your catalog.',
     invalidImageFilesError: 'Please select valid image files.',
     uploadImageError: 'Failed to upload image.',
     mapImageError: 'Failed to render and map image with AI.',
@@ -1001,7 +1013,7 @@ const EN_DICTIONARY: TranslationDictionary = {
     unsaveImageAria: (alt) => `Remove from Saved: ${alt}`,
     removeSavedAria: (alt) => `Remove from Saved: ${alt}`,
     cooldownNotice: (waitText) =>
-      `Excessive requests to external servers are prohibited. Wait ${waitText} before searching again.`,
+      `Do not overload external servers. Wait ${waitText}`,
     generateCardTitle: 'Generate with AI',
     generateCardPlusBadge: 'Plus plan feature',
     generatingAiLabel: 'Generating with AI...',
@@ -1452,6 +1464,10 @@ const PT_DICTIONARY: TranslationDictionary = {
       'Se quiser, você pode parar aqui e enviar do armazenamento.',
     domainPromptCancel: 'Cancelar',
     domainPromptContinue: 'Continuar',
+    savedCatalogPromptQuestion: 'Tem certeza de que deseja usar as imagens do catálogo?',
+    savedCatalogPromptAccept: 'Aceitar',
+    noSavedCatalogImagesError: 'Não encontramos imagens salvas.',
+    savedCatalogAuthRequiredError: 'Entre com o Google para processar seu catálogo.',
     invalidImageFilesError: 'Por favor, selecione arquivos de imagem válidos.',
     uploadImageError: 'Erro ao enviar a imagem.',
     mapImageError: 'Erro ao renderizar e mapear a imagem com IA.',
@@ -1510,7 +1526,7 @@ const PT_DICTIONARY: TranslationDictionary = {
     unsaveImageAria: (alt) => `Remover de Salvos: ${alt}`,
     removeSavedAria: (alt) => `Remover de Salvos: ${alt}`,
     cooldownNotice: (waitText) =>
-      `Proibido saturar servidores externos. Aguarde ${waitText} para buscar novamente.`,
+      `Proibido sobrecarregar servidores externos. Aguarde ${waitText}`,
     generateCardTitle: 'Gerar com IA',
     generateCardPlusBadge: 'Recurso do plano Plus',
     generatingAiLabel: 'Gerando com IA...',

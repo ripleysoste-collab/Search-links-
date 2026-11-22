@@ -16,6 +16,7 @@ interface DesktopImageBankPanelProps {
   searchError: string | null;
   cooldownMessage: string | null;
   plusNotice: string | null;
+  guestIpBlockedNotice: string | null;
   aiGenerateError: string | null;
   onGenerateAi: () => void;
   isGeneratingAi: boolean;
@@ -42,6 +43,7 @@ export function DesktopImageBankPanel({
   searchError,
   cooldownMessage,
   plusNotice,
+  guestIpBlockedNotice,
   aiGenerateError,
   onGenerateAi,
   isGeneratingAi,
@@ -231,29 +233,36 @@ export function DesktopImageBankPanel({
 
             {/* Search Link Pexels title & public bank notice crediting Pexels + Pixabay side by side */}
             <div className="px-6 pb-3 shrink-0 space-y-2">
-              {plusNotice && (
+              {guestIpBlockedNotice ? (
+                <p
+                  role="alert"
+                  className="px-2 text-[11px] font-medium leading-snug text-red-300 drop-shadow-[0_1px_5px_rgba(0,0,0,0.95)] text-center"
+                >
+                  {guestIpBlockedNotice}
+                </p>
+              ) : plusNotice ? (
                 <p
                   role="status"
-                  className="px-3.5 py-2 rounded-xl bg-blue-50/95 backdrop-blur-md border border-blue-200/90 text-[11px] font-medium leading-snug text-blue-900 shadow-sm text-center"
+                  className="px-2 text-[11px] font-medium leading-snug text-red-300 drop-shadow-[0_1px_5px_rgba(0,0,0,0.95)] text-center"
                 >
                   {plusNotice}
                 </p>
-              )}
-              {aiGenerateError && (
+              ) : aiGenerateError ? (
                 <p
                   role="alert"
-                  className="px-3.5 py-2 rounded-xl bg-rose-50/95 backdrop-blur-md border border-rose-200/90 text-[11px] font-medium leading-snug text-rose-700 shadow-sm text-center"
+                  className="px-2 text-[11px] font-medium leading-snug text-red-300 drop-shadow-[0_1px_5px_rgba(0,0,0,0.95)] text-center"
                 >
                   {aiGenerateError}
                 </p>
-              )}
-              {cooldownMessage && (
-                <p
-                  role="status"
-                  className="px-3.5 py-2 rounded-xl bg-amber-50/95 backdrop-blur-md border border-amber-200/90 text-[11px] font-medium leading-snug text-amber-950 shadow-sm text-center"
-                >
-                  {cooldownMessage}
-                </p>
+              ) : (
+                cooldownMessage && (
+                  <p
+                    role="status"
+                    className="px-2 text-[11px] font-medium leading-snug text-red-300 drop-shadow-[0_1px_5px_rgba(0,0,0,0.95)] text-center tabular-nums"
+                  >
+                    {cooldownMessage}
+                  </p>
+                )
               )}
               <div className="rounded-2xl bg-white/88 backdrop-blur-md border border-white/80 px-4 py-2.5 shadow-[0_8px_24px_-8px_rgba(0,0,0,0.28)]">
                 <p className="text-xs font-semibold tracking-tight text-black">

@@ -9,10 +9,12 @@ import {
 export const ADMIN_TEST_EMAIL = 'cristiancuerodiaz@gmail.com';
 export const GUEST_EXTRACT_MAX_ATTEMPTS = 3;
 export const GUEST_EXTRACT_MAX_IMAGES = 10;
+export const GUEST_IMAGE_BANK_MAX_ATTEMPTS = 2;
 export const GUEST_IP_BLOCK_MS = 24 * 60 * 60 * 1000;
 export const FREE_PLAN_MAX_IMAGES = 20;
 export const FREE_PLAN_MAX_API_REQUESTS_MONTHLY = 1000;
 export const GUEST_EXTRACT_COOKIE_NAME = 'sl_guest_ext';
+export const GUEST_IMAGE_BANK_COOKIE_NAME = 'sl_guest_img_bank';
 
 export interface AuthenticatedRequestUser {
   userId: string;
@@ -45,6 +47,7 @@ const TOKEN_CACHE_MAX_ENTRIES = 2000;
 const QUOTA_DB_CACHE_TTL_MS = 120_000;
 
 const guestExtractMemory = new Map<string, GuestExtractRecord>();
+const guestImageBankMemory = new Map<string, GuestExtractRecord>();
 const accountImageMemory = new Map<string, AccountImageTracker>();
 const verifiedTokenCache = new Map<string, VerifiedTokenCacheEntry>();
 const monthlyApiCounterMemory = new Map<string, number>();
@@ -552,3 +555,153 @@ export function recordAndCheckMonthlyApiQuota(
     limit: FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
   };
 }
+
+function pruneGuestImageBankMemory(now: number) {
+  if (guestImageBankMemory.size <= 4000) return;
+  for (const [k, rec] of guestImageBankMemory.entries()) {
+    if (rec.blockedUntil <= now && now - rec.windowStart >= GUEST_IP_BLOCK_MS) {
+      guestImageBankMemory.delete(k);
+    }
+  }
+}
+
+export function inspectGuestImageBankStatus(
+  headers: IncomingHttpHeaders,
+  remoteAddress: string | undefined,
+  authenticatedUser: AuthenticatedRequestUser | null,
+): {
+  ipBlocked: boolean;
+  attemptsUsed: number;
+  clearCookieHeader?: string;
+} {
+  const ip = getClientIp(headers, remoteAddress);
+  const cookieAttrs = getCookieSecurityAttrs(headers);
+  if (authenticatedUser) {
+    guestImageBankMemory.delete(ip);
+    return {
+      ipBlocked: false,
+      attemptsUsed: 0,
+      clearCookieHeader: `${GUEST_IMAGE_BANK_COOKIE_NAME}=; Path=/; HttpOnly; ${cookieAttrs}; Max-Age=0`,
+    };
+  }
+
+  const now = Date.now();
+  const cookies = parseCookies(
+    typeof headers.cookie === 'string' ? headers.cookie : undefined,
+  );
+  const cookieRec = verifySignedCookiePayload<{ c?: number; b?: number; w?: number }>(
+    cookies[GUEST_IMAGE_BANK_COOKIE_NAME],
+  );
+  const merged = normalizeGuestRecord(guestImageBankMemory.get(ip), cookieRec, now);
+
+  return {
+    ipBlocked: merged.blockedUntil > now,
+    attemptsUsed: merged.count,
+  };
+}
+
+export function checkAndBlockExhaustedGuestImageBank(
+  headers: IncomingHttpHeaders,
+  remoteAddress: string | undefined,
+  authenticatedUser: AuthenticatedRequestUser | null,
+): {
+  allowed: boolean;
+  ipBlocked: boolean;
+  setCookieHeader?: string;
+} {
+  const ip = getClientIp(headers, remoteAddress);
+  const cookieAttrs = getCookieSecurityAttrs(headers);
+
+  if (authenticatedUser) {
+    guestImageBankMemory.delete(ip);
+    return {
+      allowed: true,
+      ipBlocked: false,
+      setCookieHeader: `${GUEST_IMAGE_BANK_COOKIE_NAME}=; Path=/; HttpOnly; ${cookieAttrs}; Max-Age=0`,
+    };
+  }
+
+  const now = Date.now();
+  pruneGuestImageBankMemory(now);
+
+  const cookies = parseCookies(
+    typeof headers.cookie === 'string' ? headers.cookie : undefined,
+  );
+  const cookieRec = verifySignedCookiePayload<{ c?: number; b?: number; w?: number }>(
+    cookies[GUEST_IMAGE_BANK_COOKIE_NAME],
+  );
+  const current = normalizeGuestRecord(guestImageBankMemory.get(ip), cookieRec, now);
+
+  if (current.blockedUntil > now || current.count >= GUEST_IMAGE_BANK_MAX_ATTEMPTS) {
+    const blockedRecord: GuestExtractRecord = {
+      count: Math.max(current.count, GUEST_IMAGE_BANK_MAX_ATTEMPTS),
+      blockedUntil: Math.max(current.blockedUntil, now + GUEST_IP_BLOCK_MS),
+      windowStart: current.windowStart,
+    };
+    guestImageBankMemory.set(ip, blockedRecord);
+
+    const signed = signCookiePayload({
+      c: blockedRecord.count,
+      b: blockedRecord.blockedUntil,
+      w: blockedRecord.windowStart,
+    });
+    const setCookieHeader = `${GUEST_IMAGE_BANK_COOKIE_NAME}=${encodeURIComponent(signed)}; Path=/; HttpOnly; ${cookieAttrs}; Max-Age=86400`;
+
+    return {
+      allowed: false,
+      ipBlocked: true,
+      setCookieHeader,
+    };
+  }
+
+  return {
+    allowed: true,
+    ipBlocked: false,
+  };
+}
+
+export function consumeGuestImageBankAttempt(
+  headers: IncomingHttpHeaders,
+  remoteAddress: string | undefined,
+  authenticatedUser: AuthenticatedRequestUser | null,
+): {
+  attemptsUsed: number;
+  setCookieHeader?: string;
+} {
+  if (authenticatedUser) {
+    return { attemptsUsed: 0 };
+  }
+
+  const ip = getClientIp(headers, remoteAddress);
+  const cookieAttrs = getCookieSecurityAttrs(headers);
+  const now = Date.now();
+  pruneGuestImageBankMemory(now);
+
+  const cookies = parseCookies(
+    typeof headers.cookie === 'string' ? headers.cookie : undefined,
+  );
+  const cookieRec = verifySignedCookiePayload<{ c?: number; b?: number; w?: number }>(
+    cookies[GUEST_IMAGE_BANK_COOKIE_NAME],
+  );
+  const current = normalizeGuestRecord(guestImageBankMemory.get(ip), cookieRec, now);
+
+  const nextRecord: GuestExtractRecord = {
+    count: current.count + 1,
+    blockedUntil: 0,
+    windowStart: current.windowStart,
+  };
+  guestImageBankMemory.set(ip, nextRecord);
+
+  const signed = signCookiePayload({
+    c: nextRecord.count,
+    b: nextRecord.blockedUntil,
+    w: nextRecord.windowStart,
+  });
+  const setCookieHeader = `${GUEST_IMAGE_BANK_COOKIE_NAME}=${encodeURIComponent(signed)}; Path=/; HttpOnly; ${cookieAttrs}; Max-Age=86400`;
+
+  return {
+    attemptsUsed: nextRecord.count,
+    setCookieHeader,
+  };
+}
+

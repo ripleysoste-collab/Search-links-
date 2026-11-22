@@ -19,11 +19,14 @@ import {
   type PendingR2UploadPayload,
 } from './lib/mappingQueue.ts';
 import {
+  checkAndBlockExhaustedGuestImageBank,
   checkAndConsumeGuestExtractQuota,
   checkFreeAccountImageQuota,
+  consumeGuestImageBankAttempt,
   FREE_PLAN_MAX_IMAGES,
   GUEST_EXTRACT_MAX_IMAGES,
   inspectGuestExtractStatus,
+  inspectGuestImageBankStatus,
   invalidateUserImageQuotaCache,
   isAdminTestEmail,
   markFreeAccountImageConsumed,
@@ -294,6 +297,21 @@ async function startServer() {
     }
 
     const authUser = await verifySupabaseBearerUser(req.headers);
+    const guestCheck = checkAndBlockExhaustedGuestImageBank(
+      req.headers,
+      req.socket?.remoteAddress,
+      authUser,
+    );
+    if (guestCheck.setCookieHeader) {
+      res.append('Set-Cookie', guestCheck.setCookieHeader);
+    }
+    if (!guestCheck.allowed) {
+      return res.status(429).json({
+        ipBlocked: true,
+        error: 'Su IP ha sido bloqueado. Inicia sesión.',
+      });
+    }
+
     const cooldown = checkImageBankCooldown(
       req.headers,
       authUser?.userId,
@@ -315,7 +333,17 @@ async function startServer() {
         authUser?.userId,
         req.socket?.remoteAddress,
       );
-      res.setHeader('Set-Cookie', consumed.cookieHeader);
+      res.append('Set-Cookie', consumed.cookieHeader);
+
+      const guestConsumed = consumeGuestImageBankAttempt(
+        req.headers,
+        req.socket?.remoteAddress,
+        authUser,
+      );
+      if (guestConsumed.setCookieHeader) {
+        res.append('Set-Cookie', guestConsumed.setCookieHeader);
+      }
+
       return res.json({
         ok: true,
         cooldownSeconds: consumed.cooldownSeconds,
@@ -345,12 +373,21 @@ async function startServer() {
   app.get('/api/image-bank/access', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const authUser = await verifySupabaseBearerUser(req.headers);
+    const guestStatus = inspectGuestImageBankStatus(
+      req.headers,
+      req.socket?.remoteAddress,
+      authUser,
+    );
+    if (guestStatus.clearCookieHeader) {
+      res.append('Set-Cookie', guestStatus.clearCookieHeader);
+    }
     const hasPlusAccess = authUser
       ? hasImageBankPlusAccess(authUser.email, authUser.appMetadata)
       : false;
     return res.json({
       ok: true,
       hasPlusAccess,
+      guestIpBlocked: guestStatus.ipBlocked,
     });
   });
 

@@ -33,7 +33,7 @@ import { CATALOG_SAMPLE_IMAGES, type CatalogImageItem } from './data/catalogSamp
 import { isBlockedPolicyDomain } from '../lib/blockedDomains';
 import { resolveApiUrl } from './lib/apiConfig';
 import {
-  fetchImageBankPlusAccess,
+  fetchImageBankAccessStatus,
   generateAiImageFromPrompt,
   ImageBankClientError,
   loadSavedImageBankItems,
@@ -95,6 +95,15 @@ const PRIVACY_POLICY_PATH = '/politicas-de-privacidad';
 const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
 const CONTENT_POLICY_PATH = '/politicas-de-contenido';
 const COOKIE_POLICY_PATH = '/politicas-de-cookies';
+const IMAGE_BANK_PATH = '/banco-publico';
+
+function isImageBankPathname(pathname: string): boolean {
+  return pathname.replace(/\/+$/, '').toLowerCase() === IMAGE_BANK_PATH;
+}
+
+function isSavedCatalogCommand(value: string): boolean {
+  return /^\/(?:cat[aá]logo|borrador)\/?$/i.test(value.trim());
+}
 
 const PRIVACY_POLICY_ALIASES = new Set([
   '/politicas-de-privacidad',
@@ -168,12 +177,15 @@ export default function App() {
       : null,
   );
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
-  const [isImageBankOpen, setIsImageBankOpen] = useState(false);
+  const [isImageBankOpen, setIsImageBankOpen] = useState(() =>
+    typeof window !== 'undefined' && isImageBankPathname(window.location.pathname),
+  );
   const [imageBankQuery, setImageBankQuery] = useState('');
   const [imageBankResults, setImageBankResults] = useState<ImageBankImageItem[]>([]);
   const [isImageBankSearching, setIsImageBankSearching] = useState(false);
   const [hasSearchedImageBank, setHasSearchedImageBank] = useState(false);
   const [imageBankError, setImageBankError] = useState<string | null>(null);
+  const [imageBankGuestIpBlocked, setImageBankGuestIpBlocked] = useState(false);
   const [imageBankCooldownUntilMs, setImageBankCooldownUntilMs] = useState<number>(0);
   const [showImageBankCooldownNotice, setShowImageBankCooldownNotice] = useState(false);
   const [imageBankCooldownRemainingSec, setImageBankCooldownRemainingSec] = useState(0);
@@ -230,6 +242,7 @@ export default function App() {
     items: CatalogImageItem[];
     originUrl: string;
     overflowNotice: string | null;
+    promptKind?: 'domain' | 'savedCatalog';
   } | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [orgProfile, setOrgProfile] = useState<OrganizationProfile>({
@@ -336,25 +349,32 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    if (!authUser) {
-      setHasImageBankPlusAccess(false);
-      return;
-    }
-    const isAdminOrMetaPlus =
-      authUser.email?.trim().toLowerCase() === ADMIN_EXTRACT_ONLY_EMAIL ||
-      authUser.app_metadata?.plan === 'plus' ||
-      authUser.app_metadata?.plan === 'pro' ||
-      authUser.app_metadata?.tier === 'plus' ||
-      authUser.app_metadata?.tier === 'pro';
+    const isAdminOrMetaPlus = Boolean(
+      authUser &&
+        (authUser.email?.trim().toLowerCase() === ADMIN_EXTRACT_ONLY_EMAIL ||
+          authUser.app_metadata?.plan === 'plus' ||
+          authUser.app_metadata?.plan === 'pro' ||
+          authUser.app_metadata?.tier === 'plus' ||
+          authUser.app_metadata?.tier === 'pro'),
+    );
     if (isAdminOrMetaPlus) {
       setHasImageBankPlusAccess(true);
+    } else if (!authUser) {
+      setHasImageBankPlusAccess(false);
     }
-    void fetchImageBankPlusAccess()
-      .then((allowed) => {
-        if (active) setHasImageBankPlusAccess(allowed || isAdminOrMetaPlus);
+    if (authUser) {
+      setImageBankGuestIpBlocked(false);
+    }
+
+    void fetchImageBankAccessStatus()
+      .then((status) => {
+        if (!active) return;
+        setHasImageBankPlusAccess(status.hasPlusAccess || isAdminOrMetaPlus);
+        setImageBankGuestIpBlocked(authUser ? false : status.guestIpBlocked);
       })
       .catch(() => {
-        if (active) setHasImageBankPlusAccess(isAdminOrMetaPlus);
+        if (!active) return;
+        setHasImageBankPlusAccess(isAdminOrMetaPlus);
       });
     return () => {
       active = false;
@@ -369,6 +389,9 @@ export default function App() {
   const imageBankPlusNotice = showAiPlusRequiredNotice
     ? t.imageBank.plusRequiredNotice
     : null;
+
+  const imageBankGuestIpBlockedNotice =
+    !authUser && imageBankGuestIpBlocked ? t.app.guestIpBlockedError : null;
 
   const usedFreeImages = orgServices.reduce(
     (sum, srv) => sum + (srv.itemCount || srv.products?.length || 0),
@@ -1207,12 +1230,12 @@ export default function App() {
     if (authUserRef.current) return;
     setIsImageBankOpen(false);
     setIsImageBankSavedView(false);
-    if (
-      typeof window !== 'undefined' &&
-      window.innerWidth < 1024 &&
-      window.location.pathname !== '/login'
-    ) {
-      window.history.pushState({ authRoute: true }, '', '/login');
+    if (typeof window !== 'undefined') {
+      if (window.innerWidth < 1024 && window.location.pathname !== '/login') {
+        window.history.pushState({ authRoute: true }, '', '/login');
+      } else if (isImageBankPathname(window.location.pathname)) {
+        window.history.replaceState(null, '', '/');
+      }
     }
     setIsAuthOpen(true);
   };
@@ -1223,6 +1246,9 @@ export default function App() {
     setIsGeneratingAiImage(false);
     setIsImageBankOpen(false);
     setIsImageBankSavedView(false);
+    if (typeof window !== 'undefined' && isImageBankPathname(window.location.pathname)) {
+      window.history.pushState(null, '', '/');
+    }
   };
 
   const handleImageBankQueryChange = (next: string) => {
@@ -1237,6 +1263,10 @@ export default function App() {
   const handleImageBankSearch = async () => {
     const clean = imageBankQuery.trim();
     if (!clean) return;
+
+    if (!authUserRef.current && imageBankGuestIpBlocked) {
+      return;
+    }
 
     const remainingMs = imageBankCooldownUntilMs - Date.now();
     if (remainingMs > 0) {
@@ -1268,6 +1298,11 @@ export default function App() {
       setImageBankCooldownUntilMs(Date.now() + cooldownSec * 1000);
     } catch (err) {
       if (controller.signal.aborted) return;
+      if (err instanceof ImageBankClientError && err.ipBlocked) {
+        setImageBankGuestIpBlocked(true);
+        setShowImageBankCooldownNotice(false);
+        return;
+      }
       if (err instanceof ImageBankClientError && err.rateLimited) {
         const retrySec = err.retryAfterSeconds ?? 180;
         setImageBankCooldownUntilMs(Date.now() + retrySec * 1000);
@@ -1357,10 +1392,20 @@ export default function App() {
       const next = !prev;
       if (!next) {
         imageBankAbortRef.current?.abort();
+        aiGenerateAbortRef.current?.abort();
+        setIsGeneratingAiImage(false);
         setIsImageBankSavedView(false);
-      } else if (isDesktopViewport) {
-        setIsDesktopMenuOpen(false);
-        setIsAuthOpen(false);
+        if (typeof window !== 'undefined' && isImageBankPathname(window.location.pathname)) {
+          window.history.pushState(null, '', '/');
+        }
+      } else {
+        if (isDesktopViewport) {
+          setIsDesktopMenuOpen(false);
+          setIsAuthOpen(false);
+        }
+        if (typeof window !== 'undefined' && !isImageBankPathname(window.location.pathname)) {
+          window.history.pushState({ imageBankRoute: true }, '', IMAGE_BANK_PATH);
+        }
       }
       return next;
     });
@@ -1458,6 +1503,15 @@ export default function App() {
         return;
       }
       setActiveDocRoute(null);
+
+      if (isImageBankPathname(window.location.pathname)) {
+        setIsAuthOpen(false);
+        setIsImageBankOpen(true);
+        return;
+      }
+      setIsImageBankOpen(false);
+      setIsImageBankSavedView(false);
+
       if (window.location.pathname === '/login' && !authUserRef.current) {
         setIsAuthOpen(true);
       } else if (docReturnToAuthRef.current && !authUserRef.current) {
@@ -1561,6 +1615,92 @@ export default function App() {
     event.preventDefault();
     const trimmed = url.trim();
     if (!trimmed || isExtracting) return;
+
+    if (isSavedCatalogCommand(trimmed)) {
+      setExtractError(null);
+      setBatchNotice(null);
+      setPendingDomainBatch(null);
+
+      const savedCatalog =
+        savedImageBankItems.length > 0
+          ? savedImageBankItems
+          : loadSavedImageBankItems();
+
+      if (savedCatalog.length === 0) {
+        setExtractError(t.app.noSavedCatalogImagesError);
+        return;
+      }
+
+      const currentUser = authUserRef.current;
+      const isAdminAccount =
+        currentUser?.email?.trim().toLowerCase() === ADMIN_EXTRACT_ONLY_EMAIL;
+      const remainingQuota = currentUser
+        ? getRemainingFreeImages(currentUser)
+        : savedCatalog.length;
+
+      if (currentUser && !isAdminAccount && remainingQuota <= 0) {
+        setExtractError(t.app.freeImageQuotaExceededError);
+        return;
+      }
+
+      const activeLimit = !currentUser
+        ? savedCatalog.length
+        : isAdminAccount
+          ? MAX_ADMIN_EXTRACT_IMAGES
+          : Math.min(MAX_FREE_UPLOAD_IMAGES, remainingQuota);
+      const selectedSaved = savedCatalog.slice(0, activeLimit);
+      const overflowNotice =
+        savedCatalog.length > activeLimit
+          ? usedFreeImages > 0
+            ? t.app.freeRemainingNotice(activeLimit, MAX_FREE_UPLOAD_IMAGES)
+            : t.app.freePlanLimitNotice(activeLimit)
+          : null;
+
+      const preparedImages: CatalogImageItem[] = selectedSaved.map((item, idx) => {
+        const targetUrl = item.fullUrl || item.previewUrl;
+        return {
+          id: `saved-cat-${Date.now()}-${idx}-${item.id}`,
+          url: targetUrl,
+          cleanUrl: targetUrl,
+          sourcePageUrl: item.sourcePageUrl || undefined,
+          alt: item.alt || t.app.imageFallbackAlt(idx + 1),
+        };
+      });
+
+      if (isImageBankOpen) {
+        closeImageBank();
+      }
+      cancelOngoingCompression();
+      setIsFileUploadFlow(false);
+      setIsReadOnlyReplay(false);
+      setShowCompressionBox(false);
+      setCompressionStatuses({});
+      setShowUploadBox(false);
+      setUploadStatuses({});
+      setShowReceiveBox(false);
+      setReceiveStatuses({});
+      setShowMapBox(false);
+      setMapStatuses({});
+      setMappedResults({});
+      setCompressionResults({});
+      setActiveJobStatus(null);
+      setJobPlanBRolledBack(false);
+      setJobPolicyBlocked(false);
+      setJobLifecycleNotice(null);
+      setActiveServiceCredentials(null);
+      setBatchNotice(overflowNotice);
+      setHasSearched(true);
+      setCatalogImages(preparedImages);
+      setCatalogVersion((prev) => prev + 1);
+      setPendingDomainBatch({
+        items: preparedImages,
+        originUrl: trimmed.toLowerCase(),
+        overflowNotice,
+        promptKind: 'savedCatalog',
+      });
+      inputRef.current?.blur();
+      return;
+    }
 
     if (rejectIfBlockedDomain(trimmed)) {
       return;
@@ -1731,8 +1871,13 @@ export default function App() {
     if (!pendingDomainBatch) return;
     const currentUser = authUserRef.current;
     if (!currentUser) {
+      const wasSavedCatalog = pendingDomainBatch.promptKind === 'savedCatalog';
       setPendingDomainBatch(null);
-      setBatchNotice(t.app.guestExtractOnlyNotice);
+      if (wasSavedCatalog) {
+        setExtractError(t.app.savedCatalogAuthRequiredError);
+      } else {
+        setBatchNotice(t.app.guestExtractOnlyNotice);
+      }
       return;
     }
     const isAdmin =
@@ -2197,6 +2342,7 @@ export default function App() {
         searchError={imageBankError}
         cooldownMessage={imageBankCooldownMessage}
         plusNotice={imageBankPlusNotice}
+        guestIpBlockedNotice={imageBankGuestIpBlockedNotice}
         aiGenerateError={aiGenerateError}
         onGenerateAi={() => void handleGenerateAiImage()}
         isGeneratingAi={isGeneratingAiImage}
@@ -2555,29 +2701,36 @@ export default function App() {
 
           {isMobileImageBankActive ? (
             <div className="mt-2.5 px-3 text-center">
-              {imageBankPlusNotice && (
+              {imageBankGuestIpBlockedNotice ? (
+                <p
+                  role="alert"
+                  className="mb-2 px-2 text-[11px] sm:text-xs font-medium leading-snug text-red-600 text-center"
+                >
+                  {imageBankGuestIpBlockedNotice}
+                </p>
+              ) : imageBankPlusNotice ? (
                 <p
                   role="status"
-                  className="mb-2 px-3 py-1.5 rounded-xl bg-blue-50/95 border border-blue-200/90 text-[11px] sm:text-xs font-medium leading-snug text-blue-900"
+                  className="mb-2 px-2 text-[11px] sm:text-xs font-medium leading-snug text-red-600 text-center"
                 >
                   {imageBankPlusNotice}
                 </p>
-              )}
-              {aiGenerateError && (
+              ) : aiGenerateError ? (
                 <p
                   role="alert"
-                  className="mb-2 px-3 py-1.5 rounded-xl bg-rose-50/95 border border-rose-200/90 text-[11px] sm:text-xs font-medium leading-snug text-rose-700"
+                  className="mb-2 px-2 text-[11px] sm:text-xs font-medium leading-snug text-red-600 text-center"
                 >
                   {aiGenerateError}
                 </p>
-              )}
-              {imageBankCooldownMessage && (
-                <p
-                  role="status"
-                  className="mb-2 px-3 py-1.5 rounded-xl bg-amber-50/95 border border-amber-200/90 text-[11px] sm:text-xs font-medium leading-snug text-amber-950"
-                >
-                  {imageBankCooldownMessage}
-                </p>
+              ) : (
+                imageBankCooldownMessage && (
+                  <p
+                    role="status"
+                    className="mb-2 px-2 text-[11px] sm:text-xs font-medium leading-snug text-red-600 text-center tabular-nums"
+                  >
+                    {imageBankCooldownMessage}
+                  </p>
+                )
               )}
               <p className="text-xs font-semibold tracking-tight text-black">
                 {t.imageBank.brandTitle}
@@ -2624,7 +2777,11 @@ export default function App() {
                   role="status"
                   className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
                 >
-                  <span>{t.app.domainPromptQuestion}</span>{' '}
+                  <span>
+                    {pendingDomainBatch.promptKind === 'savedCatalog'
+                      ? t.app.savedCatalogPromptQuestion
+                      : t.app.domainPromptQuestion}
+                  </span>{' '}
                   <span className="inline-flex items-center gap-3.5 ml-1.5">
                     <button
                       type="button"
@@ -2638,7 +2795,9 @@ export default function App() {
                       onClick={handleConfirmDomainContinue}
                       className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-blue-600 lg:text-sky-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
                     >
-                      {t.app.domainPromptContinue}
+                      {pendingDomainBatch.promptKind === 'savedCatalog'
+                        ? t.app.savedCatalogPromptAccept
+                        : t.app.domainPromptContinue}
                     </button>
                   </span>
                 </p>

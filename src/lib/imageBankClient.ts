@@ -26,6 +26,7 @@ export interface ImageBankSearchResponse {
 export class ImageBankClientError extends Error {
   readonly notConfigured?: boolean;
   readonly rateLimited?: boolean;
+  readonly ipBlocked?: boolean;
   readonly plusRequired?: boolean;
   readonly retryAfterSeconds?: number;
   readonly status: number;
@@ -35,6 +36,7 @@ export class ImageBankClientError extends Error {
     options?: {
       notConfigured?: boolean;
       rateLimited?: boolean;
+      ipBlocked?: boolean;
       plusRequired?: boolean;
       retryAfterSeconds?: number;
       status?: number;
@@ -44,6 +46,7 @@ export class ImageBankClientError extends Error {
     this.name = 'ImageBankClientError';
     this.notConfigured = options?.notConfigured;
     this.rateLimited = options?.rateLimited;
+    this.ipBlocked = options?.ipBlocked;
     this.plusRequired = options?.plusRequired;
     this.retryAfterSeconds = options?.retryAfterSeconds;
     this.status = options?.status ?? 500;
@@ -117,6 +120,7 @@ export async function searchImageBank(
     error?: string;
     notConfigured?: boolean;
     rateLimited?: boolean;
+    ipBlocked?: boolean;
     retryAfterSeconds?: number;
     cooldownSeconds?: number;
     query?: string;
@@ -125,11 +129,15 @@ export async function searchImageBank(
   };
 
   if (!response.ok) {
+    const isIpBlocked = Boolean(payload?.ipBlocked);
+    const isRateLimited =
+      !isIpBlocked && (Boolean(payload?.rateLimited) || response.status === 429);
     throw new ImageBankClientError(
       payload?.error || 'Failed to search image bank',
       {
         notConfigured: Boolean(payload?.notConfigured),
-        rateLimited: Boolean(payload?.rateLimited) || response.status === 429,
+        rateLimited: isRateLimited,
+        ipBlocked: isIpBlocked,
         retryAfterSeconds:
           typeof payload?.retryAfterSeconds === 'number'
             ? payload.retryAfterSeconds
@@ -150,24 +158,39 @@ export async function searchImageBank(
   };
 }
 
-export async function fetchImageBankPlusAccess(): Promise<boolean> {
+export async function fetchImageBankAccessStatus(): Promise<{
+  hasPlusAccess: boolean;
+  guestIpBlocked: boolean;
+}> {
   const token = await getSupabaseAccessToken().catch(() => null);
-  if (!token) return false;
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
 
   const response = await fetch(resolveApiUrl('/api/image-bank/access'), {
     method: 'GET',
     credentials: 'include',
     cache: 'no-store',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers,
   });
 
-  if (!response.ok) return false;
+  if (!response.ok) {
+    return { hasPlusAccess: false, guestIpBlocked: false };
+  }
   const payload = (await response.json().catch(() => ({}))) as {
     hasPlusAccess?: boolean;
+    guestIpBlocked?: boolean;
   };
-  return Boolean(payload?.hasPlusAccess);
+  return {
+    hasPlusAccess: Boolean(payload?.hasPlusAccess),
+    guestIpBlocked: Boolean(payload?.guestIpBlocked),
+  };
+}
+
+export async function fetchImageBankPlusAccess(): Promise<boolean> {
+  const status = await fetchImageBankAccessStatus();
+  return status.hasPlusAccess;
 }
 
 export async function generateAiImageFromPrompt(
