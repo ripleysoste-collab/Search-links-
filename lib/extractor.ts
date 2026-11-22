@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { imageSize } from 'image-size';
-import { safeFetch } from './urlSafety.ts';
+import { assertSafePublicUrl, normalizeTargetUrl, safeFetch } from './urlSafety.ts';
 
 export interface ExtractedCatalogImage {
   id: string;
@@ -19,6 +19,7 @@ export interface ExtractImagesResult {
   totalCandidates: number;
   pagesScanned?: number;
   usedJsFallback?: boolean;
+  cached?: boolean;
 }
 
 export interface ExtractImagesOptions {
@@ -40,25 +41,76 @@ const MAX_JS_BUNDLE_BYTES = 1_500_000;
 const MAX_PROBE_CANDIDATES = 80;
 const MAX_RESULTS = 24;
 const MAX_ALLOWED_RESULTS = 50;
-const PROBE_WAVE_SIZE = 24;
-const PROBE_CONCURRENCY = 12;
+const PROBE_WAVE_SIZE = 28;
+const PROBE_CONCURRENCY = 16;
 const MAX_IMAGE_PROBE_BYTES = 160 * 1024;
 const MAX_SUBPAGES_TO_CRAWL = 3;
 const MAX_JS_BUNDLES_TO_SCAN = 2;
+
+const EXTRACT_CACHE_TTL_MS = 5 * 60_000;
+const EXTRACT_CACHE_MAX_ENTRIES = 120;
+const IMAGE_DIMS_HIT_TTL_MS = 15 * 60_000;
+const IMAGE_DIMS_MISS_TTL_MS = 2 * 60_000;
+const IMAGE_DIMS_CACHE_MAX_ENTRIES = 1500;
+
+interface CachedExtractionEntry {
+  expiresAt: number;
+  maxResultsRequested: number;
+  result: ExtractImagesResult;
+}
+
+interface CachedImageDimsEntry {
+  expiresAt: number;
+  dims: { width: number; height: number } | null;
+}
+
+const extractionResultCache = new Map<string, CachedExtractionEntry>();
+const inFlightExtractions = new Map<string, Promise<ExtractImagesResult>>();
+const imageDimsCache = new Map<string, CachedImageDimsEntry>();
+
+function pruneMapCap<K, V extends { expiresAt: number }>(map: Map<K, V>, maxEntries: number) {
+  const now = Date.now();
+  for (const [k, v] of map.entries()) {
+    if (v.expiresAt <= now) {
+      map.delete(k);
+    }
+  }
+  while (map.size >= maxEntries) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) break;
+    map.delete(oldestKey);
+  }
+}
 
 const BROWSER_HEADER_PROFILES: Record<string, string>[] = [
   {
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     Accept:
-      'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/png,image/jpeg,*/*;q=0.8',
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/png,image/jpeg,*/*;q=0.8',
     'Accept-Language': 'es-ES,es;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'no-cache',
     'Upgrade-Insecure-Requests': '1',
+    'Sec-CH-UA': '"Chromium";v="133", "Not(A:Brand";v="99", "Google Chrome";v="133"',
+    'Sec-CH-UA-Mobile': '?0',
+    'Sec-CH-UA-Platform': '"Windows"',
     'Sec-Fetch-Dest': 'document',
     'Sec-Fetch-Mode': 'navigate',
     'Sec-Fetch-Site': 'none',
     'Sec-Fetch-User': '?1',
+  },
+  {
+    'User-Agent':
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Mobile Safari/537.36',
+    Accept:
+      'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/png,image/jpeg,*/*;q=0.8',
+    'Accept-Language': 'es-419,es;q=0.9,en;q=0.8',
+    'Sec-CH-UA': '"Chromium";v="133", "Not(A:Brand";v="99", "Google Chrome";v="133"',
+    'Sec-CH-UA-Mobile': '?1',
+    'Sec-CH-UA-Platform': '"Android"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
   },
   {
     'User-Agent':
@@ -268,13 +320,22 @@ function extractCssUrlValues(cssText: string, baseUrl: string): string[] {
   return results;
 }
 
+function unescapeScriptPayload(text: string): string {
+  return text
+    .replace(/\\u002F/gi, '/')
+    .replace(/\\u0026/gi, '&')
+    .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"');
+}
+
 function extractScriptImageUrls(
   scriptText: string,
   baseUrl: string,
-  maxItems = 45,
+  maxItems = 50,
 ): string[] {
   const results: string[] = [];
   const seen = new Set<string>();
+  const normalizedScript = unescapeScriptPayload(scriptText);
 
   const pushUnique = (raw: string) => {
     const resolved = resolveHttpUrl(raw, baseUrl);
@@ -283,24 +344,57 @@ function extractScriptImageUrls(
     results.push(resolved);
   };
 
-  // 1. Standard image extension URLs (including relative /assets/... or escaped https:\/\/...)
+  // 1. Standard image extension URLs (supports Next.js RSC, PHP json_encode, hydration blobs)
   const extRegex =
-    /(?:https?:\\?\/\\?\/|\/)[^\s"'`<>()\\]{4,360}\.(?:jpe?g|png|webp|avif)(?:\?[^\s"'`<>()\\]{0,140})?/gi;
+    /(?:https?:\/\/|\/)[^\s"'`<>()\\]{4,360}\.(?:jpe?g|png|webp|avif)(?:\?[^\s"'`<>()\\]{0,140})?/gi;
   let match: RegExpExecArray | null;
-  while ((match = extRegex.exec(scriptText)) !== null) {
+  while ((match = extRegex.exec(normalizedScript)) !== null) {
     pushUnique(match[0]);
     if (results.length >= maxItems) return results;
   }
 
-  // 2. Extensionless known image CDNs (Unsplash, Cloudinary, Wixstatic, Shopify, Google, Firebase, etc.)
+  // 2. Extensionless known image CDNs (Unsplash, Cloudinary, Wixstatic, Shopify, OlaClick, Tiendanube, etc.)
   const cdnHostPattern = KNOWN_IMAGE_CDN_HOSTS.map((h) => h.replace(/\./g, '\\.')).join('|');
   const cdnRegex = new RegExp(
-    `https?:\\\\?\\/\\\\?\\/(?:${cdnHostPattern})[^\\s"'\`<>()\\\\]{6,320}`,
+    `https?:\\/\\/(?:${cdnHostPattern})[^\\s"'\`<>()\\\\]{6,320}`,
     'gi',
   );
-  while ((match = cdnRegex.exec(scriptText)) !== null) {
+  while ((match = cdnRegex.exec(normalizedScript)) !== null) {
     pushUnique(match[0]);
     if (results.length >= maxItems) return results;
+  }
+
+  return results;
+}
+
+function extractDiscoveredApiEndpoints(
+  scriptOrHtmlText: string,
+  baseUrl: string,
+  maxEndpoints = 3,
+): string[] {
+  if (!scriptOrHtmlText || scriptOrHtmlText.length < 20) return [];
+  const normalized = unescapeScriptPayload(scriptOrHtmlText.slice(0, 350_000));
+  const pageOrigin = new URL(baseUrl).origin;
+  const results: string[] = [];
+  const seen = new Set<string>();
+
+  const apiRegex =
+    /(?:https?:\/\/[a-z0-9.-]{3,120})?\/api\/(?:v\d+\/)?(?:public\/|storefront\/)?(?:products|catalog|catalogo|menu|carta|items|dishes|store|collections|categories)[^\s"'`<>()\\]{0,100}/gi;
+
+  let match: RegExpExecArray | null;
+  while ((match = apiRegex.exec(normalized)) !== null) {
+    const raw = match[0].replace(/[,;.)]+$/, '');
+    if (ANALYTICS_SCRIPT_PATTERN.test(raw) || raw.includes('{') || raw.includes('${')) continue;
+    try {
+      const resolved = new URL(raw, pageOrigin);
+      if (resolved.protocol !== 'http:' && resolved.protocol !== 'https:') continue;
+      if (seen.has(resolved.href)) continue;
+      seen.add(resolved.href);
+      results.push(resolved.href);
+      if (results.length >= maxEndpoints) break;
+    } catch {
+      // Ignore malformed endpoint snippet
+    }
   }
 
   return results;
@@ -810,12 +904,32 @@ async function readTextWithLimit(response: Response, maxBytes: number): Promise<
   return Buffer.concat(chunks).toString('utf8');
 }
 
+function isChallengeOrBlockHtml(html: string): boolean {
+  if (!html || html.length > 110_000) return false;
+  const lower = html.toLowerCase();
+  if (
+    lower.includes('just a moment...') ||
+    lower.includes('cf-browser-verification') ||
+    lower.includes('_cf_chl_opt') ||
+    lower.includes('attention required! | cloudflare') ||
+    lower.includes('enable javascript and cookies to continue') ||
+    lower.includes('checking your browser before accessing') ||
+    lower.includes('captcha-delivery.com') ||
+    lower.includes('px-captcha') ||
+    lower.includes('sucuri website firewall')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 async function fetchHtmlWithFallback(
   targetUrl: string,
   timeoutMs = 8000,
-): Promise<{ html: string; finalUrl: string; status: number }> {
+): Promise<{ html: string; finalUrl: string; status: number; isChallenge: boolean }> {
   let lastError: Error | null = null;
   let lastStatus = 0;
+  let sawChallenge = false;
 
   for (const headers of BROWSER_HEADER_PROFILES) {
     try {
@@ -826,7 +940,12 @@ async function fetchHtmlWithFallback(
 
       lastStatus = response.status;
 
-      if (response.status === 403 || response.status === 406 || response.status === 429) {
+      if (
+        response.status === 403 ||
+        response.status === 406 ||
+        response.status === 429 ||
+        response.status === 503
+      ) {
         lastError = new Error(`El sitio respondió con estado ${response.status}.`);
         await response.body?.cancel().catch(() => {});
         continue;
@@ -848,14 +967,20 @@ async function fetchHtmlWithFallback(
       }
 
       const html = await readTextWithLimit(response, MAX_HTML_BYTES);
-      return { html, finalUrl, status: response.status };
+      if (isChallengeOrBlockHtml(html)) {
+        sawChallenge = true;
+        lastStatus = 403;
+        continue;
+      }
+
+      return { html, finalUrl, status: response.status, isChallenge: false };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error('No se pudo leer la página.');
     }
   }
 
-  if (lastStatus === 403 || lastStatus === 429) {
-    return { html: '', finalUrl: targetUrl, status: lastStatus };
+  if (lastStatus === 403 || lastStatus === 429 || lastStatus === 503 || sawChallenge) {
+    return { html: '', finalUrl: targetUrl, status: lastStatus || 403, isChallenge: true };
   }
 
   throw lastError ?? new Error('No fue posible leer la página solicitada.');
@@ -1060,11 +1185,11 @@ async function tryPlatformJsonApis(
   const vtexEnd = targetMaxResults > 24 ? 49 : 23;
 
   const endpointsToTry: Array<{
-    kind: 'shopify' | 'woo-store' | 'wp-media' | 'squarespace' | 'vtex';
+    kind: 'shopify' | 'woo-store' | 'wp-media' | 'squarespace' | 'vtex' | 'generic-json';
     url: string;
   }> = [];
 
-  // Shopify /products.json works on virtually all Shopify stores
+  // Shopify /products.json & /collections/all/products.json
   const isLikelyShopify =
     lowerHint.includes('shopify') || lowerHint.includes('cdn.shopify.com') || parsedPage.pathname === '/';
   if (isLikelyShopify) {
@@ -1077,6 +1202,11 @@ async function tryPlatformJsonApis(
           url: `${origin}/collections/${colSlug}/products.json?limit=${shopifyLimit}`,
         });
       }
+    } else if (lowerHint.includes('shopify')) {
+      endpointsToTry.push({
+        kind: 'shopify',
+        url: `${origin}/collections/all/products.json?limit=${shopifyLimit}`,
+      });
     }
   }
 
@@ -1090,6 +1220,12 @@ async function tryPlatformJsonApis(
       kind: 'woo-store',
       url: `${origin}/wp-json/wc/store/v1/products?per_page=${wpLimit}`,
     });
+    if (lowerHint.includes('woocommerce')) {
+      endpointsToTry.push({
+        kind: 'woo-store',
+        url: `${origin}/wp-json/wc/store/products?per_page=${wpLimit}`,
+      });
+    }
     if (lowerHint.includes('wp-content')) {
       endpointsToTry.push({
         kind: 'wp-media',
@@ -1111,6 +1247,24 @@ async function tryPlatformJsonApis(
       kind: 'vtex',
       url: `${origin}/api/catalog_system/pub/products/search?_from=0&_to=${vtexEnd}`,
     });
+  }
+
+  // Magento 2 GraphQL catalog query
+  if (lowerHint.includes('magento') || lowerHint.includes('mage/')) {
+    const gql = encodeURIComponent(
+      `{products(search:"",pageSize:${wpLimit}){items{name,image{url},small_image{url}}}}`,
+    );
+    endpointsToTry.push({
+      kind: 'generic-json',
+      url: `${origin}/graphql?query=${gql}`,
+    });
+  }
+
+  // Auto-discovered SPA catalog/menu REST API URLs embedded in HTML scripts
+  for (const discoveredUrl of extractDiscoveredApiEndpoints(htmlHint, pageUrl, 3)) {
+    if (!endpointsToTry.some((e) => e.url === discoveredUrl)) {
+      endpointsToTry.push({ kind: 'generic-json', url: discoveredUrl });
+    }
   }
 
   await Promise.allSettled(
@@ -1260,6 +1414,7 @@ async function scanSpaJsBundles(
 ): Promise<RawCandidate[]> {
   const candidates: RawCandidate[] = [];
   const targets = scriptSrcs.slice(0, MAX_JS_BUNDLES_TO_SCAN);
+  const discoveredApis = new Set<string>();
 
   await Promise.allSettled(
     targets.map(async (src) => {
@@ -1284,13 +1439,72 @@ async function scanSpaJsBundles(
             sourcePageUrl: baseUrl,
           });
         }
+        for (const apiUrl of extractDiscoveredApiEndpoints(jsText, baseUrl, 2)) {
+          discoveredApis.add(apiUrl);
+        }
       } catch {
         // Ignore unreachable bundle
       }
     }),
   );
 
+  // Probe any catalog/menu JSON endpoints referenced inside SPA bundles
+  if (discoveredApis.size > 0 && candidates.length < 8) {
+    await Promise.allSettled(
+      Array.from(discoveredApis)
+        .slice(0, 2)
+        .map(async (apiUrl) => {
+          try {
+            const { response } = await safeFetch(apiUrl, {
+              headers: {
+                'User-Agent': BROWSER_HEADER_PROFILES[0]['User-Agent'],
+                Accept: 'application/json',
+                Referer: baseUrl,
+              },
+              timeoutMs: 2200,
+            });
+            if (!response.ok) {
+              await response.body?.cancel().catch(() => {});
+              return;
+            }
+            const ct = (response.headers.get('content-type') || '').toLowerCase();
+            if (!ct.includes('json')) {
+              await response.body?.cancel().catch(() => {});
+              return;
+            }
+            const rawJson = await readTextWithLimit(response, 1_500_000);
+            const parsed = JSON.parse(rawJson) as unknown;
+            collectJsonTreeImages(parsed, baseUrl, candidates);
+          } catch {
+            // Endpoint requires auth or non-JSON
+          }
+        }),
+    );
+  }
+
   return candidates;
+}
+
+function parseJinaResponseBody(body: string, targetUrl: string, candidates: RawCandidate[]) {
+  const trimmed = body.trimStart();
+  if (/^<(?:!doctype|html|head|body|div|main|section|img)\b/i.test(trimmed)) {
+    collectCandidatesFromHtml(body, targetUrl, candidates);
+  }
+
+  // Always also scan Markdown image syntax ![alt text](https://...) as secondary extraction
+  const mdRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = mdRegex.exec(body)) !== null) {
+    const resolved = resolveHttpUrl(match[2], targetUrl);
+    if (resolved && !isJunkCandidateUrl(resolved)) {
+      candidates.push({
+        url: resolved,
+        alt: match[1].replace(/\s+/g, ' ').trim().slice(0, 90),
+        priority: 1,
+        sourcePageUrl: targetUrl,
+      });
+    }
+  }
 }
 
 async function tryJsRenderedFallback(targetUrl: string): Promise<{
@@ -1330,46 +1544,37 @@ async function tryJsRenderedFallback(targetUrl: string): Promise<{
     }
   }
 
-  // 2. Zero-config Jina Reader headless Chromium render fallback
-  try {
-    const headers: Record<string, string> = {
-      Accept: 'text/plain',
-      'X-Return-Format': 'markdown',
-      'X-With-Images-Summary': 'true',
-      'X-Timeout': '9',
-    };
-    const jinaApiKey = (process.env.JINA_API_KEY || '').trim();
-    if (jinaApiKey) {
-      headers.Authorization = `Bearer ${jinaApiKey}`;
-    }
+  // 2. Zero-config Jina Reader headless Chromium render fallback (HTML DOM first, Markdown second)
+  const jinaApiKey = (process.env.JINA_API_KEY || '').trim();
+  for (const returnFormat of ['html', 'markdown'] as const) {
+    try {
+      const headers: Record<string, string> = {
+        Accept: returnFormat === 'html' ? 'text/html,text/plain' : 'text/plain',
+        'X-Return-Format': returnFormat,
+        'X-With-Images-Summary': 'true',
+        'X-Timeout': '10',
+      };
+      if (jinaApiKey) {
+        headers.Authorization = `Bearer ${jinaApiKey}`;
+      }
 
-    const readerResponse = await fetch(`https://r.jina.ai/${targetUrl}`, {
-      headers,
-      signal: AbortSignal.timeout(10500),
-    });
+      const readerResponse = await fetch(`https://r.jina.ai/${targetUrl}`, {
+        headers,
+        signal: AbortSignal.timeout(11500),
+      });
 
-    if (readerResponse.ok) {
-      const markdown = await readTextWithLimit(readerResponse, 1_500_000);
-      // Extract Markdown image syntax: ![alt text](https://...)
-      const mdRegex = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
-      let match: RegExpExecArray | null;
-      while ((match = mdRegex.exec(markdown)) !== null) {
-        const resolved = resolveHttpUrl(match[2], targetUrl);
-        if (resolved && !isJunkCandidateUrl(resolved)) {
-          candidates.push({
-            url: resolved,
-            alt: match[1].replace(/\s+/g, ' ').trim().slice(0, 90),
-            priority: 1,
-            sourcePageUrl: targetUrl,
-          });
+      if (readerResponse.ok) {
+        const body = await readTextWithLimit(readerResponse, 2_000_000);
+        if (!isChallengeOrBlockHtml(body)) {
+          parseJinaResponseBody(body, targetUrl, candidates);
+          if (candidates.length > 0) {
+            return { candidates, usedJsFallback: true };
+          }
         }
       }
-      if (candidates.length > 0) {
-        return { candidates, usedJsFallback: true };
-      }
+    } catch {
+      // External reader format timed out or unavailable; try next format
     }
-  } catch {
-    // External reader fallback unavailable or timed out
   }
 
   return { candidates, usedJsFallback: false };
@@ -1379,6 +1584,23 @@ async function probeImageDimensions(
   candidateUrl: string,
   refererUrl: string,
 ): Promise<{ width: number; height: number } | null> {
+  const cached = imageDimsCache.get(candidateUrl);
+  if (cached) {
+    if (cached.expiresAt > Date.now()) {
+      return cached.dims;
+    }
+    imageDimsCache.delete(candidateUrl);
+  }
+
+  const saveDimsCache = (dims: { width: number; height: number } | null) => {
+    pruneMapCap(imageDimsCache, IMAGE_DIMS_CACHE_MAX_ENTRIES);
+    imageDimsCache.set(candidateUrl, {
+      expiresAt: Date.now() + (dims ? IMAGE_DIMS_HIT_TTL_MS : IMAGE_DIMS_MISS_TTL_MS),
+      dims,
+    });
+    return dims;
+  };
+
   const attemptProbe = async (useRange: boolean, includeReferer: boolean) => {
     const headers: Record<string, string> = {
       'User-Agent': BROWSER_HEADER_PROFILES[0]['User-Agent'],
@@ -1393,7 +1615,7 @@ async function probeImageDimensions(
 
     const { response } = await safeFetch(candidateUrl, {
       headers,
-      timeoutMs: 2400,
+      timeoutMs: 2000,
     });
 
     if (!response.ok && response.status !== 206) {
@@ -1447,23 +1669,23 @@ async function probeImageDimensions(
 
   try {
     let first = await attemptProbe(true, true);
-    if (first.dims) return first.dims;
+    if (first.dims) return saveDimsCache(first.dims);
 
     // Retry without Range if origin rejects partial requests (416/400/501)
     if (first.status === 416 || first.status === 400 || first.status === 501) {
       first = await attemptProbe(false, true);
-      if (first.dims) return first.dims;
+      if (first.dims) return saveDimsCache(first.dims);
     }
 
     // Retry without Referer if hotlink protection blocked the Referer header
     if (first.status === 403 || first.status === 401) {
       const retryNoRef = await attemptProbe(true, false);
-      if (retryNoRef.dims) return retryNoRef.dims;
+      if (retryNoRef.dims) return saveDimsCache(retryNoRef.dims);
     }
 
-    return null;
+    return saveDimsCache(null);
   } catch {
-    return null;
+    return saveDimsCache(null);
   }
 }
 
@@ -1512,6 +1734,59 @@ export async function extractImagesFromUrl(
       ? Math.trunc(options.maxResults)
       : MAX_RESULTS;
   const targetMaxResults = Math.min(Math.max(requestedMax, 1), MAX_ALLOWED_RESULTS);
+
+  // Always enforce URL safety + domain policy blocklist before consulting cache
+  const safeParsed = await assertSafePublicUrl(rawUrl);
+  safeParsed.hash = '';
+  const cacheKey = normalizeTargetUrl(safeParsed.href);
+
+  const cached = extractionResultCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    const hasEnoughImages =
+      cached.maxResultsRequested >= targetMaxResults ||
+      cached.result.images.length < cached.maxResultsRequested;
+    if (hasEnoughImages) {
+      return {
+        ...cached.result,
+        images: cached.result.images.slice(0, targetMaxResults),
+        cached: true,
+      };
+    }
+  } else if (cached) {
+    extractionResultCache.delete(cacheKey);
+  }
+
+  const inFlightKey = `${cacheKey}::${targetMaxResults}`;
+  const existingFlight = inFlightExtractions.get(inFlightKey);
+  if (existingFlight) {
+    const res = await existingFlight;
+    return { ...res, cached: true };
+  }
+
+  const runPromise = runExtractionPipeline(cacheKey, targetMaxResults).then((result) => {
+    if (result.images.length > 0) {
+      pruneMapCap(extractionResultCache, EXTRACT_CACHE_MAX_ENTRIES);
+      extractionResultCache.set(cacheKey, {
+        expiresAt: Date.now() + EXTRACT_CACHE_TTL_MS,
+        maxResultsRequested: targetMaxResults,
+        result,
+      });
+    }
+    return result;
+  });
+
+  inFlightExtractions.set(inFlightKey, runPromise);
+  try {
+    return await runPromise;
+  } finally {
+    inFlightExtractions.delete(inFlightKey);
+  }
+}
+
+async function runExtractionPipeline(
+  rawUrl: string,
+  targetMaxResults: number,
+): Promise<ExtractImagesResult> {
   const probeCap = targetMaxResults > MAX_RESULTS ? 135 : MAX_PROBE_CANDIDATES;
   const subpageCap = targetMaxResults > MAX_RESULTS ? 6 : MAX_SUBPAGES_TO_CRAWL;
 
@@ -1612,8 +1887,21 @@ export async function extractImagesFromUrl(
 
   addToDeduped(rawCandidates);
 
-  // Layer 4: If direct HTML + Platform APIs + JS Bundles + Multi-Page Crawl still found < 5 candidates (or site returned 403/429), invoke JS-render fallback
-  if (dedupedMap.size < 5) {
+  // Layer 4: Smart trigger for JS-rendered fallback (anti-bot challenges, HTTP 403/429/503, empty SPA shells, or very few non-chrome candidates)
+  let highConfidenceCandidates = 0;
+  for (const item of dedupedMap.values()) {
+    if (item.priority <= 2) highConfidenceCandidates++;
+  }
+
+  const shouldRunEarlyJsFallback =
+    initialFetch.isChallenge ||
+    initialFetch.status === 403 ||
+    initialFetch.status === 429 ||
+    initialFetch.status === 503 ||
+    dedupedMap.size < 5 ||
+    (htmlInfo.isSpaShell && highConfidenceCandidates < 6);
+
+  if (shouldRunEarlyJsFallback) {
     const jsFallback = await tryJsRenderedFallback(finalUrl);
     if (jsFallback.candidates.length > 0) {
       addToDeduped(jsFallback.candidates);
@@ -1703,14 +1991,14 @@ export async function extractImagesFromUrl(
     }
   }
 
-  // Last-resort JS fallback if 0 images >= 200x200 passed aspect-ratio + catalog checks
-  if (validItems.length === 0 && !usedJsFallback) {
+  // Rescue JS fallback if probing returned <= 2 catalog-sized images (e.g., static shell only had 1 hero banner)
+  if (validItems.length <= 2 && targetMaxResults >= 6 && !usedJsFallback) {
     const jsFallback = await tryJsRenderedFallback(finalUrl);
     if (jsFallback.candidates.length > 0) {
       usedJsFallback = jsFallback.usedJsFallback;
       const fallbackOnly = jsFallback.candidates
         .filter((c) => !dedupedMap.has(computeCanonicalImageKey(c.url)))
-        .slice(0, 32);
+        .slice(0, 48);
       const probed = await mapWithConcurrency(fallbackOnly, PROBE_CONCURRENCY, async (candidate) => {
         const result = await probeCandidateWithHdUpgrade(candidate.url, candidate.sourcePageUrl);
         if (!result) return null;
@@ -1732,5 +2020,6 @@ export async function extractImagesFromUrl(
     totalCandidates: dedupedMap.size,
     pagesScanned,
     usedJsFallback,
+    cached: false,
   };
 }
