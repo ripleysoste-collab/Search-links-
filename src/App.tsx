@@ -216,6 +216,7 @@ export default function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileAccountModalOpen, setIsMobileAccountModalOpen] = useState(false);
   const [isMobileLanguageModalOpen, setIsMobileLanguageModalOpen] = useState(false);
+  const [isMobileConnectServerOpen, setIsMobileConnectServerOpen] = useState(false);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [isFileUploadFlow, setIsFileUploadFlow] = useState(false);
@@ -1556,6 +1557,7 @@ export default function App() {
     setIsMobileMenuOpen(false);
     setIsMobileAccountModalOpen(false);
     setIsMobileLanguageModalOpen(false);
+    setIsMobileConnectServerOpen(false);
     setIsMobilePanelOpen(false);
   };
 
@@ -1566,6 +1568,7 @@ export default function App() {
       !isMobileMenuOpen &&
       !isMobileAccountModalOpen &&
       !isMobileLanguageModalOpen &&
+      !isMobileConnectServerOpen &&
       !isMobilePanelOpen &&
       !activeChatServiceId
     ) {
@@ -1584,6 +1587,7 @@ export default function App() {
         if (isMobileMenuOpen) setIsMobileMenuOpen(false);
         if (isMobileAccountModalOpen) setIsMobileAccountModalOpen(false);
         if (isMobileLanguageModalOpen) setIsMobileLanguageModalOpen(false);
+        if (isMobileConnectServerOpen) setIsMobileConnectServerOpen(false);
         if (isMobilePanelOpen) setIsMobilePanelOpen(false);
         return;
       }
@@ -1608,6 +1612,7 @@ export default function App() {
     isMobileMenuOpen,
     isMobileAccountModalOpen,
     isMobileLanguageModalOpen,
+    isMobileConnectServerOpen,
     isMobilePanelOpen,
     activeChatServiceId,
   ]);
@@ -2977,6 +2982,7 @@ export default function App() {
           menuOpen={isMobileMenuOpen}
           accountModalOpen={isMobileAccountModalOpen}
           languageModalOpen={isMobileLanguageModalOpen}
+          connectServerModalOpen={isMobileConnectServerOpen}
           panelOpen={isMobilePanelOpen}
           user={authUser}
           orgProfile={orgProfile}
@@ -2993,6 +2999,8 @@ export default function App() {
           onCloseAccountModal={() => setIsMobileAccountModalOpen(false)}
           onOpenLanguageModal={() => setIsMobileLanguageModalOpen(true)}
           onCloseLanguageModal={() => setIsMobileLanguageModalOpen(false)}
+          onOpenConnectServerModal={() => setIsMobileConnectServerOpen(true)}
+          onCloseConnectServerModal={() => setIsMobileConnectServerOpen(false)}
           onOpenPanel={() => setIsMobilePanelOpen(true)}
           onClosePanel={() => setIsMobilePanelOpen(false)}
           onOpenDocumentation={openDocumentationRoute}

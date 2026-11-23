@@ -197,6 +197,8 @@ export interface TranslationDictionary {
     cookiePolicies: string;
     agencyMode: string;
     comingSoon: string;
+    connectServer: string;
+    closeConnectServerAria: string;
   };
   auth: {
     acceptTermsLabel: string;
@@ -395,6 +397,29 @@ export interface TranslationDictionary {
     viewYourOrg: string;
     whyUseSearchLink: string;
     whyUseSearchLinkAria: string;
+  };
+  connectServer: {
+    title: string;
+    serverUrlLabel: string;
+    serverUrlPlaceholder: string;
+    serverUrlAria: string;
+    showUrlAria: string;
+    hideUrlAria: string;
+    chooseServiceLabel: string;
+    chooseServicePlaceholder: string;
+    chooseServiceMenuAria: string;
+    allServicesSelected: string;
+    syncAllOption: string;
+    noServicesHint: string;
+    secretKeyLabel: string;
+    secretKeyAria: string;
+    showSecretAria: string;
+    hideSecretAria: string;
+    copySecretAria: string;
+    syncAction: string;
+    validationUrlRequired: string;
+    validationUrlInvalid: string;
+    validationServiceRequired: string;
   };
 }
 
@@ -667,6 +692,8 @@ const ES_DICTIONARY: TranslationDictionary = {
     cookiePolicies: 'Políticas de cookies',
     agencyMode: 'Modo Agencia',
     comingSoon: 'Próximamente',
+    connectServer: 'Conecta tu servidor',
+    closeConnectServerAria: 'Cerrar Conecta tu servidor',
   },
   auth: {
     acceptTermsLabel: 'Acepto los términos y políticas de privacidad de Search Link.',
@@ -908,6 +935,29 @@ const ES_DICTIONARY: TranslationDictionary = {
     viewYourOrg: 'Abrir Organización y probar en IA',
     whyUseSearchLink: '¿Por qué usar Search Link?',
     whyUseSearchLinkAria: 'Beneficios de Search Link',
+  },
+  connectServer: {
+    title: 'Conecta tu servidor',
+    serverUrlLabel: 'Pega la URL de tu servidor',
+    serverUrlPlaceholder: 'https://tu-servidor.com/webhook',
+    serverUrlAria: 'URL de tu servidor',
+    showUrlAria: 'Ver URL del servidor',
+    hideUrlAria: 'Ocultar URL del servidor',
+    chooseServiceLabel: 'Escoge tu servicio',
+    chooseServicePlaceholder: 'Selecciona un servicio',
+    chooseServiceMenuAria: 'Seleccionar servicio para sincronizar',
+    allServicesSelected: 'Todos tus servicios',
+    syncAllOption: 'Sincronizar todos',
+    noServicesHint: 'Todavía no tienes servicios creados',
+    secretKeyLabel: 'Clave secreta',
+    secretKeyAria: 'Clave secreta del servidor',
+    showSecretAria: 'Ver clave secreta',
+    hideSecretAria: 'Ocultar clave secreta',
+    copySecretAria: 'Copiar clave secreta',
+    syncAction: 'Sincronizar',
+    validationUrlRequired: 'Pega primero la URL de tu servidor.',
+    validationUrlInvalid: 'Ingresa una URL válida con http:// o https://.',
+    validationServiceRequired: 'Escoge un servicio o "Sincronizar todos".',
   },
 };
 
@@ -1181,6 +1231,8 @@ const EN_DICTIONARY: TranslationDictionary = {
     cookiePolicies: 'Cookie Policies',
     agencyMode: 'Agency Mode',
     comingSoon: 'Coming soon',
+    connectServer: 'Connect your server',
+    closeConnectServerAria: 'Close Connect your server',
   },
   auth: {
     acceptTermsLabel: 'I accept the Search Link terms of service and privacy policy.',
@@ -1422,6 +1474,29 @@ const EN_DICTIONARY: TranslationDictionary = {
     viewYourOrg: 'Open Organization & test in AI',
     whyUseSearchLink: 'Why use Search Link?',
     whyUseSearchLinkAria: 'Search Link benefits',
+  },
+  connectServer: {
+    title: 'Connect your server',
+    serverUrlLabel: 'Paste your server URL',
+    serverUrlPlaceholder: 'https://your-server.com/webhook',
+    serverUrlAria: 'Your server URL',
+    showUrlAria: 'Show server URL',
+    hideUrlAria: 'Hide server URL',
+    chooseServiceLabel: 'Choose your service',
+    chooseServicePlaceholder: 'Select a service',
+    chooseServiceMenuAria: 'Select service to sync',
+    allServicesSelected: 'All your services',
+    syncAllOption: 'Sync all',
+    noServicesHint: 'You do not have any services yet',
+    secretKeyLabel: 'Secret key',
+    secretKeyAria: 'Server secret key',
+    showSecretAria: 'Show secret key',
+    hideSecretAria: 'Hide secret key',
+    copySecretAria: 'Copy secret key',
+    syncAction: 'Sync',
+    validationUrlRequired: 'Paste your server URL first.',
+    validationUrlInvalid: 'Enter a valid URL starting with http:// or https://.',
+    validationServiceRequired: 'Choose a service or "Sync all".',
   },
 };
 
@@ -1695,6 +1770,8 @@ const PT_DICTIONARY: TranslationDictionary = {
     cookiePolicies: 'Políticas de cookies',
     agencyMode: 'Modo Agência',
     comingSoon: 'Em breve',
+    connectServer: 'Conecte seu servidor',
+    closeConnectServerAria: 'Fechar Conecte seu servidor',
   },
   auth: {
     acceptTermsLabel:
@@ -1938,6 +2015,29 @@ const PT_DICTIONARY: TranslationDictionary = {
     viewYourOrg: 'Abrir Organização e testar na IA',
     whyUseSearchLink: 'Por que usar o Search Link?',
     whyUseSearchLinkAria: 'Benefícios do Search Link',
+  },
+  connectServer: {
+    title: 'Conecte seu servidor',
+    serverUrlLabel: 'Cole a URL do seu servidor',
+    serverUrlPlaceholder: 'https://seu-servidor.com/webhook',
+    serverUrlAria: 'URL do seu servidor',
+    showUrlAria: 'Ver URL do servidor',
+    hideUrlAria: 'Ocultar URL do servidor',
+    chooseServiceLabel: 'Escolha seu serviço',
+    chooseServicePlaceholder: 'Selecione um serviço',
+    chooseServiceMenuAria: 'Selecionar serviço para sincronizar',
+    allServicesSelected: 'Todos os seus serviços',
+    syncAllOption: 'Sincronizar todos',
+    noServicesHint: 'Você ainda não tem serviços criados',
+    secretKeyLabel: 'Chave secreta',
+    secretKeyAria: 'Chave secreta do servidor',
+    showSecretAria: 'Ver chave secreta',
+    hideSecretAria: 'Ocultar chave secreta',
+    copySecretAria: 'Copiar chave secreta',
+    syncAction: 'Sincronizar',
+    validationUrlRequired: 'Cole primeiro a URL do seu servidor.',
+    validationUrlInvalid: 'Informe uma URL válida com http:// ou https://.',
+    validationServiceRequired: 'Escolha um serviço ou "Sincronizar todos".',
   },
 };
 

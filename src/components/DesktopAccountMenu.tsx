@@ -9,6 +9,7 @@ import {
   type OrganizationServiceItem,
 } from './DesktopOrganizationView';
 import { DesktopStoreView } from './DesktopStoreView';
+import { ConnectServerView } from './ConnectServerView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
   buildSchemaInputFromService,
@@ -43,6 +44,7 @@ type DesktopMenuView =
   | 'menu'
   | 'google-account'
   | 'organization'
+  | 'connect-server'
   | 'store'
   | 'schema'
   | 'language';
@@ -182,6 +184,7 @@ export function DesktopAccountMenu({
   const isExpandedPanelView =
     view === 'google-account' ||
     view === 'organization' ||
+    view === 'connect-server' ||
     view === 'store' ||
     view === 'schema' ||
     view === 'language';
@@ -190,13 +193,15 @@ export function DesktopAccountMenu({
       ? t.menu.googleAccount
       : view === 'organization'
         ? t.menu.organization
-        : view === 'store'
-          ? t.menu.myStore
-          : view === 'schema'
-            ? t.org.schemaTitle
-            : view === 'language'
-              ? t.menu.language
-              : t.menu.account;
+        : view === 'connect-server'
+          ? t.connectServer.title
+          : view === 'store'
+            ? t.menu.myStore
+            : view === 'schema'
+              ? t.org.schemaTitle
+              : view === 'language'
+                ? t.menu.language
+                : t.menu.account;
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -219,11 +224,13 @@ export function DesktopAccountMenu({
               ? t.menu.googleAccountDetailsAria
               : view === 'organization'
                 ? t.menu.organization
-                : view === 'store'
-                  ? t.menu.myStore
-                  : view === 'language'
-                    ? t.menu.languagesTitle
-                    : t.menu.accountMenuAria
+                : view === 'connect-server'
+                  ? t.connectServer.title
+                  : view === 'store'
+                    ? t.menu.myStore
+                    : view === 'language'
+                      ? t.menu.languagesTitle
+                      : t.menu.accountMenuAria
           }
           initial={
             shouldReduceMotion
@@ -387,6 +394,15 @@ export function DesktopAccountMenu({
                     <li>
                       <button
                         type="button"
+                        onClick={() => setView('connect-server')}
+                        className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
+                      >
+                        {t.menu.connectServer}
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
                         onClick={() => setView('language')}
                         className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
                       >
@@ -522,6 +538,21 @@ export function DesktopAccountMenu({
                     onOpenServiceChat={onOpenServiceChat}
                     onRotateServiceKey={onRotateServiceKey}
                     onToggleServiceActive={onToggleServiceActive}
+                  />
+                </motion.div>
+              ) : view === 'connect-server' ? (
+                <motion.div
+                  key="desktop-connect-server-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <ConnectServerView
+                    userId={user.id}
+                    services={services}
+                    variant="desktop"
                   />
                 </motion.div>
               ) : view === 'store' && selectedStoreService ? (

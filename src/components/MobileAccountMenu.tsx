@@ -8,6 +8,7 @@ import type {
 } from './DesktopOrganizationView';
 import { MobileOrganizationView } from './MobileOrganizationView';
 import { MobileStoreView } from './MobileStoreView';
+import { ConnectServerView } from './ConnectServerView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
   buildSchemaInputFromService,
@@ -25,6 +26,7 @@ interface MobileAccountMenuProps {
   menuOpen: boolean;
   accountModalOpen: boolean;
   languageModalOpen: boolean;
+  connectServerModalOpen: boolean;
   panelOpen: boolean;
   user: User;
   orgProfile: OrganizationProfile;
@@ -41,6 +43,8 @@ interface MobileAccountMenuProps {
   onCloseAccountModal: () => void;
   onOpenLanguageModal: () => void;
   onCloseLanguageModal: () => void;
+  onOpenConnectServerModal: () => void;
+  onCloseConnectServerModal: () => void;
   onOpenPanel: () => void;
   onClosePanel: () => void;
   onOpenDocumentation: (docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency') => void;
@@ -77,6 +81,7 @@ export function MobileAccountMenu({
   menuOpen,
   accountModalOpen,
   languageModalOpen,
+  connectServerModalOpen,
   panelOpen,
   user,
   orgProfile,
@@ -93,6 +98,8 @@ export function MobileAccountMenu({
   onCloseAccountModal,
   onOpenLanguageModal,
   onCloseLanguageModal,
+  onOpenConnectServerModal,
+  onCloseConnectServerModal,
   onOpenPanel,
   onClosePanel,
   onOpenDocumentation,
@@ -254,6 +261,18 @@ export function MobileAccountMenu({
                       className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors cursor-pointer"
                     >
                       {t.menu.organization}
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onCloseMenu();
+                        onOpenConnectServerModal();
+                      }}
+                      className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors cursor-pointer"
+                    >
+                      {t.menu.connectServer}
                     </button>
                   </li>
                   <li>
@@ -676,6 +695,43 @@ export function MobileAccountMenu({
             onDownloadZip={() => downloadServiceSchemaZip(activeSchemaInput)}
             onClose={() => setSelectedSchemaServiceId(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* 3b. Mobile full-screen white Conecta tu servidor view */}
+      <AnimatePresence>
+        {connectServerModalOpen && (
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.connectServer.title}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-50 lg:hidden bg-white flex flex-col"
+          >
+            <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
+              <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                {t.connectServer.title}
+              </span>
+
+              <button
+                type="button"
+                onClick={onCloseConnectServerModal}
+                aria-label={t.menu.closeConnectServerAria}
+                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4.5 h-4.5" aria-hidden="true" />
+              </button>
+            </header>
+
+            <ConnectServerView
+              userId={user.id}
+              services={services}
+              variant="mobile"
+            />
+          </motion.section>
         )}
       </AnimatePresence>
 
