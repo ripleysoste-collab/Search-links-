@@ -76,6 +76,10 @@ import {
   processAndStoreUploadedImage,
   sanitizeUploadFolderPrefix,
 } from './lib/uploadHandler.ts';
+import {
+  executeAgencyServerSync,
+  type AgencySyncFallbackService,
+} from './lib/agencySync.ts';
 
 const rootDir = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT) || 3000;
@@ -1013,6 +1017,30 @@ async function startServer() {
       ok: true,
       ...result.data,
     });
+  });
+
+  app.post('/api/agency/sync', express.json({ limit: '1mb' }), async (req, res) => {
+    const body = (req.body || {}) as {
+      serverUrl?: unknown;
+      serviceScope?: unknown;
+      secretKey?: unknown;
+      servicesFallback?: unknown;
+    };
+
+    const result = await executeAgencyServerSync(req.headers, {
+      serverUrl: typeof body.serverUrl === 'string' ? body.serverUrl : '',
+      serviceScope: typeof body.serviceScope === 'string' ? body.serviceScope : '',
+      secretKey: typeof body.secretKey === 'string' ? body.secretKey : '',
+      servicesFallback: Array.isArray(body.servicesFallback)
+        ? (body.servicesFallback as AgencySyncFallbackService[])
+        : undefined,
+    });
+
+    if (!result.ok) {
+      return res.status(result.status).json(result);
+    }
+
+    return res.json(result);
   });
 
   app.get(['/auth/callback', '/auth/callback/'], (_req, res) => {

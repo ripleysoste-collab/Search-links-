@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { Check, ChevronDown, Copy, Eye, EyeOff } from 'lucide-react';
+import { Check, ChevronDown, Copy, Eye, EyeOff, Loader2 } from 'lucide-react';
 import type { OrganizationServiceItem } from './DesktopOrganizationView';
+import { resolveApiUrl } from '../lib/apiConfig';
 import { useI18n } from '../lib/i18n';
+import { getSupabaseAccessToken } from '../lib/supabaseClient';
 
 interface ConnectServerViewProps {
   userId: string;
@@ -84,7 +86,9 @@ export function ConnectServerView({
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [secretCopied, setSecretCopied] = useState(false);
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const next = loadDraftState(userId);
@@ -92,6 +96,7 @@ export function ConnectServerView({
     setSelectedScope(next.selectedScope);
     setSecretKey(next.secretKey);
     setFormError(null);
+    setSyncSuccessMessage(null);
   }, [userId]);
 
   useEffect(() => {
@@ -148,7 +153,7 @@ export function ConnectServerView({
       ? t.connectServer.allServicesSelected
       : selectedService
         ? selectedService.name
-        : t.connectServer.chooseServicePlaceholder;
+        : '';
 
   const handleCopySecret = async () => {
     if (!secretKey) return;
@@ -161,8 +166,11 @@ export function ConnectServerView({
     }
   };
 
-  const handleSubmitSync = (event: React.FormEvent) => {
+  const handleSubmitSync = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSyncing) return;
+
+    setSyncSuccessMessage(null);
     const trimmed = serverUrl.trim();
     if (!trimmed) {
       setFormError(t.connectServer.validationUrlRequired);
@@ -182,7 +190,79 @@ export function ConnectServerView({
       setFormError(t.connectServer.validationServiceRequired);
       return;
     }
+    if (services.length === 0) {
+      setFormError(t.connectServer.noServicesToSync);
+      return;
+    }
+
     setFormError(null);
+    setIsSyncing(true);
+
+    try {
+      const accessToken = await getSupabaseAccessToken();
+      if (!accessToken) {
+        setFormError(t.connectServer.authRequired);
+        return;
+      }
+
+      const targetServices =
+        effectiveScope === 'all'
+          ? services
+          : services.filter((srv) => srv.id === effectiveScope);
+
+      const servicesFallback = targetServices.map((srv) => ({
+        id: srv.id,
+        slug: srv.slug,
+        name: srv.name,
+        createdAt: srv.createdAt,
+        products: (srv.products || []).map((p) => ({
+          id: p.id,
+          nombre: p.nombre,
+          categoria: p.categoria,
+          descripcion: p.descripcion,
+          url: p.url,
+        })),
+      }));
+
+      const res = await fetch(resolveApiUrl('/api/agency/sync'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          serverUrl: trimmed,
+          serviceScope: effectiveScope,
+          secretKey,
+          servicesFallback,
+        }),
+      });
+
+      const data = (await res.json().catch(() => null)) as {
+        ok?: boolean;
+        syncedServices?: number;
+        syncedProducts?: number;
+        durationMs?: number;
+        error?: string;
+      } | null;
+
+      if (!res.ok || !data?.ok) {
+        setFormError(data?.error || t.connectServer.syncNetworkError);
+        return;
+      }
+
+      setSyncSuccessMessage(
+        t.connectServer.syncSuccess(
+          data.syncedServices ?? targetServices.length,
+          data.syncedProducts ?? 0,
+          data.durationMs ?? 1,
+        ),
+      );
+    } catch {
+      setFormError(t.connectServer.syncNetworkError);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const containerPadding = variant === 'desktop' ? 'px-8 py-7' : 'px-5 py-5';
@@ -194,16 +274,16 @@ export function ConnectServerView({
 
   return (
     <form
-      onSubmit={handleSubmitSync}
+      onSubmit={(e) => void handleSubmitSync(e)}
       noValidate
       className={`flex-1 min-h-0 bg-white overflow-y-auto ${containerPadding} flex flex-col justify-between gap-6`}
     >
       <div className="space-y-5">
-        {/* 1. URL de tu servidor (en punticos por defecto + ojito) */}
+        {/* 1. URL de tu servidor (en punticos por defecto + ojito, sin ejemplo dentro) */}
         <div>
           <label
             htmlFor={`connect-server-url-${variant}`}
-            className="block text-xs font-medium text-slate-500 mb-1.5"
+            className="block text-xs font-medium text-slate-950 mb-1.5"
           >
             {t.connectServer.serverUrlLabel}
           </label>
@@ -217,14 +297,14 @@ export function ConnectServerView({
               onChange={(e) => {
                 setServerUrl(e.target.value);
                 if (formError) setFormError(null);
+                if (syncSuccessMessage) setSyncSuccessMessage(null);
               }}
-              placeholder={t.connectServer.serverUrlPlaceholder}
               aria-label={t.connectServer.serverUrlAria}
               autoComplete="new-password"
               spellCheck={false}
               inputMode="url"
               data-lpignore="true"
-              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-slate-900 focus:outline-none"
             />
             <button
               type="button"
@@ -250,9 +330,9 @@ export function ConnectServerView({
           </div>
         </div>
 
-        {/* 2. Escoge tu servicio (menú desplegable estilo Tienda / 3 punticos) */}
+        {/* 2. Escoge tu servicio (recuadro limpio sin texto de ejemplo + menú estilo Tienda / 3 punticos) */}
         <div ref={serviceMenuRef} className="relative">
-          <span className="block text-xs font-medium text-slate-500 mb-1.5">
+          <span className="block text-xs font-medium text-slate-950 mb-1.5">
             {t.connectServer.chooseServiceLabel}
           </span>
           <button
@@ -267,11 +347,7 @@ export function ConnectServerView({
                 : 'border-slate-200/90 bg-slate-50/75 hover:bg-white hover:border-slate-300'
             }`}
           >
-            <span
-              className={`text-sm font-medium truncate ${
-                effectiveScope ? 'text-slate-900' : 'text-slate-400'
-              }`}
-            >
+            <span className="text-sm font-medium text-slate-900 truncate min-h-[20px]">
               {selectedServiceLabel}
             </span>
 
@@ -326,6 +402,7 @@ export function ConnectServerView({
                               setSelectedScope(service.id);
                               setServiceMenuOpen(false);
                               if (formError) setFormError(null);
+                              if (syncSuccessMessage) setSyncSuccessMessage(null);
                             }}
                             className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
                               isActive
@@ -361,6 +438,7 @@ export function ConnectServerView({
                         setSelectedScope('all');
                         setServiceMenuOpen(false);
                         if (formError) setFormError(null);
+                        if (syncSuccessMessage) setSyncSuccessMessage(null);
                       }}
                       className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
                         effectiveScope === 'all'
@@ -389,7 +467,7 @@ export function ConnectServerView({
         <div>
           <label
             htmlFor={`connect-server-secret-${variant}`}
-            className="block text-xs font-medium text-slate-500 mb-1.5"
+            className="block text-xs font-medium text-slate-950 mb-1.5"
           >
             {t.connectServer.secretKeyLabel}
           </label>
@@ -452,17 +530,33 @@ export function ConnectServerView({
             {formError}
           </p>
         )}
+
+        {syncSuccessMessage && (
+          <p
+            role="status"
+            className="flex items-start gap-2 text-xs font-medium text-emerald-700"
+          >
+            <Check className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+            <span>{syncSuccessMessage}</span>
+          </p>
+        )}
       </div>
 
       {/* Bottom CTA: Sincronizar */}
       <div className="pt-5 border-t border-slate-200/75 shrink-0">
         <button
           type="submit"
-          className={`w-full rounded-2xl bg-slate-950 hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-semibold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950/40 ${
+          disabled={isSyncing}
+          className={`w-full rounded-2xl bg-slate-950 hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950/40 ${
             variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
           }`}
         >
-          {t.connectServer.syncAction}
+          {isSyncing && (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          )}
+          <span>
+            {isSyncing ? t.connectServer.syncingAction : t.connectServer.syncAction}
+          </span>
         </button>
       </div>
     </form>

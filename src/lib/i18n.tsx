@@ -417,9 +417,14 @@ export interface TranslationDictionary {
     hideSecretAria: string;
     copySecretAria: string;
     syncAction: string;
+    syncingAction: string;
     validationUrlRequired: string;
     validationUrlInvalid: string;
     validationServiceRequired: string;
+    noServicesToSync: string;
+    authRequired: string;
+    syncSuccess: (services: number, products: number, durationMs: number) => string;
+    syncNetworkError: string;
   };
 }
 
@@ -955,9 +960,15 @@ const ES_DICTIONARY: TranslationDictionary = {
     hideSecretAria: 'Ocultar clave secreta',
     copySecretAria: 'Copiar clave secreta',
     syncAction: 'Sincronizar',
+    syncingAction: 'Sincronizando…',
     validationUrlRequired: 'Pega primero la URL de tu servidor.',
     validationUrlInvalid: 'Ingresa una URL válida con http:// o https://.',
     validationServiceRequired: 'Escoge un servicio o "Sincronizar todos".',
+    noServicesToSync: 'Todavía no tienes servicios para sincronizar.',
+    authRequired: 'Inicia sesión nuevamente para sincronizar.',
+    syncSuccess: (srv, prod, ms) =>
+      `Sincronizado: ${srv} ${srv === 1 ? 'servicio' : 'servicios'} (${prod} ${prod === 1 ? 'producto' : 'productos'}) en ${ms} ms.`,
+    syncNetworkError: 'No pudimos conectar con Search Link para enviar la sincronización.',
   },
 };
 
@@ -1494,9 +1505,15 @@ const EN_DICTIONARY: TranslationDictionary = {
     hideSecretAria: 'Hide secret key',
     copySecretAria: 'Copy secret key',
     syncAction: 'Sync',
+    syncingAction: 'Syncing…',
     validationUrlRequired: 'Paste your server URL first.',
     validationUrlInvalid: 'Enter a valid URL starting with http:// or https://.',
     validationServiceRequired: 'Choose a service or "Sync all".',
+    noServicesToSync: 'You do not have any services to sync yet.',
+    authRequired: 'Sign in again to sync.',
+    syncSuccess: (srv, prod, ms) =>
+      `Synced: ${srv} ${srv === 1 ? 'service' : 'services'} (${prod} ${prod === 1 ? 'product' : 'products'}) in ${ms} ms.`,
+    syncNetworkError: 'Could not reach Search Link to run the sync.',
   },
 };
 
@@ -2035,9 +2052,15 @@ const PT_DICTIONARY: TranslationDictionary = {
     hideSecretAria: 'Ocultar chave secreta',
     copySecretAria: 'Copiar chave secreta',
     syncAction: 'Sincronizar',
+    syncingAction: 'Sincronizando…',
     validationUrlRequired: 'Cole primeiro a URL do seu servidor.',
     validationUrlInvalid: 'Informe uma URL válida com http:// ou https://.',
     validationServiceRequired: 'Escolha um serviço ou "Sincronizar todos".',
+    noServicesToSync: 'Você ainda não tem serviços para sincronizar.',
+    authRequired: 'Entre novamente para sincronizar.',
+    syncSuccess: (srv, prod, ms) =>
+      `Sincronizado: ${srv} ${srv === 1 ? 'serviço' : 'serviços'} (${prod} ${prod === 1 ? 'produto' : 'produtos'}) em ${ms} ms.`,
+    syncNetworkError: 'Não foi possível conectar ao Search Link para sincronizar.',
   },
 };
 
