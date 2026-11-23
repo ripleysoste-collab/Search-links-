@@ -2,68 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Check, ChevronDown, Copy, Eye, EyeOff, Loader2 } from 'lucide-react';
 import type { OrganizationServiceItem } from './DesktopOrganizationView';
-import { resolveApiUrl } from '../lib/apiConfig';
+import {
+  AGENCY_SYNC_UPDATED_EVENT,
+  dispatchAgencyServerSync,
+  loadAgencyConnectionState,
+  saveAgencyConnectionState,
+  type AgencyConnectionState,
+} from '../lib/agencySyncClient';
 import { useI18n } from '../lib/i18n';
-import { getSupabaseAccessToken } from '../lib/supabaseClient';
 
 interface ConnectServerViewProps {
   userId: string;
   services: OrganizationServiceItem[];
   variant: 'desktop' | 'mobile';
-}
-
-const STORAGE_PREFIX = 'searchlink_connect_server_draft_v1_';
-
-function generateSecretKey(): string {
-  const bytes = new Uint8Array(18);
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i += 1) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-  return `sl_whsec_${hex}`;
-}
-
-interface DraftConnectServerState {
-  serverUrl: string;
-  selectedScope: string | null;
-  secretKey: string;
-}
-
-function loadDraftState(userId: string): DraftConnectServerState {
-  const fallback: DraftConnectServerState = {
-    serverUrl: '',
-    selectedScope: null,
-    secretKey: generateSecretKey(),
-  };
-
-  if (typeof window === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(`${STORAGE_PREFIX}${userId}`);
-    if (!raw) {
-      window.localStorage.setItem(
-        `${STORAGE_PREFIX}${userId}`,
-        JSON.stringify(fallback),
-      );
-      return fallback;
-    }
-    const parsed = JSON.parse(raw) as Partial<DraftConnectServerState>;
-    const secretKey =
-      typeof parsed.secretKey === 'string' && parsed.secretKey.trim()
-        ? parsed.secretKey
-        : fallback.secretKey;
-    return {
-      serverUrl: typeof parsed.serverUrl === 'string' ? parsed.serverUrl : '',
-      selectedScope:
-        typeof parsed.selectedScope === 'string' ? parsed.selectedScope : null,
-      secretKey,
-    };
-  } catch {
-    return fallback;
-  }
 }
 
 export function ConnectServerView({
@@ -75,14 +26,10 @@ export function ConnectServerView({
   const shouldReduceMotion = useReducedMotion();
   const serviceMenuRef = useRef<HTMLDivElement>(null);
 
-  const initialDraft = useMemo(() => loadDraftState(userId), [userId]);
-
-  const [serverUrl, setServerUrl] = useState(initialDraft.serverUrl);
-  const [showServerUrl, setShowServerUrl] = useState(false);
-  const [selectedScope, setSelectedScope] = useState<string | null>(
-    initialDraft.selectedScope,
+  const [connState, setConnState] = useState<AgencyConnectionState>(() =>
+    loadAgencyConnectionState(userId),
   );
-  const [secretKey, setSecretKey] = useState(initialDraft.secretKey);
+  const [showServerUrl, setShowServerUrl] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [secretCopied, setSecretCopied] = useState(false);
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
@@ -91,29 +38,23 @@ export function ConnectServerView({
   const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const next = loadDraftState(userId);
-    setServerUrl(next.serverUrl);
-    setSelectedScope(next.selectedScope);
-    setSecretKey(next.secretKey);
+    setConnState(loadAgencyConnectionState(userId));
     setFormError(null);
     setSyncSuccessMessage(null);
   }, [userId]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(
-        `${STORAGE_PREFIX}${userId}`,
-        JSON.stringify({
-          serverUrl,
-          selectedScope,
-          secretKey,
-        }),
-      );
-    } catch {
-      // Ignore storage quota errors
-    }
-  }, [userId, serverUrl, selectedScope, secretKey]);
+    const handleSyncUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ userId?: string; state?: AgencyConnectionState }>)
+        .detail;
+      if (detail?.userId === userId && detail.state) {
+        setConnState(detail.state);
+      }
+    };
+    window.addEventListener(AGENCY_SYNC_UPDATED_EVENT, handleSyncUpdated);
+    return () =>
+      window.removeEventListener(AGENCY_SYNC_UPDATED_EVENT, handleSyncUpdated);
+  }, [userId]);
 
   useEffect(() => {
     if (!serviceMenuOpen) return;
@@ -140,13 +81,25 @@ export function ConnectServerView({
     };
   }, [serviceMenuOpen]);
 
+  const updateConnectionDraft = (patch: Partial<AgencyConnectionState>) => {
+    setConnState((prev) => {
+      const next: AgencyConnectionState = { ...prev, ...patch };
+      saveAgencyConnectionState(userId, next, false);
+      return next;
+    });
+  };
+
   const selectedService = useMemo(() => {
-    if (!selectedScope || selectedScope === 'all') return null;
-    return services.find((srv) => srv.id === selectedScope) ?? null;
-  }, [selectedScope, services]);
+    if (!connState.selectedScope || connState.selectedScope === 'all') return null;
+    return services.find((srv) => srv.id === connState.selectedScope) ?? null;
+  }, [connState.selectedScope, services]);
 
   const effectiveScope =
-    selectedScope === 'all' ? 'all' : selectedService ? selectedService.id : null;
+    connState.selectedScope === 'all'
+      ? 'all'
+      : selectedService
+        ? selectedService.id
+        : null;
 
   const selectedServiceLabel =
     effectiveScope === 'all'
@@ -156,9 +109,9 @@ export function ConnectServerView({
         : '';
 
   const handleCopySecret = async () => {
-    if (!secretKey) return;
+    if (!connState.secretKey) return;
     try {
-      await navigator.clipboard.writeText(secretKey);
+      await navigator.clipboard.writeText(connState.secretKey);
       setSecretCopied(true);
       window.setTimeout(() => setSecretCopied(false), 1600);
     } catch {
@@ -171,7 +124,7 @@ export function ConnectServerView({
     if (isSyncing) return;
 
     setSyncSuccessMessage(null);
-    const trimmed = serverUrl.trim();
+    const trimmed = connState.serverUrl.trim();
     if (!trimmed) {
       setFormError(t.connectServer.validationUrlRequired);
       return;
@@ -199,63 +152,25 @@ export function ConnectServerView({
     setIsSyncing(true);
 
     try {
-      const accessToken = await getSupabaseAccessToken();
-      if (!accessToken) {
-        setFormError(t.connectServer.authRequired);
-        return;
-      }
-
-      const targetServices =
-        effectiveScope === 'all'
-          ? services
-          : services.filter((srv) => srv.id === effectiveScope);
-
-      const servicesFallback = targetServices.map((srv) => ({
-        id: srv.id,
-        slug: srv.slug,
-        name: srv.name,
-        createdAt: srv.createdAt,
-        products: (srv.products || []).map((p) => ({
-          id: p.id,
-          nombre: p.nombre,
-          categoria: p.categoria,
-          descripcion: p.descripcion,
-          url: p.url,
-        })),
-      }));
-
-      const res = await fetch(resolveApiUrl('/api/agency/sync'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          serverUrl: trimmed,
-          serviceScope: effectiveScope,
-          secretKey,
-          servicesFallback,
-        }),
+      const result = await dispatchAgencyServerSync({
+        userId,
+        serverUrl: trimmed,
+        serviceScope: effectiveScope,
+        secretKey: connState.secretKey,
+        services,
+        eventType: 'manual',
       });
 
-      const data = (await res.json().catch(() => null)) as {
-        ok?: boolean;
-        syncedServices?: number;
-        syncedProducts?: number;
-        durationMs?: number;
-        error?: string;
-      } | null;
-
-      if (!res.ok || !data?.ok) {
-        setFormError(data?.error || t.connectServer.syncNetworkError);
+      if (!result.ok) {
+        setFormError(result.error || t.connectServer.syncNetworkError);
         return;
       }
 
       setSyncSuccessMessage(
         t.connectServer.syncSuccess(
-          data.syncedServices ?? targetServices.length,
-          data.syncedProducts ?? 0,
-          data.durationMs ?? 1,
+          result.syncedServices ?? 1,
+          result.syncedProducts ?? 0,
+          result.durationMs ?? 1,
         ),
       );
     } catch {
@@ -279,7 +194,7 @@ export function ConnectServerView({
       className={`flex-1 min-h-0 bg-white overflow-y-auto ${containerPadding} flex flex-col justify-between gap-6`}
     >
       <div className="space-y-5">
-        {/* 1. URL de tu servidor (en punticos por defecto + ojito, sin ejemplo dentro) */}
+        {/* 1. URL de tu servidor */}
         <div>
           <label
             htmlFor={`connect-server-url-${variant}`}
@@ -293,9 +208,9 @@ export function ConnectServerView({
             <input
               id={`connect-server-url-${variant}`}
               type={showServerUrl ? 'text' : 'password'}
-              value={serverUrl}
+              value={connState.serverUrl}
               onChange={(e) => {
-                setServerUrl(e.target.value);
+                updateConnectionDraft({ serverUrl: e.target.value });
                 if (formError) setFormError(null);
                 if (syncSuccessMessage) setSyncSuccessMessage(null);
               }}
@@ -330,7 +245,7 @@ export function ConnectServerView({
           </div>
         </div>
 
-        {/* 2. Escoge tu servicio (recuadro limpio sin texto de ejemplo + menú estilo Tienda / 3 punticos) */}
+        {/* 2. Escoge tu servicio */}
         <div ref={serviceMenuRef} className="relative">
           <span className="block text-xs font-medium text-slate-950 mb-1.5">
             {t.connectServer.chooseServiceLabel}
@@ -399,7 +314,7 @@ export function ConnectServerView({
                             type="button"
                             role="menuitem"
                             onClick={() => {
-                              setSelectedScope(service.id);
+                              updateConnectionDraft({ selectedScope: service.id });
                               setServiceMenuOpen(false);
                               if (formError) setFormError(null);
                               if (syncSuccessMessage) setSyncSuccessMessage(null);
@@ -435,7 +350,7 @@ export function ConnectServerView({
                       type="button"
                       role="menuitem"
                       onClick={() => {
-                        setSelectedScope('all');
+                        updateConnectionDraft({ selectedScope: 'all' });
                         setServiceMenuOpen(false);
                         if (formError) setFormError(null);
                         if (syncSuccessMessage) setSyncSuccessMessage(null);
@@ -463,7 +378,7 @@ export function ConnectServerView({
           </AnimatePresence>
         </div>
 
-        {/* 3. Clave secreta (en punticos + ojito + copiar) */}
+        {/* 3. Clave secreta */}
         <div>
           <label
             htmlFor={`connect-server-secret-${variant}`}
@@ -478,7 +393,7 @@ export function ConnectServerView({
               id={`connect-server-secret-${variant}`}
               type={showSecretKey ? 'text' : 'password'}
               readOnly
-              value={secretKey}
+              value={connState.secretKey}
               aria-label={t.connectServer.secretKeyAria}
               autoComplete="off"
               className="flex-1 min-w-0 bg-transparent font-mono text-xs tracking-wide text-slate-800 focus:outline-none select-all"

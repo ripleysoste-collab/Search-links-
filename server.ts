@@ -78,6 +78,7 @@ import {
 } from './lib/uploadHandler.ts';
 import {
   executeAgencyServerSync,
+  type AgencySyncEventType,
   type AgencySyncFallbackService,
 } from './lib/agencySync.ts';
 
@@ -1024,13 +1025,23 @@ async function startServer() {
       serverUrl?: unknown;
       serviceScope?: unknown;
       secretKey?: unknown;
+      eventType?: unknown;
+      changedServiceId?: unknown;
       servicesFallback?: unknown;
     };
+
+    const rawEventType: AgencySyncEventType =
+      body.eventType === 'service.created' || body.eventType === 'service.updated'
+        ? body.eventType
+        : 'manual';
 
     const result = await executeAgencyServerSync(req.headers, {
       serverUrl: typeof body.serverUrl === 'string' ? body.serverUrl : '',
       serviceScope: typeof body.serviceScope === 'string' ? body.serviceScope : '',
       secretKey: typeof body.secretKey === 'string' ? body.secretKey : '',
+      eventType: rawEventType,
+      changedServiceId:
+        typeof body.changedServiceId === 'string' ? body.changedServiceId : undefined,
       servicesFallback: Array.isArray(body.servicesFallback)
         ? (body.servicesFallback as AgencySyncFallbackService[])
         : undefined,

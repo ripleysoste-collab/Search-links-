@@ -25,10 +25,14 @@ export interface AgencySyncFallbackService {
   products?: AgencySyncFallbackProduct[];
 }
 
+export type AgencySyncEventType = 'manual' | 'service.created' | 'service.updated';
+
 export interface AgencySyncRequestInput {
   serverUrl: string;
   serviceScope: string;
   secretKey: string;
+  eventType?: AgencySyncEventType;
+  changedServiceId?: string;
   servicesFallback?: AgencySyncFallbackService[];
 }
 
@@ -246,12 +250,19 @@ export async function executeAgencyServerSync(
     (sum, srv) => sum + srv.productos.length,
     0,
   );
+  const webhookEventName =
+    input.eventType === 'service.created'
+      ? 'searchlink.service.created'
+      : input.eventType === 'service.updated'
+        ? 'searchlink.service.updated'
+        : 'searchlink.catalog.sync';
 
   const payload = {
-    event: 'searchlink.catalog.sync',
+    event: webhookEventName,
     version: '1.0',
     synced_at: syncedAt,
     scope: serviceScope === 'all' ? 'all' : 'single',
+    ...(input.changedServiceId ? { changed_service_id: input.changedServiceId } : {}),
     organizacion: {
       nombre: orgName,
       logo_url: orgLogoUrl,
@@ -284,7 +295,7 @@ export async function executeAgencyServerSync(
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
         'User-Agent': 'SearchLink-Agency-Sync/1.0',
-        'X-SearchLink-Event': 'searchlink.catalog.sync',
+        'X-SearchLink-Event': webhookEventName,
         'X-SearchLink-Timestamp': timestamp,
         'X-SearchLink-Signature': `sha256=${signature}`,
       },

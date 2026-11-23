@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   executeAgencyServerSync,
+  type AgencySyncEventType,
   type AgencySyncFallbackService,
 } from '../../lib/agencySync.ts';
 
@@ -55,10 +56,18 @@ export default async function handler(
   }
 
   const body = await readJsonBody(req);
+  const rawEventType =
+    body.eventType === 'service.created' || body.eventType === 'service.updated'
+      ? (body.eventType as AgencySyncEventType)
+      : 'manual';
+
   const result = await executeAgencyServerSync(req.headers, {
     serverUrl: typeof body.serverUrl === 'string' ? body.serverUrl : '',
     serviceScope: typeof body.serviceScope === 'string' ? body.serviceScope : '',
     secretKey: typeof body.secretKey === 'string' ? body.secretKey : '',
+    eventType: rawEventType,
+    changedServiceId:
+      typeof body.changedServiceId === 'string' ? body.changedServiceId : undefined,
     servicesFallback: Array.isArray(body.servicesFallback)
       ? (body.servicesFallback as AgencySyncFallbackService[])
       : undefined,

@@ -77,6 +77,7 @@ import {
   toggleCoreServiceActiveInSupabase,
   upsertUserOrganization,
 } from './lib/supabaseClient';
+import { triggerAgencyAutoSyncIfMatched } from './lib/agencySyncClient';
 
 const MAX_FREE_UPLOAD_IMAGES = 20;
 const MAX_GUEST_EXTRACT_IMAGES = 10;
@@ -271,6 +272,7 @@ export default function App() {
     useState<ServiceCredentialsDisplay | null>(null);
   const [guestIpBlocked, setGuestIpBlocked] = useState(false);
   const authUserRef = useRef<User | null>(null);
+  const orgServicesRef = useRef<OrganizationServiceItem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const imageBankMobileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -474,6 +476,10 @@ export default function App() {
       active = false;
     };
   }, [authUser]);
+
+  useEffect(() => {
+    orgServicesRef.current = orgServices;
+  }, [orgServices]);
 
   useEffect(() => {
     if (!authUser) {
@@ -949,21 +955,31 @@ export default function App() {
       snapshot: serviceSnapshot,
     };
 
-    setOrgServices((prev) => {
-      const filtered = prev.filter(
+    const nextServicesList = [
+      newService,
+      ...orgServicesRef.current.filter(
         (srv) => srv.id !== finalServiceId && srv.slug !== job.serviceSlug,
+      ),
+    ];
+    orgServicesRef.current = nextServicesList;
+    setOrgServices(nextServicesList);
+    try {
+      window.localStorage.setItem(
+        `searchlink_services_${userId}`,
+        JSON.stringify(nextServicesList),
       );
-      const updated = [newService, ...filtered];
-      try {
-        window.localStorage.setItem(
-          `searchlink_services_${userId}`,
-          JSON.stringify(updated),
-        );
-      } catch {
-        // Ignore storage errors
-      }
-      return updated;
-    });
+    } catch {
+      // Ignore storage errors
+    }
+
+    if (mappedItems.length > 0) {
+      void triggerAgencyAutoSyncIfMatched({
+        userId,
+        eventType: 'service.created',
+        serviceId: finalServiceId,
+        services: nextServicesList,
+      });
+    }
 
     if (!job.notice) {
       setBatchNotice(t.app.coreSavedNotice);
@@ -1030,48 +1046,62 @@ export default function App() {
     }
   };
 
-  const handleRenameService = (serviceId: string, nextName: string) => {
-    setOrgServices((prev) => {
-      const updated = prev.map((srv) =>
-        srv.id === serviceId ? { ...srv, name: nextName } : srv,
-      );
-      if (authUserRef.current) {
-        try {
-          window.localStorage.setItem(
-            `searchlink_services_${authUserRef.current.id}`,
-            JSON.stringify(updated),
-          );
-        } catch {
-          // Ignore storage quota errors
-        }
-      }
-      return updated;
+  const notifyServiceEditedForAgencySync = (
+    serviceId: string,
+    updatedServices: OrganizationServiceItem[],
+  ) => {
+    const currentUser = authUserRef.current;
+    if (!currentUser) return;
+    void triggerAgencyAutoSyncIfMatched({
+      userId: currentUser.id,
+      eventType: 'service.updated',
+      serviceId,
+      services: updatedServices,
     });
-    void renameCoreServiceInSupabase(serviceId, nextName);
+  };
+
+  const handleRenameService = (serviceId: string, nextName: string) => {
+    const updated = orgServicesRef.current.map((srv) =>
+      srv.id === serviceId ? { ...srv, name: nextName } : srv,
+    );
+    orgServicesRef.current = updated;
+    setOrgServices(updated);
+    if (authUserRef.current) {
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${authUserRef.current.id}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage quota errors
+      }
+    }
+    void renameCoreServiceInSupabase(serviceId, nextName).finally(() => {
+      notifyServiceEditedForAgencySync(serviceId, updated);
+    });
   };
 
   const handleRotateServiceKey = async (
     serviceId: string,
   ): Promise<string | null> => {
     const minted = await generateCoreApiKey();
-    setOrgServices((prev) => {
-      const updated = prev.map((srv) =>
-        srv.id === serviceId
-          ? { ...srv, apiKey: minted.rawKey, keyPrefix: minted.keyPrefix }
-          : srv,
-      );
-      if (authUserRef.current) {
-        try {
-          window.localStorage.setItem(
-            `searchlink_services_${authUserRef.current.id}`,
-            JSON.stringify(updated),
-          );
-        } catch {
-          // Ignore storage quota errors
-        }
+    const updated = orgServicesRef.current.map((srv) =>
+      srv.id === serviceId
+        ? { ...srv, apiKey: minted.rawKey, keyPrefix: minted.keyPrefix }
+        : srv,
+    );
+    orgServicesRef.current = updated;
+    setOrgServices(updated);
+    if (authUserRef.current) {
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${authUserRef.current.id}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage quota errors
       }
-      return updated;
-    });
+    }
     setActiveServiceCredentials((prev) =>
       prev ? { ...prev, apiKey: minted.rawKey } : prev,
     );
@@ -1087,23 +1117,23 @@ export default function App() {
     serviceId: string,
     nextActive: boolean,
   ): Promise<void> => {
-    setOrgServices((prev) => {
-      const updated = prev.map((srv) =>
-        srv.id === serviceId ? { ...srv, isActive: nextActive } : srv,
-      );
-      if (authUserRef.current) {
-        try {
-          window.localStorage.setItem(
-            `searchlink_services_${authUserRef.current.id}`,
-            JSON.stringify(updated),
-          );
-        } catch {
-          // Ignore storage quota errors
-        }
+    const updated = orgServicesRef.current.map((srv) =>
+      srv.id === serviceId ? { ...srv, isActive: nextActive } : srv,
+    );
+    orgServicesRef.current = updated;
+    setOrgServices(updated);
+    if (authUserRef.current) {
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${authUserRef.current.id}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage quota errors
       }
-      return updated;
-    });
+    }
     await toggleCoreServiceActiveInSupabase(serviceId, nextActive);
+    notifyServiceEditedForAgencySync(serviceId, updated);
   };
 
   const handleStartNewProduct = () => {
@@ -1113,6 +1143,7 @@ export default function App() {
     setIsMobileMenuOpen(false);
     setIsMobileAccountModalOpen(false);
     setIsMobileLanguageModalOpen(false);
+    setIsMobileConnectServerOpen(false);
     setIsMobilePanelOpen(false);
     setIsExtracting(false);
     setPendingDomainBatch(null);
