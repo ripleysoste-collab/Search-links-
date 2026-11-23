@@ -1027,6 +1027,7 @@ async function startServer() {
       secretKey?: unknown;
       eventType?: unknown;
       changedServiceId?: unknown;
+      dedupeKey?: unknown;
       servicesFallback?: unknown;
     };
 
@@ -1042,6 +1043,7 @@ async function startServer() {
       eventType: rawEventType,
       changedServiceId:
         typeof body.changedServiceId === 'string' ? body.changedServiceId : undefined,
+      dedupeKey: typeof body.dedupeKey === 'string' ? body.dedupeKey : undefined,
       servicesFallback: Array.isArray(body.servicesFallback)
         ? (body.servicesFallback as AgencySyncFallbackService[])
         : undefined,

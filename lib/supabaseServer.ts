@@ -26,6 +26,69 @@ interface CachedCoreCatalogEntry {
 
 const coreCatalogCache = new Map<string, CachedCoreCatalogEntry>();
 
+const EXTERNAL_SERVER_STATUS_TTL_MS = 30_000;
+const EXTERNAL_SERVER_CACHE_MAX_ENTRIES = 2000;
+const externalServerStatusCache = new Map<
+  string,
+  { active: boolean; expiresAt: number }
+>();
+
+export function markExternalServerActiveForKeyHashes(
+  keyHashes: string[],
+  active = true,
+): void {
+  const expiresAt = Date.now() + EXTERNAL_SERVER_STATUS_TTL_MS;
+  for (const rawHash of keyHashes) {
+    const normalized = rawHash.trim();
+    if (!normalized) continue;
+    if (externalServerStatusCache.size >= EXTERNAL_SERVER_CACHE_MAX_ENTRIES) {
+      const oldestKey = externalServerStatusCache.keys().next().value;
+      if (oldestKey) externalServerStatusCache.delete(oldestKey);
+    }
+    externalServerStatusCache.set(normalized, {
+      active,
+      expiresAt: active ? Date.now() + 24 * 60 * 60 * 1000 : expiresAt,
+    });
+    if (active) {
+      invalidateCoreCatalogCache({ keyHash: normalized });
+    }
+  }
+}
+
+async function isExternalServerActiveForKeyHash(
+  supabase: SupabaseClient,
+  keyHash: string,
+): Promise<boolean> {
+  const now = Date.now();
+  const cached = externalServerStatusCache.get(keyHash);
+  if (cached && cached.expiresAt > now) {
+    return cached.active;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      'check_external_server_by_key_hash',
+      { p_key_hash: keyHash },
+    );
+    if (error) {
+      // Gracefully allow until servidores_externos SQL migration is executed
+      return false;
+    }
+    const isActive = data === true;
+    if (externalServerStatusCache.size >= EXTERNAL_SERVER_CACHE_MAX_ENTRIES) {
+      const oldestKey = externalServerStatusCache.keys().next().value;
+      if (oldestKey) externalServerStatusCache.delete(oldestKey);
+    }
+    externalServerStatusCache.set(keyHash, {
+      active: isActive,
+      expiresAt: now + EXTERNAL_SERVER_STATUS_TTL_MS,
+    });
+    return isActive;
+  } catch {
+    return false;
+  }
+}
+
 export function invalidateCoreCatalogCache(filter?: {
   slug?: string;
   keyHash?: string;
@@ -175,6 +238,7 @@ export interface SearchLinkCoreQueryInput {
   categoria?: string;
   limit?: number;
   offset?: number;
+  bypassExternalServerCheck?: boolean;
 }
 
 function sha256HexServer(input: string): string {
@@ -281,6 +345,22 @@ export async function resolveSearchLinkCoreEndpoint(
   }
 
   const keyHash = sha256HexServer(trimmedKey);
+  if (!params.bypassExternalServerCheck) {
+    const externalActive = await isExternalServerActiveForKeyHash(
+      supabase,
+      keyHash,
+    );
+    if (externalActive) {
+      invalidateCoreCatalogCache({ keyHash });
+      return {
+        ok: false,
+        status: 403,
+        error:
+          'Esta cuenta tiene un servidor externo conectado. Las peticiones de catálogo deben realizarse directamente a tu propio servidor.',
+      };
+    }
+  }
+
   if (isMonthlyApiQuotaExceeded(keyHash)) {
     return {
       ok: false,

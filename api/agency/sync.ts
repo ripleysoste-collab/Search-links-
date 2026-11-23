@@ -68,6 +68,7 @@ export default async function handler(
     eventType: rawEventType,
     changedServiceId:
       typeof body.changedServiceId === 'string' ? body.changedServiceId : undefined,
+    dedupeKey: typeof body.dedupeKey === 'string' ? body.dedupeKey : undefined,
     servicesFallback: Array.isArray(body.servicesFallback)
       ? (body.servicesFallback as AgencySyncFallbackService[])
       : undefined,

@@ -1,8 +1,15 @@
 import crypto from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
-import { createClient } from '@supabase/supabase-js';
-import { verifySupabaseBearerUser } from './planLimits.ts';
-import { getSupabaseServerConfig } from './supabaseServer.ts';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import {
+  verifySupabaseBearerUser,
+  type AuthenticatedRequestUser,
+} from './planLimits.ts';
+import {
+  getSupabaseServerConfig,
+  invalidateCoreCatalogCache,
+  markExternalServerActiveForKeyHashes,
+} from './supabaseServer.ts';
 import {
   assertSafePublicUrl,
   PolicyBlockedDomainError,
@@ -33,6 +40,7 @@ export interface AgencySyncRequestInput {
   secretKey: string;
   eventType?: AgencySyncEventType;
   changedServiceId?: string;
+  dedupeKey?: string;
   servicesFallback?: AgencySyncFallbackService[];
 }
 
@@ -43,6 +51,7 @@ export interface AgencySyncResponse {
   syncedServices: number;
   syncedProducts: number;
   syncedAt: string;
+  deduplicated?: boolean;
 }
 
 export type AgencySyncResult =
@@ -79,6 +88,24 @@ function getBearerToken(headers: IncomingHttpHeaders): string {
   return authHeader.slice(7).trim();
 }
 
+const DEDUPE_WINDOW_MS = 30_000;
+const recentSyncDedupeMap = new Map<string, number>();
+
+function isDuplicateRecentSync(dedupeKey?: string): boolean {
+  const clean = (dedupeKey || '').trim();
+  if (!clean) return false;
+  const now = Date.now();
+  for (const [key, exp] of recentSyncDedupeMap.entries()) {
+    if (exp <= now) recentSyncDedupeMap.delete(key);
+  }
+  const existingExp = recentSyncDedupeMap.get(clean);
+  if (existingExp && existingExp > now) {
+    return true;
+  }
+  recentSyncDedupeMap.set(clean, now + DEDUPE_WINDOW_MS);
+  return false;
+}
+
 export async function executeAgencyServerSync(
   headers: IncomingHttpHeaders,
   input: AgencySyncRequestInput,
@@ -91,6 +118,21 @@ export async function executeAgencyServerSync(
       ok: false,
       status: 401,
       error: 'Inicia sesión con Google para sincronizar tus servicios.',
+    };
+  }
+
+  const scopedDedupeKey = input.dedupeKey?.trim()
+    ? `${authUser.userId}:${input.dedupeKey.trim()}`
+    : undefined;
+  if (isDuplicateRecentSync(scopedDedupeKey)) {
+    return {
+      ok: true,
+      remoteStatus: 200,
+      durationMs: 1,
+      syncedServices: 1,
+      syncedProducts: 0,
+      syncedAt: new Date().toISOString(),
+      deduplicated: true,
     };
   }
 
@@ -140,11 +182,12 @@ export async function executeAgencyServerSync(
   let orgName = 'Sin nombre';
   let orgLogoUrl: string | null = null;
   let resolvedServices: NormalizedSyncService[] = [];
+  let userClient: SupabaseClient | null = null;
 
   const { url: supabaseUrl, key: supabaseKey } = getSupabaseServerConfig();
   if (supabaseUrl && supabaseKey) {
     try {
-      const userClient = createClient(supabaseUrl, supabaseKey, {
+      userClient = createClient(supabaseUrl, supabaseKey, {
         auth: {
           persistSession: false,
           autoRefreshToken: false,
@@ -313,6 +356,60 @@ export async function executeAgencyServerSync(
       };
     }
 
+    if (userClient) {
+      try {
+        await userClient.from('servidores_externos').upsert(
+          {
+            user_id: authUser.userId,
+            user_email: authUser.email || null,
+            server_url: parsedSafeUrl.href,
+            service_scope: serviceScope,
+            secret_key: secretKey,
+            auto_sync_enabled: true,
+            last_synced_at: syncedAt,
+            last_event: webhookEventName,
+            last_remote_status: response.status,
+            last_duration_ms: durationMs,
+          },
+          { onConflict: 'user_id' },
+        );
+      } catch {
+        // Non-fatal if servidores_externos SQL migration has not been run yet
+      }
+
+      try {
+        const [{ data: keyRows }, { data: slugRows }] = await Promise.all([
+          userClient
+            .from('servicio_api_keys')
+            .select('key_hash')
+            .eq('user_id', authUser.userId)
+            .eq('is_active', true),
+          userClient
+            .from('servicios')
+            .select('public_slug')
+            .eq('user_id', authUser.userId),
+        ]);
+
+        if (Array.isArray(keyRows)) {
+          const hashes = keyRows
+            .map((r) => (typeof r.key_hash === 'string' ? r.key_hash : ''))
+            .filter(Boolean);
+          if (hashes.length > 0) {
+            markExternalServerActiveForKeyHashes(hashes, true);
+          }
+        }
+        if (Array.isArray(slugRows)) {
+          for (const row of slugRows) {
+            if (typeof row.public_slug === 'string' && row.public_slug.trim()) {
+              invalidateCoreCatalogCache({ slug: row.public_slug });
+            }
+          }
+        }
+      } catch {
+        // Non-fatal cache invalidation guard
+      }
+    }
+
     return {
       ok: true,
       remoteStatus: response.status,
@@ -331,5 +428,57 @@ export async function executeAgencyServerSync(
       durationMs,
       error: `No pudimos entregar los datos a tu servidor (${detail}).`,
     };
+  }
+}
+
+export async function triggerServerAgencyAutoSyncOnServiceCreated(input: {
+  authUser: AuthenticatedRequestUser;
+  serviceId: string | null;
+  fallbackService?: AgencySyncFallbackService;
+}): Promise<void> {
+  if (!input.serviceId || !input.authUser.accessToken) return;
+  const { url: supabaseUrl, key: supabaseKey } = getSupabaseServerConfig();
+  if (!supabaseUrl || !supabaseKey) return;
+
+  try {
+    const userClient = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${input.authUser.accessToken}`,
+        },
+      },
+    });
+
+    const { data, error } = await userClient
+      .from('servidores_externos')
+      .select('server_url, service_scope, secret_key, auto_sync_enabled')
+      .eq('user_id', input.authUser.userId)
+      .maybeSingle();
+
+    if (error || !data) return;
+    if (!data.auto_sync_enabled) return;
+    if (data.service_scope !== 'all') return;
+    if (typeof data.server_url !== 'string' || typeof data.secret_key !== 'string') {
+      return;
+    }
+
+    await executeAgencyServerSync(
+      { authorization: `Bearer ${input.authUser.accessToken}` },
+      {
+        serverUrl: data.server_url,
+        serviceScope: 'all',
+        secretKey: data.secret_key,
+        eventType: 'service.created',
+        changedServiceId: input.serviceId,
+        dedupeKey: `service.created:${input.serviceId}`,
+        servicesFallback: input.fallbackService ? [input.fallbackService] : undefined,
+      },
+    );
+  } catch {
+    // Non-fatal background auto-sync guard
   }
 }

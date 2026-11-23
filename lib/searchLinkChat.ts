@@ -271,6 +271,7 @@ async function resolveCatalogForChat(input: SearchLinkChatInput): Promise<
       slug: input.serviceSlug?.trim() || undefined,
       limit: 100,
       offset: 0,
+      bypassExternalServerCheck: true,
     });
 
     if (!coreResult.ok) {

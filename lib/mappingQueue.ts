@@ -23,6 +23,7 @@ import {
   invalidateCoreCatalogCache,
 } from './supabaseServer.ts';
 import { processAndStoreUploadedImage } from './uploadHandler.ts';
+import { triggerServerAgencyAutoSyncOnServiceCreated } from './agencySync.ts';
 
 export const R2_UPLOAD_CONCURRENCY = 4;
 export const QUEUE_BATCH_BEFORE_PAUSE = 5;
@@ -912,6 +913,27 @@ async function runQueueWorker(jobId: string): Promise<void> {
         : null;
     recomputeCounters(job);
     await persistJobRecordToSupabase(job, ctx);
+    if (job.serviceId) {
+      void triggerServerAgencyAutoSyncOnServiceCreated({
+        authUser: ctx.authUser,
+        serviceId: job.serviceId,
+        fallbackService: {
+          id: job.serviceId,
+          slug: job.serviceSlug,
+          name: job.serviceName || 'Servicio Search Link',
+          createdAt: job.createdAt,
+          products: job.items
+            .filter((it) => it.status === 'mapped' && Boolean(it.mapped))
+            .map((it) => ({
+              id: it.clientItemId,
+              nombre: it.mapped!.nombre,
+              categoria: it.mapped!.categoria,
+              descripcion: it.mapped!.descripcion,
+              url: it.imageUrl,
+            })),
+        },
+      });
+    }
   } finally {
     ctx.pendingUploads.clear();
     ctx.running = false;

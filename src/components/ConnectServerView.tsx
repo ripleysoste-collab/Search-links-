@@ -5,6 +5,7 @@ import type { OrganizationServiceItem } from './DesktopOrganizationView';
 import {
   AGENCY_SYNC_UPDATED_EVENT,
   dispatchAgencyServerSync,
+  hydrateAgencyConnectionFromCloud,
   loadAgencyConnectionState,
   saveAgencyConnectionState,
   type AgencyConnectionState,
@@ -41,6 +42,15 @@ export function ConnectServerView({
     setConnState(loadAgencyConnectionState(userId));
     setFormError(null);
     setSyncSuccessMessage(null);
+    let active = true;
+    void hydrateAgencyConnectionFromCloud(userId).then((cloudState) => {
+      if (active && cloudState) {
+        setConnState(cloudState);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [userId]);
 
   useEffect(() => {

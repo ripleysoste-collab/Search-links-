@@ -478,3 +478,92 @@ export async function rotateCoreServiceApiKeyInSupabase(input: {
 
   return { ok: true };
 }
+
+export interface ExternalServerConfigRow {
+  id: string;
+  user_id: string;
+  user_email: string | null;
+  server_url: string;
+  service_scope: string;
+  secret_key: string;
+  auto_sync_enabled: boolean;
+  last_synced_at: string | null;
+  last_event: string | null;
+  last_remote_status: number | null;
+  last_duration_ms: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchExternalServerConfigSafe(): Promise<{
+  config: ExternalServerConfigRow | null;
+  tableMissing: boolean;
+}> {
+  if (!supabase) return { config: null, tableMissing: false };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { config: null, tableMissing: false };
+
+  const { data, error } = await supabase
+    .from('servidores_externos')
+    .select(
+      'id, user_id, user_email, server_url, service_scope, secret_key, auto_sync_enabled, last_synced_at, last_event, last_remote_status, last_duration_ms, created_at, updated_at',
+    )
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      return { config: null, tableMissing: true };
+    }
+    return { config: null, tableMissing: false };
+  }
+
+  return {
+    config: (data as ExternalServerConfigRow | null) ?? null,
+    tableMissing: false,
+  };
+}
+
+export async function upsertExternalServerConfigSafe(input: {
+  serverUrl: string;
+  serviceScope: string;
+  secretKey: string;
+  autoSyncEnabled: boolean;
+  lastSyncedAt?: string | null;
+  lastEvent?: string | null;
+}): Promise<{ saved: boolean; tableMissing?: boolean }> {
+  if (!supabase) return { saved: false };
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return { saved: false };
+
+  const { error } = await supabase.from('servidores_externos').upsert(
+    {
+      user_id: user.id,
+      user_email: user.email ?? null,
+      server_url: input.serverUrl.trim(),
+      service_scope: input.serviceScope.trim() || 'all',
+      secret_key: input.secretKey.trim(),
+      auto_sync_enabled: Boolean(input.autoSyncEnabled),
+      last_synced_at: input.lastSyncedAt ?? null,
+      last_event: input.lastEvent ?? null,
+    },
+    { onConflict: 'user_id' },
+  );
+
+  if (error) {
+    return {
+      saved: false,
+      tableMissing: isMissingTableError(error),
+    };
+  }
+
+  return { saved: true };
+}

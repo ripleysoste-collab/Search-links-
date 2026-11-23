@@ -77,7 +77,10 @@ import {
   toggleCoreServiceActiveInSupabase,
   upsertUserOrganization,
 } from './lib/supabaseClient';
-import { triggerAgencyAutoSyncIfMatched } from './lib/agencySyncClient';
+import {
+  hydrateAgencyConnectionFromCloud,
+  triggerAgencyAutoSyncIfMatched,
+} from './lib/agencySyncClient';
 
 const MAX_FREE_UPLOAD_IMAGES = 20;
 const MAX_GUEST_EXTRACT_IMAGES = 10;
@@ -542,6 +545,7 @@ export default function App() {
         await Promise.all([
           fetchUserOrganizationSafe(),
           fetchUserCoreServicesSafe(),
+          hydrateAgencyConnectionFromCloud(authUser.id),
         ]);
 
       if (!active) return;

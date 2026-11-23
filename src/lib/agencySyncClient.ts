@@ -1,5 +1,9 @@
 import { resolveApiUrl } from './apiConfig';
-import { getSupabaseAccessToken } from './supabaseClient';
+import {
+  fetchExternalServerConfigSafe,
+  getSupabaseAccessToken,
+  upsertExternalServerConfigSafe,
+} from './supabaseClient';
 import type { OrganizationServiceItem } from '../components/DesktopOrganizationView';
 
 export type AgencySyncTriggerEvent =
@@ -118,6 +122,7 @@ export async function dispatchAgencyServerSync(input: {
   services: OrganizationServiceItem[];
   eventType: AgencySyncTriggerEvent;
   changedServiceId?: string;
+  dedupeKey?: string;
 }): Promise<ExecuteAgencySyncCallResult> {
   const accessToken = await getSupabaseAccessToken();
   if (!accessToken) {
@@ -165,6 +170,7 @@ export async function dispatchAgencyServerSync(input: {
       secretKey: input.secretKey,
       eventType: input.eventType,
       changedServiceId: input.changedServiceId,
+      dedupeKey: input.dedupeKey,
       servicesFallback,
     }),
   });
@@ -249,8 +255,62 @@ export async function triggerAgencyAutoSyncIfMatched(input: {
       services: input.services,
       eventType: input.eventType,
       changedServiceId: input.serviceId,
+      dedupeKey:
+        input.eventType === 'service.created'
+          ? `service.created:${input.serviceId}`
+          : undefined,
     });
   } catch {
     // Silent background auto-sync: never interrupt the foreground workflow
   }
+}
+
+function mapServerEventToTrigger(
+  rawEvent: string | null,
+): AgencySyncTriggerEvent | null {
+  if (rawEvent === 'searchlink.service.created') return 'service.created';
+  if (rawEvent === 'searchlink.service.updated') return 'service.updated';
+  if (rawEvent === 'searchlink.catalog.sync') return 'manual';
+  return null;
+}
+
+export async function hydrateAgencyConnectionFromCloud(
+  userId: string,
+): Promise<AgencyConnectionState | null> {
+  if (!userId) return null;
+  const { config, tableMissing } = await fetchExternalServerConfigSafe();
+  if (tableMissing) return null;
+
+  const localState = loadAgencyConnectionState(userId);
+  if (config) {
+    const cloudState: AgencyConnectionState = {
+      serverUrl: config.server_url || '',
+      selectedScope: config.service_scope || null,
+      secretKey: config.secret_key || localState.secretKey,
+      autoSyncEnabled: Boolean(config.auto_sync_enabled),
+      lastSyncedAt: config.last_synced_at ?? null,
+      lastTriggerEvent: mapServerEventToTrigger(config.last_event),
+    };
+    saveAgencyConnectionState(userId, cloudState, true);
+    return cloudState;
+  }
+
+  // If the user had already synced locally before creating the SQL table, migrate it up safely
+  if (localState.autoSyncEnabled && localState.serverUrl.trim()) {
+    await upsertExternalServerConfigSafe({
+      serverUrl: localState.serverUrl,
+      serviceScope: localState.selectedScope || 'all',
+      secretKey: localState.secretKey,
+      autoSyncEnabled: true,
+      lastSyncedAt: localState.lastSyncedAt,
+      lastEvent:
+        localState.lastTriggerEvent === 'service.created'
+          ? 'searchlink.service.created'
+          : localState.lastTriggerEvent === 'service.updated'
+            ? 'searchlink.service.updated'
+            : 'searchlink.catalog.sync',
+    });
+  }
+
+  return null;
 }
