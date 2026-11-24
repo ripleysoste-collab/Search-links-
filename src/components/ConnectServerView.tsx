@@ -4,6 +4,7 @@ import { Check, ChevronDown, Copy, Eye, EyeOff, Loader2 } from 'lucide-react';
 import type { OrganizationServiceItem } from './DesktopOrganizationView';
 import {
   AGENCY_SYNC_UPDATED_EVENT,
+  dispatchAgencyServerDisconnect,
   dispatchAgencyServerSync,
   hydrateAgencyConnectionFromCloud,
   loadAgencyConnectionState,
@@ -26,6 +27,8 @@ export function ConnectServerView({
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
   const serviceMenuRef = useRef<HTMLDivElement>(null);
+  const disconnectInputRef = useRef<HTMLInputElement>(null);
+  const disconnectingGuardRef = useRef(false);
 
   const [connState, setConnState] = useState<AgencyConnectionState>(() =>
     loadAgencyConnectionState(userId),
@@ -34,12 +37,21 @@ export function ConnectServerView({
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [secretCopied, setSecretCopied] = useState(false);
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
+  const [pendingSyncConfirm, setPendingSyncConfirm] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [disconnectBoxOpen, setDisconnectBoxOpen] = useState(false);
+  const [disconnectInput, setDisconnectInput] = useState('');
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [syncSuccessMessage, setSyncSuccessMessage] = useState<string | null>(null);
 
+  const isConnected = connState.autoSyncEnabled;
+
   useEffect(() => {
     setConnState(loadAgencyConnectionState(userId));
+    setPendingSyncConfirm(false);
+    setDisconnectBoxOpen(false);
+    setDisconnectInput('');
     setFormError(null);
     setSyncSuccessMessage(null);
     let active = true;
@@ -91,6 +103,14 @@ export function ConnectServerView({
     };
   }, [serviceMenuOpen]);
 
+  useEffect(() => {
+    if (!disconnectBoxOpen) return;
+    const timer = window.setTimeout(() => {
+      disconnectInputRef.current?.focus();
+    }, 60);
+    return () => window.clearTimeout(timer);
+  }, [disconnectBoxOpen]);
+
   const updateConnectionDraft = (patch: Partial<AgencyConnectionState>) => {
     setConnState((prev) => {
       const next: AgencyConnectionState = { ...prev, ...patch };
@@ -129,32 +149,48 @@ export function ConnectServerView({
     }
   };
 
-  const handleSubmitSync = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isSyncing) return;
-
+  const validateSyncForm = (): { trimmedUrl: string; scope: string } | null => {
     setSyncSuccessMessage(null);
-    const trimmed = connState.serverUrl.trim();
-    if (!trimmed) {
+    const trimmedUrl = connState.serverUrl.trim();
+    if (!trimmedUrl) {
       setFormError(t.connectServer.validationUrlRequired);
-      return;
+      return null;
     }
     try {
-      const parsed = new URL(trimmed);
+      const parsed = new URL(trimmedUrl);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         setFormError(t.connectServer.validationUrlInvalid);
-        return;
+        return null;
       }
     } catch {
       setFormError(t.connectServer.validationUrlInvalid);
-      return;
+      return null;
     }
     if (!effectiveScope) {
       setFormError(t.connectServer.validationServiceRequired);
-      return;
+      return null;
     }
     if (services.length === 0) {
       setFormError(t.connectServer.noServicesToSync);
+      return null;
+    }
+    return { trimmedUrl, scope: effectiveScope };
+  };
+
+  const handleRequestSync = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isConnected || isSyncing || pendingSyncConfirm) return;
+    const valid = validateSyncForm();
+    if (!valid) return;
+    setFormError(null);
+    setPendingSyncConfirm(true);
+  };
+
+  const handleConfirmSync = async () => {
+    if (isSyncing) return;
+    const valid = validateSyncForm();
+    if (!valid) {
+      setPendingSyncConfirm(false);
       return;
     }
 
@@ -164,18 +200,20 @@ export function ConnectServerView({
     try {
       const result = await dispatchAgencyServerSync({
         userId,
-        serverUrl: trimmed,
-        serviceScope: effectiveScope,
+        serverUrl: valid.trimmedUrl,
+        serviceScope: valid.scope,
         secretKey: connState.secretKey,
         services,
         eventType: 'manual',
       });
 
       if (!result.ok) {
+        setPendingSyncConfirm(false);
         setFormError(result.error || t.connectServer.syncNetworkError);
         return;
       }
 
+      setPendingSyncConfirm(false);
       setSyncSuccessMessage(
         t.connectServer.syncSuccess(
           result.syncedServices ?? 1,
@@ -184,9 +222,57 @@ export function ConnectServerView({
         ),
       );
     } catch {
+      setPendingSyncConfirm(false);
       setFormError(t.connectServer.syncNetworkError);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleOpenDisconnectBox = () => {
+    if (!isConnected || isDisconnecting) return;
+    setFormError(null);
+    setSyncSuccessMessage(null);
+    setDisconnectInput('');
+    setDisconnectBoxOpen((prev) => !prev);
+  };
+
+  const executeDisconnect = async () => {
+    if (disconnectingGuardRef.current || isDisconnecting) return;
+    disconnectingGuardRef.current = true;
+    setIsDisconnecting(true);
+    setFormError(null);
+
+    try {
+      const result = await dispatchAgencyServerDisconnect(userId);
+      if (!result.ok) {
+        setFormError(result.error || t.connectServer.disconnectNetworkError);
+        setDisconnectInput('');
+        return;
+      }
+
+      setDisconnectBoxOpen(false);
+      setDisconnectInput('');
+      setPendingSyncConfirm(false);
+      setSyncSuccessMessage(t.connectServer.disconnectSuccess);
+    } catch {
+      setFormError(t.connectServer.disconnectNetworkError);
+      setDisconnectInput('');
+    } finally {
+      disconnectingGuardRef.current = false;
+      setIsDisconnecting(false);
+    }
+  };
+
+  const handleDisconnectInputChange = (value: string) => {
+    setDisconnectInput(value);
+    if (formError) setFormError(null);
+    const normalizedTyped = value.trim().toLowerCase();
+    const normalizedExpected = t.connectServer.disconnectConfirmPhrase
+      .trim()
+      .toLowerCase();
+    if (normalizedTyped === normalizedExpected && !isDisconnecting) {
+      void executeDisconnect();
     }
   };
 
@@ -199,7 +285,7 @@ export function ConnectServerView({
 
   return (
     <form
-      onSubmit={(e) => void handleSubmitSync(e)}
+      onSubmit={handleRequestSync}
       noValidate
       className={`flex-1 min-h-0 bg-white overflow-y-auto ${containerPadding} flex flex-col justify-between gap-6`}
     >
@@ -213,23 +299,31 @@ export function ConnectServerView({
             {t.connectServer.serverUrlLabel}
           </label>
           <div
-            className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 focus-within:bg-white focus-within:border-blue-500/70 transition-colors flex items-center gap-1.5 px-3.5 ${boxHeightClass}`}
+            className={`rounded-2xl border transition-colors flex items-center gap-1.5 px-3.5 ${boxHeightClass} ${
+              isConnected
+                ? 'border-slate-200/80 bg-slate-100/70'
+                : 'border-slate-200/90 bg-slate-50/75 focus-within:bg-white focus-within:border-blue-500/70'
+            }`}
           >
             <input
               id={`connect-server-url-${variant}`}
               type={showServerUrl ? 'text' : 'password'}
               value={connState.serverUrl}
+              readOnly={isConnected}
+              disabled={isConnected}
               onChange={(e) => {
+                if (isConnected) return;
                 updateConnectionDraft({ serverUrl: e.target.value });
                 if (formError) setFormError(null);
                 if (syncSuccessMessage) setSyncSuccessMessage(null);
+                if (pendingSyncConfirm) setPendingSyncConfirm(false);
               }}
               aria-label={t.connectServer.serverUrlAria}
               autoComplete="new-password"
               spellCheck={false}
               inputMode="url"
               data-lpignore="true"
-              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-slate-900 focus:outline-none"
+              className="flex-1 min-w-0 bg-transparent text-sm font-medium text-slate-900 focus:outline-none disabled:text-slate-600 disabled:cursor-default"
             />
             <button
               type="button"
@@ -262,14 +356,19 @@ export function ConnectServerView({
           </span>
           <button
             type="button"
-            onClick={() => setServiceMenuOpen((prev) => !prev)}
+            disabled={isConnected}
+            onClick={() => {
+              if (!isConnected) setServiceMenuOpen((prev) => !prev);
+            }}
             aria-haspopup="menu"
-            aria-expanded={serviceMenuOpen}
+            aria-expanded={!isConnected && serviceMenuOpen}
             aria-label={t.connectServer.chooseServiceMenuAria}
-            className={`w-full rounded-2xl border transition-colors flex items-center justify-between gap-2 px-3.5 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${boxHeightClass} ${
-              serviceMenuOpen
-                ? 'border-blue-500/70 bg-white'
-                : 'border-slate-200/90 bg-slate-50/75 hover:bg-white hover:border-slate-300'
+            className={`w-full rounded-2xl border transition-colors flex items-center justify-between gap-2 px-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${boxHeightClass} ${
+              isConnected
+                ? 'border-slate-200/80 bg-slate-100/70 cursor-default opacity-80'
+                : serviceMenuOpen
+                  ? 'border-blue-500/70 bg-white cursor-pointer'
+                  : 'border-slate-200/90 bg-slate-50/75 hover:bg-white hover:border-slate-300 cursor-pointer'
             }`}
           >
             <span className="text-sm font-medium text-slate-900 truncate min-h-[20px]">
@@ -282,17 +381,19 @@ export function ConnectServerView({
                   {selectedService.itemCount}
                 </span>
               )}
-              <ChevronDown
-                className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
-                  serviceMenuOpen ? 'rotate-180 text-slate-700' : ''
-                }`}
-                aria-hidden="true"
-              />
+              {!isConnected && (
+                <ChevronDown
+                  className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                    serviceMenuOpen ? 'rotate-180 text-slate-700' : ''
+                  }`}
+                  aria-hidden="true"
+                />
+              )}
             </div>
           </button>
 
           <AnimatePresence>
-            {serviceMenuOpen && (
+            {serviceMenuOpen && !isConnected && (
               <motion.div
                 role="menu"
                 aria-label={t.connectServer.chooseServiceMenuAria}
@@ -328,6 +429,7 @@ export function ConnectServerView({
                               setServiceMenuOpen(false);
                               if (formError) setFormError(null);
                               if (syncSuccessMessage) setSyncSuccessMessage(null);
+                              if (pendingSyncConfirm) setPendingSyncConfirm(false);
                             }}
                             className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
                               isActive
@@ -364,6 +466,7 @@ export function ConnectServerView({
                         setServiceMenuOpen(false);
                         if (formError) setFormError(null);
                         if (syncSuccessMessage) setSyncSuccessMessage(null);
+                        if (pendingSyncConfirm) setPendingSyncConfirm(false);
                       }}
                       className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
                         effectiveScope === 'all'
@@ -467,22 +570,170 @@ export function ConnectServerView({
         )}
       </div>
 
-      {/* Bottom CTA: Sincronizar */}
-      <div className="pt-5 border-t border-slate-200/75 shrink-0">
-        <button
-          type="submit"
-          disabled={isSyncing}
-          className={`w-full rounded-2xl bg-slate-950 hover:bg-slate-800 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950/40 ${
-            variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
-          }`}
-        >
-          {isSyncing && (
-            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+      {/* Bottom CTA & Inline Confirmations */}
+      <div className="pt-4 border-t border-slate-200/75 shrink-0 space-y-3.5">
+        <AnimatePresence initial={false}>
+          {!isConnected && pendingSyncConfirm && (
+            <motion.div
+              key="sync-liability-confirm"
+              initial={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, height: 0 }
+              }
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 1 }
+                  : { opacity: 1, height: 'auto' }
+              }
+              exit={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, height: 0 }
+              }
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <p className="text-[12.5px] leading-relaxed text-slate-800">
+                {t.connectServer.syncLiabilityConfirmText}
+              </p>
+              <div className="mt-2.5 flex items-center gap-5">
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => setPendingSyncConfirm(false)}
+                  className="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline disabled:opacity-45"
+                >
+                  {t.common.cancel}
+                </button>
+                <button
+                  type="button"
+                  disabled={isSyncing}
+                  onClick={() => void handleConfirmSync()}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline disabled:opacity-60"
+                >
+                  {isSyncing && (
+                    <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                  )}
+                  {t.common.accept}
+                </button>
+              </div>
+            </motion.div>
           )}
-          <span>
-            {isSyncing ? t.connectServer.syncingAction : t.connectServer.syncAction}
-          </span>
-        </button>
+
+          {isConnected && disconnectBoxOpen && (
+            <motion.div
+              key="disconnect-confirm-box"
+              initial={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, y: 4, height: 0 }
+              }
+              animate={
+                shouldReduceMotion
+                  ? { opacity: 1 }
+                  : { opacity: 1, y: 0, height: 'auto' }
+              }
+              exit={
+                shouldReduceMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, y: 4, height: 0 }
+              }
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-2xl border border-slate-200/90 bg-slate-50/75 p-3.5 space-y-2.5">
+                <p className="text-[12px] leading-relaxed text-slate-700">
+                  {t.connectServer.disconnectConfirmPrompt}{' '}
+                  <span className="font-semibold text-slate-950">
+                    {t.connectServer.disconnectConfirmPhrase}
+                  </span>
+                </p>
+
+                <input
+                  ref={disconnectInputRef}
+                  type="text"
+                  value={disconnectInput}
+                  disabled={isDisconnecting}
+                  onChange={(e) => handleDisconnectInputChange(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                    }
+                  }}
+                  placeholder={t.connectServer.disconnectConfirmPlaceholder}
+                  aria-label={t.connectServer.disconnectConfirmInputAria}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  className="w-full rounded-xl border border-slate-200/90 bg-white px-3 py-2 text-xs font-medium text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-rose-500/75 transition-colors disabled:opacity-60"
+                />
+
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    disabled={isDisconnecting}
+                    onClick={() => {
+                      setDisconnectBoxOpen(false);
+                      setDisconnectInput('');
+                    }}
+                    className="text-[11px] font-medium text-slate-500 hover:text-slate-900 transition-colors cursor-pointer disabled:opacity-45"
+                  >
+                    {t.common.cancel}
+                  </button>
+
+                  {isDisconnecting && (
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-rose-600">
+                      <Loader2
+                        className="w-3 h-3 animate-spin"
+                        aria-hidden="true"
+                      />
+                      {t.connectServer.disconnectingAction}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {!isConnected ? (
+          <button
+            type="submit"
+            disabled={isSyncing}
+            className={`w-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 ${
+              variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
+            }`}
+          >
+            {isSyncing && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
+            <span>
+              {isSyncing
+                ? t.connectServer.syncingAction
+                : t.connectServer.syncAction}
+            </span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={isDisconnecting}
+            onClick={handleOpenDisconnectBox}
+            className={`w-full rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600/40 ${
+              variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
+            }`}
+          >
+            {isDisconnecting && (
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+            )}
+            <span>
+              {isDisconnecting
+                ? t.connectServer.disconnectingAction
+                : t.connectServer.disconnectAction}
+            </span>
+          </button>
+        )}
       </div>
     </form>
   );

@@ -486,3 +486,93 @@ export async function triggerServerAgencyAutoSyncOnServiceCreated(input: {
     // Non-fatal background auto-sync guard
   }
 }
+
+export type AgencyDisconnectResult =
+  | {
+      ok: true;
+      disconnectedAt: string;
+    }
+  | {
+      ok: false;
+      status: number;
+      error: string;
+    };
+
+export async function executeAgencyServerDisconnect(
+  headers: IncomingHttpHeaders,
+): Promise<AgencyDisconnectResult> {
+  const authUser = await verifySupabaseBearerUser(headers);
+  const bearerToken = getBearerToken(headers);
+
+  if (!authUser || !bearerToken) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Inicia sesión con Google para desconectar tu servidor.',
+    };
+  }
+
+  const { url: supabaseUrl, key: supabaseKey } = getSupabaseServerConfig();
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const userClient = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+          },
+        },
+      });
+
+      const [{ data: keyRows }, { data: slugRows }] = await Promise.all([
+        userClient
+          .from('servicio_api_keys')
+          .select('key_hash')
+          .eq('user_id', authUser.userId),
+        userClient
+          .from('servicios')
+          .select('public_slug')
+          .eq('user_id', authUser.userId),
+      ]);
+
+      try {
+        await userClient
+          .from('servidores_externos')
+          .delete()
+          .eq('user_id', authUser.userId);
+      } catch {
+        // Non-fatal if servidores_externos SQL migration has not been run yet
+      }
+
+      if (Array.isArray(keyRows)) {
+        const hashes = keyRows
+          .map((r) => (typeof r.key_hash === 'string' ? r.key_hash : ''))
+          .filter(Boolean);
+        if (hashes.length > 0) {
+          markExternalServerActiveForKeyHashes(hashes, false);
+        }
+      }
+
+      if (Array.isArray(slugRows) && slugRows.length > 0) {
+        for (const row of slugRows) {
+          if (typeof row.public_slug === 'string' && row.public_slug.trim()) {
+            invalidateCoreCatalogCache({ slug: row.public_slug });
+          }
+        }
+      } else {
+        invalidateCoreCatalogCache();
+      }
+    } catch {
+      // Non-fatal fallback: ensure local/client state still disconnects cleanly
+    }
+  }
+
+  return {
+    ok: true,
+    disconnectedAt: new Date().toISOString(),
+  };
+}
+

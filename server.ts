@@ -80,6 +80,7 @@ import {
   sanitizeUploadFolderPrefix,
 } from './lib/uploadHandler.ts';
 import {
+  executeAgencyServerDisconnect,
   executeAgencyServerSync,
   type AgencySyncEventType,
   type AgencySyncFallbackService,
@@ -984,6 +985,15 @@ async function startServer() {
       return res.status(result.status).json(result);
     }
 
+    return res.json(result);
+  });
+
+  app.post('/api/agency/disconnect', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const result = await executeAgencyServerDisconnect(req.headers);
+    if (!result.ok) {
+      return res.status(result.status).json(result);
+    }
     return res.json(result);
   });
 

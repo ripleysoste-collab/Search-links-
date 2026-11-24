@@ -216,6 +216,62 @@ export async function dispatchAgencyServerSync(input: {
   };
 }
 
+export interface ExecuteAgencyDisconnectCallResult {
+  ok: boolean;
+  disconnectedAt?: string;
+  error?: string;
+}
+
+export async function dispatchAgencyServerDisconnect(
+  userId: string,
+): Promise<ExecuteAgencyDisconnectCallResult> {
+  const accessToken = await getSupabaseAccessToken();
+  if (!accessToken) {
+    return {
+      ok: false,
+      error: 'Inicia sesión nuevamente para desconectar tu servidor.',
+    };
+  }
+
+  const res = await fetch(resolveApiUrl('/api/agency/disconnect'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    disconnectedAt?: string;
+    error?: string;
+  } | null;
+
+  if (!res.ok || !data?.ok) {
+    return {
+      ok: false,
+      error: data?.error || 'No se pudo desconectar tu servidor.',
+    };
+  }
+
+  saveAgencyConnectionState(
+    userId,
+    {
+      serverUrl: '',
+      selectedScope: null,
+      secretKey: generateAgencySecretKey(),
+      autoSyncEnabled: false,
+      lastSyncedAt: null,
+      lastTriggerEvent: null,
+    },
+    true,
+  );
+
+  return {
+    ok: true,
+    disconnectedAt: data.disconnectedAt || new Date().toISOString(),
+  };
+}
+
 export async function triggerAgencyAutoSyncIfMatched(input: {
   userId: string;
   eventType: 'service.created' | 'service.updated';

@@ -434,6 +434,15 @@ export interface TranslationDictionary {
     authRequired: string;
     syncSuccess: (services: number, products: number, durationMs: number) => string;
     syncNetworkError: string;
+    syncLiabilityConfirmText: string;
+    disconnectAction: string;
+    disconnectingAction: string;
+    disconnectConfirmPrompt: string;
+    disconnectConfirmPhrase: string;
+    disconnectConfirmPlaceholder: string;
+    disconnectConfirmInputAria: string;
+    disconnectSuccess: string;
+    disconnectNetworkError: string;
   };
   advancedSettings: {
     title: string;
@@ -1012,6 +1021,19 @@ const ES_DICTIONARY: TranslationDictionary = {
     syncSuccess: (srv, prod, ms) =>
       `Sincronizado: ${srv} ${srv === 1 ? 'servicio' : 'servicios'} (${prod} ${prod === 1 ? 'producto' : 'productos'}) en ${ms} ms.`,
     syncNetworkError: 'No pudimos conectar con Search Link para enviar la sincronización.',
+    syncLiabilityConfirmText:
+      'Al aceptar, confirmas que toda la responsabilidad por disponibilidad, caídas, seguridad y clientes atendidos recae únicamente sobre tu servidor bajo cualquier circunstancia.',
+    disconnectAction: 'Desconectar',
+    disconnectingAction: 'Desconectando…',
+    disconnectConfirmPrompt:
+      'Al desconectar tu servidor, se detendrán las actualizaciones automáticas y las peticiones de tus APIs volverán a procesarse directamente en Search Link bajo los límites de tu plan actual. Para continuar, escribe:',
+    disconnectConfirmPhrase: 'estoy de acuerdo',
+    disconnectConfirmPlaceholder: 'estoy de acuerdo',
+    disconnectConfirmInputAria: 'Escribe estoy de acuerdo para desconectar tu servidor',
+    disconnectSuccess:
+      'Servidor desconectado. Las peticiones ahora se procesan nuevamente en Search Link.',
+    disconnectNetworkError:
+      'No pudimos conectar con Search Link para desconectar tu servidor.',
   },
   advancedSettings: {
     title: 'Ajustes avanzados',
@@ -1604,6 +1626,19 @@ const EN_DICTIONARY: TranslationDictionary = {
     syncSuccess: (srv, prod, ms) =>
       `Synced: ${srv} ${srv === 1 ? 'service' : 'services'} (${prod} ${prod === 1 ? 'product' : 'products'}) in ${ms} ms.`,
     syncNetworkError: 'Could not reach Search Link to run the sync.',
+    syncLiabilityConfirmText:
+      'By accepting, you confirm that full responsibility for availability, downtime, security, and served clients rests solely with your server under any circumstances.',
+    disconnectAction: 'Disconnect',
+    disconnectingAction: 'Disconnecting…',
+    disconnectConfirmPrompt:
+      'Disconnecting your server stops automatic updates and routes your API requests back to Search Link under your current plan limits. To continue, type:',
+    disconnectConfirmPhrase: 'I agree',
+    disconnectConfirmPlaceholder: 'I agree',
+    disconnectConfirmInputAria: 'Type I agree to disconnect your server',
+    disconnectSuccess:
+      'Server disconnected. Requests are now handled again by Search Link.',
+    disconnectNetworkError:
+      'Could not reach Search Link to disconnect your server.',
   },
   advancedSettings: {
     title: 'Advanced settings',
@@ -2198,6 +2233,19 @@ const PT_DICTIONARY: TranslationDictionary = {
     syncSuccess: (srv, prod, ms) =>
       `Sincronizado: ${srv} ${srv === 1 ? 'serviço' : 'serviços'} (${prod} ${prod === 1 ? 'produto' : 'produtos'}) em ${ms} ms.`,
     syncNetworkError: 'Não foi possível conectar ao Search Link para sincronizar.',
+    syncLiabilityConfirmText:
+      'Ao aceitar, você confirma que toda a responsabilidade por disponibilidade, quedas, segurança e clientes atendidos recai exclusivamente sobre o seu servidor em qualquer circunstância.',
+    disconnectAction: 'Desconectar',
+    disconnectingAction: 'Desconectando…',
+    disconnectConfirmPrompt:
+      'Ao desconectar seu servidor, as atualizações automáticas serão interrompidas e as requisições das suas APIs voltarão a ser processadas diretamente no Search Link dentro dos limites do seu plano atual. Para continuar, digite:',
+    disconnectConfirmPhrase: 'estou de acordo',
+    disconnectConfirmPlaceholder: 'estou de acordo',
+    disconnectConfirmInputAria: 'Digite estou de acordo para desconectar seu servidor',
+    disconnectSuccess:
+      'Servidor desconectado. As requisições agora voltam a ser processadas pelo Search Link.',
+    disconnectNetworkError:
+      'Não foi possível conectar ao Search Link para desconectar seu servidor.',
   },
   advancedSettings: {
     title: 'Configurações avançadas',
