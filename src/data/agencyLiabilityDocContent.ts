@@ -114,7 +114,7 @@ export const AGENCY_LIABILITY_DOC_CONTENT: Record<
       },
     ],
     footerNote:
-      'Search Link · Documentación oficial de Responsabilidad y propiedad en Modo Agencia.',
+      'Search Link · Responsabilidad y propiedad en Modo Agencia. Consulta además nuestra guía operativa Cosas a tener en cuenta en Modo Agencia.',
   },
 
   en: {
@@ -226,7 +226,7 @@ export const AGENCY_LIABILITY_DOC_CONTENT: Record<
       },
     ],
     footerNote:
-      'Search Link · Official Agency Mode Liability and Intellectual Property Document.',
+      'Search Link · Agency Mode Liability and Intellectual Property. See also our operational guide Things to Keep in Mind in Agency Mode.',
   },
 
   pt: {
@@ -338,6 +338,6 @@ export const AGENCY_LIABILITY_DOC_CONTENT: Record<
       },
     ],
     footerNote:
-      'Search Link · Documentação oficial de Responsabilidade e propriedade no Modo Agência.',
+      'Search Link · Responsabilidade e propriedade no Modo Agência. Consulte também nosso guia operacional O que considerar no Modo Agência.',
   },
 };

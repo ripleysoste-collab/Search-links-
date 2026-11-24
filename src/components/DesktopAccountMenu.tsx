@@ -43,6 +43,7 @@ interface DesktopAccountMenuProps {
       | 'content'
       | 'cookies'
       | 'agency'
+      | 'agency-guide'
       | 'agency-liability'
       | 'liability',
   ) => void;
@@ -539,6 +540,18 @@ export function DesktopAccountMenu({
                                   className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                                 >
                                   {t.menu.agencyMode}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onOpenDocumentation('agency-guide');
+                                  }}
+                                  className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  {t.menu.agencyModeGuide}
                                 </button>
                               </li>
                               <li>

@@ -110,6 +110,7 @@ const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
 const CONTENT_POLICY_PATH = '/politicas-de-contenido';
 const COOKIE_POLICY_PATH = '/politicas-de-cookies';
 const AGENCY_MODE_PATH = '/modo-agencia';
+const AGENCY_GUIDE_PATH = '/cosas-a-tener-en-cuenta-modo-agencia';
 const AGENCY_LIABILITY_PATH = '/responsabilidad-modo-agencia';
 const INTELLECTUAL_PROPERTY_PATH = '/propiedad-intelectual-y-responsabilidad';
 const IMAGE_BANK_PATH = '/banco-publico';
@@ -165,6 +166,16 @@ const AGENCY_MODE_ALIASES = new Set([
   '/modo-agencia-desarrollo',
 ]);
 
+const AGENCY_GUIDE_ALIASES = new Set([
+  '/cosas-a-tener-en-cuenta-modo-agencia',
+  '/guia-modo-agencia',
+  '/informacion-modo-agencia',
+  '/agency-guide',
+  '/agency-mode-guide',
+  '/things-to-keep-in-mind-agency-mode',
+  '/o-que-considerar-modo-agencia',
+]);
+
 const AGENCY_LIABILITY_ALIASES = new Set([
   '/responsabilidad-modo-agencia',
   '/responsabilidad-agencia',
@@ -195,6 +206,7 @@ function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
   if (CONTENT_POLICY_ALIASES.has(normalized)) return 'content';
   if (COOKIE_POLICY_ALIASES.has(normalized)) return 'cookies';
   if (AGENCY_MODE_ALIASES.has(normalized)) return 'agency';
+  if (AGENCY_GUIDE_ALIASES.has(normalized)) return 'agency-guide';
   if (AGENCY_LIABILITY_ALIASES.has(normalized)) return 'agency-liability';
   if (INTELLECTUAL_PROPERTY_ALIASES.has(normalized)) return 'liability';
   return null;
@@ -205,6 +217,7 @@ function getCanonicalLegalDocPath(docId: LegalDocId): string {
   if (docId === 'content') return CONTENT_POLICY_PATH;
   if (docId === 'cookies') return COOKIE_POLICY_PATH;
   if (docId === 'agency') return AGENCY_MODE_PATH;
+  if (docId === 'agency-guide') return AGENCY_GUIDE_PATH;
   if (docId === 'agency-liability') return AGENCY_LIABILITY_PATH;
   if (docId === 'liability') return INTELLECTUAL_PROPERTY_PATH;
   return PRIVACY_POLICY_PATH;

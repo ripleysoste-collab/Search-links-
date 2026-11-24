@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { AGENCY_GUIDE_DOC_CONTENT } from '../data/agencyGuideDocContent';
 import { AGENCY_LIABILITY_DOC_CONTENT } from '../data/agencyLiabilityDocContent';
 import { AGENCY_MODE_DOC_CONTENT } from '../data/agencyModeDocContent';
 import { CONTENT_POLICY_CONTENT } from '../data/contentPolicyContent';
@@ -16,6 +17,7 @@ export type LegalDocId =
   | 'content'
   | 'cookies'
   | 'agency'
+  | 'agency-guide'
   | 'agency-liability'
   | 'liability';
 
@@ -32,6 +34,9 @@ const LOCALE_SHORT_LABELS: Array<{ code: SupportedLocale; label: string }> = [
 ];
 
 const DOC_LINK_PHRASES: Array<{ phrase: string; docId: LegalDocId }> = [
+  { phrase: 'Cosas a tener en cuenta en Modo Agencia', docId: 'agency-guide' },
+  { phrase: 'Things to Keep in Mind in Agency Mode', docId: 'agency-guide' },
+  { phrase: 'O que considerar no Modo Agência', docId: 'agency-guide' },
   { phrase: 'Responsabilidad y propiedad en Modo Agencia', docId: 'agency-liability' },
   { phrase: 'Agency Mode Liability and Intellectual Property', docId: 'agency-liability' },
   { phrase: 'Responsabilidade e propriedade no Modo Agência', docId: 'agency-liability' },
@@ -108,11 +113,13 @@ export function LegalDocumentPage({
           ? COOKIE_POLICY_CONTENT[locale]
           : docId === 'agency'
             ? AGENCY_MODE_DOC_CONTENT[locale]
-            : docId === 'agency-liability'
-              ? AGENCY_LIABILITY_DOC_CONTENT[locale]
-              : docId === 'liability'
-                ? INTELLECTUAL_PROPERTY_DOC_CONTENT[locale]
-                : PRIVACY_POLICY_CONTENT[locale];
+            : docId === 'agency-guide'
+              ? AGENCY_GUIDE_DOC_CONTENT[locale]
+              : docId === 'agency-liability'
+                ? AGENCY_LIABILITY_DOC_CONTENT[locale]
+                : docId === 'liability'
+                  ? INTELLECTUAL_PROPERTY_DOC_CONTENT[locale]
+                  : PRIVACY_POLICY_CONTENT[locale];
 
   const [activeSectionId, setActiveSectionId] = useState<string>(
     doc.sections[0]?.id ?? '',
@@ -182,6 +189,7 @@ export function LegalDocumentPage({
     { id: 'content', label: t.menu.contentPolicies },
     { id: 'cookies', label: t.menu.cookiePolicies },
     { id: 'agency', label: t.menu.agencyMode },
+    { id: 'agency-guide', label: t.menu.agencyModeGuide },
     { id: 'agency-liability', label: t.menu.agencyModeLiability },
     { id: 'liability', label: t.menu.intellectualPropertyAndLiability },
   ];

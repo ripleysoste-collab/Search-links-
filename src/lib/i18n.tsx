@@ -198,6 +198,7 @@ export interface TranslationDictionary {
     contentPolicies: string;
     cookiePolicies: string;
     agencyMode: string;
+    agencyModeGuide: string;
     agencyModeLiability: string;
     intellectualPropertyAndLiability: string;
     comingSoon: string;
@@ -731,6 +732,7 @@ const ES_DICTIONARY: TranslationDictionary = {
     contentPolicies: 'Políticas de contenido',
     cookiePolicies: 'Políticas de cookies',
     agencyMode: 'Modo Agencia',
+    agencyModeGuide: 'Cosas a tener en cuenta en Modo Agencia',
     agencyModeLiability: 'Responsabilidad y propiedad en Modo Agencia',
     intellectualPropertyAndLiability: 'Propiedad intelectual y responsabilidad',
     comingSoon: 'Próximamente',
@@ -1322,6 +1324,7 @@ const EN_DICTIONARY: TranslationDictionary = {
     contentPolicies: 'Content Policies',
     cookiePolicies: 'Cookie Policies',
     agencyMode: 'Agency Mode',
+    agencyModeGuide: 'Things to Keep in Mind in Agency Mode',
     agencyModeLiability: 'Agency Mode Liability and Intellectual Property',
     intellectualPropertyAndLiability: 'Intellectual Property and Liability',
     comingSoon: 'Coming soon',
@@ -1913,6 +1916,7 @@ const PT_DICTIONARY: TranslationDictionary = {
     contentPolicies: 'Políticas de conteúdo',
     cookiePolicies: 'Políticas de cookies',
     agencyMode: 'Modo Agência',
+    agencyModeGuide: 'O que considerar no Modo Agência',
     agencyModeLiability: 'Responsabilidade e propriedade no Modo Agência',
     intellectualPropertyAndLiability: 'Propriedade intelectual e responsabilidade',
     comingSoon: 'Em breve',

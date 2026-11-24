@@ -114,7 +114,7 @@ export const AGENCY_MODE_DOC_CONTENT: Record<SupportedLocale, PrivacyPolicyDocum
       },
     ],
     footerNote:
-      'Search Link · Modo Agencia. Consulta los límites sobre servidores externos, clientes finales y actualizaciones en Responsabilidad y propiedad en Modo Agencia, así como nuestros Términos y condiciones y Propiedad intelectual, límites y responsabilidad.',
+      'Search Link · Modo Agencia. Consulta la lógica de actualizaciones y separación por servicio en Cosas a tener en cuenta en Modo Agencia, y los límites sobre servidores externos en Responsabilidad y propiedad en Modo Agencia, Términos y condiciones y Propiedad intelectual, límites y responsabilidad.',
   },
   en: {
     documentTitle: 'Agency Mode',
@@ -227,7 +227,7 @@ export const AGENCY_MODE_DOC_CONTENT: Record<SupportedLocale, PrivacyPolicyDocum
       },
     ],
     footerNote:
-      'Search Link · Agency Mode. Review external server boundaries, end-client disclaimers, and update dependencies in Agency Mode Liability and Intellectual Property, as well as our Terms and Conditions and Intellectual Property, Limits, and Liability.',
+      'Search Link · Agency Mode. Review update routing and per-service separation in Things to Keep in Mind in Agency Mode, and external server disclaimers in Agency Mode Liability and Intellectual Property, Terms and Conditions, and Intellectual Property, Limits, and Liability.',
   },
   pt: {
     documentTitle: 'Modo Agência',
@@ -340,6 +340,6 @@ export const AGENCY_MODE_DOC_CONTENT: Record<SupportedLocale, PrivacyPolicyDocum
       },
     ],
     footerNote:
-      'Search Link · Modo Agência. Consulte os limites sobre servidores externos, clientes finais e atualizações em Responsabilidade e propriedade no Modo Agência, além dos nossos Termos e condições e Propriedade intelectual, limites e responsabilidade.',
+      'Search Link · Modo Agência. Consulte a lógica de atualizações e separação por serviço em O que considerar no Modo Agência, e os limites externos em Responsabilidade e propriedade no Modo Agência, Termos e condições e Propriedade intelectual, limites e responsabilidade.',
   },
 };
