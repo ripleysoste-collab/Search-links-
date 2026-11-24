@@ -52,7 +52,14 @@ interface MobileAccountMenuProps {
   onOpenPanel: () => void;
   onClosePanel: () => void;
   onOpenDocumentation: (
-    docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency' | 'liability',
+    docId:
+      | 'privacy'
+      | 'terms'
+      | 'content'
+      | 'cookies'
+      | 'agency'
+      | 'agency-liability'
+      | 'liability',
   ) => void;
   onSignOut: () => Promise<void>;
   onPurgeAllR2: () => Promise<{ deletedR2Count: number }>;
@@ -61,6 +68,7 @@ interface MobileAccountMenuProps {
   onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
   onUnfreezeAllApis: () => Promise<{ unfrozenServicesCount: number }>;
   hasR2Images: boolean;
+  hasActiveApis: boolean;
   hasPausedApis: boolean;
 }
 
@@ -126,6 +134,7 @@ export function MobileAccountMenu({
   onPauseAllApis,
   onUnfreezeAllApis,
   hasR2Images,
+  hasActiveApis,
   hasPausedApis,
 }: MobileAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -400,6 +409,18 @@ export function MobileAccountMenu({
                                 className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                               >
                                 {t.menu.agencyMode}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onCloseMenu();
+                                  onOpenDocumentation('agency-liability');
+                                }}
+                                className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
+                              >
+                                {t.menu.agencyModeLiability}
                               </button>
                             </li>
                             <li>
@@ -827,6 +848,7 @@ export function MobileAccountMenu({
             <AdvancedSettingsView
               variant="mobile"
               hasR2Images={hasR2Images}
+              hasActiveApis={hasActiveApis}
               hasPausedApis={hasPausedApis}
               onPurgeAllR2={onPurgeAllR2}
               onClearBrowserData={onClearBrowserData}

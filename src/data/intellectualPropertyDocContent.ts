@@ -96,7 +96,7 @@ export const INTELLECTUAL_PROPERTY_DOC_CONTENT: Record<
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Propiedad intelectual, límites y responsabilidad.',
+      'Search Link · Propiedad intelectual, límites y responsabilidad. Para revisar el alcance específico en integraciones externas consulta Modo Agencia y Responsabilidad y propiedad en Modo Agencia, junto con nuestros Términos y condiciones y Políticas de contenido.',
   },
 
   en: {
@@ -190,7 +190,7 @@ export const INTELLECTUAL_PROPERTY_DOC_CONTENT: Record<
       },
     ],
     footerNote:
-      'Search Link · Official Intellectual Property, Limits, and Liability Document.',
+      'Search Link · Intellectual Property, Limits, and Liability. For external infrastructure rules see Agency Mode and Agency Mode Liability and Intellectual Property, together with our Terms and Conditions and Content Policies.',
   },
 
   pt: {
@@ -284,6 +284,6 @@ export const INTELLECTUAL_PROPERTY_DOC_CONTENT: Record<
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Propriedade intelectual, limites e responsabilidade.',
+      'Search Link · Propriedade intelectual, limites e responsabilidade. Para regras específicas de servidores externos consulte Modo Agência e Responsabilidade e propriedade no Modo Agência, junto com nossos Termos e condições e Políticas de conteúdo.',
   },
 };

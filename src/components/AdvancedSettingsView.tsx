@@ -12,6 +12,7 @@ export type AdvancedActionKey =
 interface AdvancedSettingsViewProps {
   variant: 'desktop' | 'mobile';
   hasR2Images: boolean;
+  hasActiveApis: boolean;
   hasPausedApis: boolean;
   onPurgeAllR2: () => Promise<{ deletedR2Count: number }>;
   onClearBrowserData: () => Promise<void>;
@@ -23,6 +24,7 @@ interface AdvancedSettingsViewProps {
 export function AdvancedSettingsView({
   variant,
   hasR2Images,
+  hasActiveApis,
   hasPausedApis,
   onPurgeAllR2,
   onClearBrowserData,
@@ -75,6 +77,11 @@ export function AdvancedSettingsView({
       confirmText: t.advancedSettings.pauseAllApisConfirmText,
     },
   ];
+
+  const hidePauseApisOption = hasPausedApis && !hasActiveApis;
+  const visibleActions = hidePauseApisOption
+    ? actions.filter((item) => item.key !== 'pause-apis')
+    : actions;
 
   const activeConfig =
     actions.find((item) => item.key === pendingAction) ?? null;
@@ -247,7 +254,7 @@ export function AdvancedSettingsView({
           isPaused ? 'opacity-40 pointer-events-none select-none' : 'opacity-100'
         }`}
       >
-        {actions.map((item, idx) => (
+        {visibleActions.map((item, idx) => (
           <div
             key={item.key}
             className={idx === 0 ? 'pb-5' : 'py-5'}

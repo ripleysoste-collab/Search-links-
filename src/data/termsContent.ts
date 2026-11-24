@@ -115,7 +115,7 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Términos y condiciones.',
+      'Search Link · Términos y condiciones. Este documento se aplica de forma conjunta con nuestras Políticas de privacidad y uso, Políticas de contenido, Políticas de cookies, Propiedad intelectual, límites y responsabilidad, Modo Agencia y Responsabilidad y propiedad en Modo Agencia.',
   },
 
   en: {
@@ -231,7 +231,7 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
       },
     ],
     footerNote:
-      'Search Link · Official Terms and Conditions.',
+      'Search Link · Terms and Conditions. These terms apply alongside our Privacy and Usage Policies, Content Policies, Cookie Policies, Intellectual Property, Limits, and Liability, Agency Mode, and Agency Mode Liability and Intellectual Property.',
   },
 
   pt: {
@@ -347,6 +347,6 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Termos e condições.',
+      'Search Link · Termos e condições. Aplicam-se em conjunto com nossas Políticas de privacidade e uso, Políticas de conteúdo, Políticas de cookies, Propriedade intelectual, limites e responsabilidade, Modo Agência e Responsabilidade e propriedade no Modo Agência.',
   },
 };

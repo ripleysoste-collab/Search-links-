@@ -206,7 +206,7 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de privacidad y uso. La disponibilidad de otros documentos complementarios (Términos y condiciones, Políticas de contenido y Políticas de cookies) se incorporará en esta misma sección de Documentaciones.',
+      'Search Link · Políticas de privacidad y uso. Puedes consultar de forma complementaria nuestros Términos y condiciones, Políticas de contenido, Políticas de cookies, Propiedad intelectual, límites y responsabilidad, Modo Agencia y Responsabilidad y propiedad en Modo Agencia.',
   },
 
   en: {
@@ -378,7 +378,7 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
       },
     ],
     footerNote:
-      'Search Link · Official Privacy and Usage Policies.',
+      'Search Link · Privacy and Usage Policies. You may also review our Terms and Conditions, Content Policies, Cookie Policies, Intellectual Property, Limits, and Liability, Agency Mode, and Agency Mode Liability and Intellectual Property.',
   },
 
   pt: {
@@ -550,6 +550,6 @@ export const PRIVACY_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de privacidade e uso.',
+      'Search Link · Políticas de privacidade e uso. Consulte também nossos Termos e condições, Políticas de conteúdo, Políticas de cookies, Propriedade intelectual, limites e responsabilidade, Modo Agência e Responsabilidade e propriedade no Modo Agência.',
   },
 };

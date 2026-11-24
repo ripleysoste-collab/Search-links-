@@ -114,7 +114,7 @@ export const AGENCY_MODE_DOC_CONTENT: Record<SupportedLocale, PrivacyPolicyDocum
       },
     ],
     footerNote:
-      'Search Link · Documentación oficial de Modo Agencia.',
+      'Search Link · Modo Agencia. Consulta los límites sobre servidores externos, clientes finales y actualizaciones en Responsabilidad y propiedad en Modo Agencia, así como nuestros Términos y condiciones y Propiedad intelectual, límites y responsabilidad.',
   },
   en: {
     documentTitle: 'Agency Mode',
@@ -227,7 +227,7 @@ export const AGENCY_MODE_DOC_CONTENT: Record<SupportedLocale, PrivacyPolicyDocum
       },
     ],
     footerNote:
-      'Search Link · Official Agency Mode Documentation.',
+      'Search Link · Agency Mode. Review external server boundaries, end-client disclaimers, and update dependencies in Agency Mode Liability and Intellectual Property, as well as our Terms and Conditions and Intellectual Property, Limits, and Liability.',
   },
   pt: {
     documentTitle: 'Modo Agência',
@@ -340,6 +340,6 @@ export const AGENCY_MODE_DOC_CONTENT: Record<SupportedLocale, PrivacyPolicyDocum
       },
     ],
     footerNote:
-      'Search Link · Documentação oficial do Modo Agência.',
+      'Search Link · Modo Agência. Consulte os limites sobre servidores externos, clientes finais e atualizações em Responsabilidade e propriedade no Modo Agência, além dos nossos Termos e condições e Propriedade intelectual, limites e responsabilidade.',
   },
 };

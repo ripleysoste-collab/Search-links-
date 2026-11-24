@@ -37,7 +37,14 @@ interface DesktopAccountMenuProps {
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
   onOpenDocumentation: (
-    docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency' | 'liability',
+    docId:
+      | 'privacy'
+      | 'terms'
+      | 'content'
+      | 'cookies'
+      | 'agency'
+      | 'agency-liability'
+      | 'liability',
   ) => void;
   onClose: () => void;
   onSignOut: () => Promise<void>;
@@ -47,6 +54,7 @@ interface DesktopAccountMenuProps {
   onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
   onUnfreezeAllApis: () => Promise<{ unfrozenServicesCount: number }>;
   hasR2Images: boolean;
+  hasActiveApis: boolean;
   hasPausedApis: boolean;
 }
 
@@ -107,6 +115,7 @@ export function DesktopAccountMenu({
   onPauseAllApis,
   onUnfreezeAllApis,
   hasR2Images,
+  hasActiveApis,
   hasPausedApis,
 }: DesktopAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
@@ -537,6 +546,18 @@ export function DesktopAccountMenu({
                                   type="button"
                                   onClick={() => {
                                     onClose();
+                                    onOpenDocumentation('agency-liability');
+                                  }}
+                                  className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  {t.menu.agencyModeLiability}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
                                     onOpenDocumentation('liability');
                                   }}
                                   className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
@@ -740,6 +761,7 @@ export function DesktopAccountMenu({
                   <AdvancedSettingsView
                     variant="desktop"
                     hasR2Images={hasR2Images}
+                    hasActiveApis={hasActiveApis}
                     hasPausedApis={hasPausedApis}
                     onPurgeAllR2={onPurgeAllR2}
                     onClearBrowserData={onClearBrowserData}

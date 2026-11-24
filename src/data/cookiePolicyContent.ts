@@ -131,7 +131,7 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de cookies.',
+      'Search Link · Políticas de cookies. Complementan nuestras Políticas de privacidad y uso y Términos y condiciones.',
   },
 
   en: {
@@ -263,7 +263,7 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
       },
     ],
     footerNote:
-      'Search Link · Official Cookie Policies.',
+      'Search Link · Cookie Policies. These policies complement our Privacy and Usage Policies and Terms and Conditions.',
   },
 
   pt: {
@@ -395,6 +395,6 @@ export const COOKIE_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocumen
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de cookies.',
+      'Search Link · Políticas de cookies. Complementam nossas Políticas de privacidade e uso e Termos e condições.',
   },
 };

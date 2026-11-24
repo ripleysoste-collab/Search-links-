@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, X } from 'lucide-react';
+import { AGENCY_LIABILITY_DOC_CONTENT } from '../data/agencyLiabilityDocContent';
 import { AGENCY_MODE_DOC_CONTENT } from '../data/agencyModeDocContent';
 import { CONTENT_POLICY_CONTENT } from '../data/contentPolicyContent';
 import { COOKIE_POLICY_CONTENT } from '../data/cookiePolicyContent';
@@ -15,11 +16,13 @@ export type LegalDocId =
   | 'content'
   | 'cookies'
   | 'agency'
+  | 'agency-liability'
   | 'liability';
 
 interface LegalDocumentPageProps {
   docId: LegalDocId;
   onClose: () => void;
+  onNavigateDoc: (docId: LegalDocId) => void;
 }
 
 const LOCALE_SHORT_LABELS: Array<{ code: SupportedLocale; label: string }> = [
@@ -28,8 +31,74 @@ const LOCALE_SHORT_LABELS: Array<{ code: SupportedLocale; label: string }> = [
   { code: 'pt', label: 'PT' },
 ];
 
-export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
-  const { locale, setManualLocale } = useI18n();
+const DOC_LINK_PHRASES: Array<{ phrase: string; docId: LegalDocId }> = [
+  { phrase: 'Responsabilidad y propiedad en Modo Agencia', docId: 'agency-liability' },
+  { phrase: 'Agency Mode Liability and Intellectual Property', docId: 'agency-liability' },
+  { phrase: 'Responsabilidade e propriedade no Modo Agência', docId: 'agency-liability' },
+  { phrase: 'Propiedad intelectual, límites y responsabilidad', docId: 'liability' },
+  { phrase: 'Propiedad intelectual y responsabilidad', docId: 'liability' },
+  { phrase: 'Intellectual Property, Limits, and Liability', docId: 'liability' },
+  { phrase: 'Intellectual Property and Liability', docId: 'liability' },
+  { phrase: 'Propriedade intelectual, limites e responsabilidade', docId: 'liability' },
+  { phrase: 'Propriedade intelectual e responsabilidade', docId: 'liability' },
+  { phrase: 'Políticas de privacidad y uso', docId: 'privacy' },
+  { phrase: 'Política de privacidad', docId: 'privacy' },
+  { phrase: 'Privacy and Usage Policies', docId: 'privacy' },
+  { phrase: 'Privacy Policy', docId: 'privacy' },
+  { phrase: 'Políticas de privacidade e uso', docId: 'privacy' },
+  { phrase: 'Política de privacidade', docId: 'privacy' },
+  { phrase: 'Términos y condiciones', docId: 'terms' },
+  { phrase: 'Terms and Conditions', docId: 'terms' },
+  { phrase: 'Termos e condições', docId: 'terms' },
+  { phrase: 'Políticas de contenido', docId: 'content' },
+  { phrase: 'Política de contenido', docId: 'content' },
+  { phrase: 'Content Policies', docId: 'content' },
+  { phrase: 'Content Policy', docId: 'content' },
+  { phrase: 'Políticas de conteúdo', docId: 'content' },
+  { phrase: 'Política de conteúdo', docId: 'content' },
+  { phrase: 'Políticas de cookies', docId: 'cookies' },
+  { phrase: 'Política de cookies', docId: 'cookies' },
+  { phrase: 'Cookie Policies', docId: 'cookies' },
+  { phrase: 'Cookie Policy', docId: 'cookies' },
+  { phrase: 'Modo Agencia', docId: 'agency' },
+  { phrase: 'Agency Mode', docId: 'agency' },
+  { phrase: 'Modo Agência', docId: 'agency' },
+];
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const FOOTER_TEXT_BY_LOCALE: Record<
+  SupportedLocale,
+  {
+    allDocsHeading: string;
+    creditsLine: string;
+  }
+> = {
+  es: {
+    allDocsHeading: 'Todas las documentaciones de Search Link',
+    creditsLine:
+      '© 2026 Search Link · Todos los derechos reservados. Plataforma de catalogación inteligente, Search Link Core API y Modo Agencia.',
+  },
+  en: {
+    allDocsHeading: 'All Search Link Documentation',
+    creditsLine:
+      '© 2026 Search Link · All rights reserved. Intelligent catalog infrastructure, Search Link Core API, and Agency Mode.',
+  },
+  pt: {
+    allDocsHeading: 'Toda a documentação do Search Link',
+    creditsLine:
+      '© 2026 Search Link · Todos os direitos reservados. Infraestrutura de catalogação inteligente, Search Link Core API e Modo Agência.',
+  },
+};
+
+export function LegalDocumentPage({
+  docId,
+  onClose,
+  onNavigateDoc,
+}: LegalDocumentPageProps) {
+  const { locale, setManualLocale, t } = useI18n();
   const doc =
     docId === 'terms'
       ? TERMS_AND_CONDITIONS_CONTENT[locale]
@@ -39,14 +108,85 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
           ? COOKIE_POLICY_CONTENT[locale]
           : docId === 'agency'
             ? AGENCY_MODE_DOC_CONTENT[locale]
-            : docId === 'liability'
-              ? INTELLECTUAL_PROPERTY_DOC_CONTENT[locale]
-              : PRIVACY_POLICY_CONTENT[locale];
+            : docId === 'agency-liability'
+              ? AGENCY_LIABILITY_DOC_CONTENT[locale]
+              : docId === 'liability'
+                ? INTELLECTUAL_PROPERTY_DOC_CONTENT[locale]
+                : PRIVACY_POLICY_CONTENT[locale];
 
   const [activeSectionId, setActiveSectionId] = useState<string>(
     doc.sections[0]?.id ?? '',
   );
   const [mobileTocOpen, setMobileTocOpen] = useState(false);
+
+  const linkMatcher = useMemo(() => {
+    const pattern = DOC_LINK_PHRASES.map((item) => escapeRegExp(item.phrase)).join('|');
+    const regex = new RegExp(`(?<![\\p{L}\\p{N}])(${pattern})(?![\\p{L}\\p{N}])`, 'giu');
+    const lookup = new Map<string, LegalDocId>();
+    for (const entry of DOC_LINK_PHRASES) {
+      lookup.set(entry.phrase.toLowerCase(), entry.docId);
+    }
+    return { regex, lookup };
+  }, []);
+
+  const renderLinkedText = (text: string): ReactNode => {
+    if (!text) return text;
+    const { regex, lookup } = linkMatcher;
+    regex.lastIndex = 0;
+
+    const nodes: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    let keyCounter = 0;
+
+    while ((match = regex.exec(text)) !== null) {
+      const matchedPhrase = match[0];
+      const matchStart = match.index;
+      const targetDocId = lookup.get(matchedPhrase.toLowerCase());
+      if (!targetDocId || targetDocId === docId) continue;
+
+      if (matchStart > lastIndex) {
+        nodes.push(
+          <Fragment key={`txt-${keyCounter++}`}>
+            {text.slice(lastIndex, matchStart)}
+          </Fragment>,
+        );
+      }
+
+      nodes.push(
+        <button
+          key={`lnk-${keyCounter++}`}
+          type="button"
+          onClick={() => onNavigateDoc(targetDocId)}
+          className="inline font-medium text-blue-600 hover:text-blue-700 underline decoration-blue-600/35 hover:decoration-blue-700 underline-offset-2 cursor-pointer transition-colors text-left"
+        >
+          {matchedPhrase}
+        </button>,
+      );
+
+      lastIndex = matchStart + matchedPhrase.length;
+    }
+
+    if (nodes.length === 0) return text;
+    if (lastIndex < text.length) {
+      nodes.push(
+        <Fragment key={`txt-${keyCounter++}`}>{text.slice(lastIndex)}</Fragment>,
+      );
+    }
+    return nodes;
+  };
+
+  const allDocuments: Array<{ id: LegalDocId; label: string }> = [
+    { id: 'privacy', label: t.menu.privacyAndUse },
+    { id: 'terms', label: t.menu.termsAndConditions },
+    { id: 'content', label: t.menu.contentPolicies },
+    { id: 'cookies', label: t.menu.cookiePolicies },
+    { id: 'agency', label: t.menu.agencyMode },
+    { id: 'agency-liability', label: t.menu.agencyModeLiability },
+    { id: 'liability', label: t.menu.intellectualPropertyAndLiability },
+  ];
+
+  const footerTexts = FOOTER_TEXT_BY_LOCALE[locale];
 
   useEffect(() => {
     setActiveSectionId(doc.sections[0]?.id ?? '');
@@ -293,7 +433,7 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
               </h1>
 
               <p className="mt-5 text-[15.5px] lg:text-[16.5px] leading-[1.72] text-neutral-800">
-                {doc.leadSummary}
+                {renderLinkedText(doc.leadSummary)}
               </p>
             </header>
 
@@ -314,7 +454,7 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
 
                   <div className="mt-4 space-y-4 text-[15px] lg:text-[15.5px] leading-[1.72] text-neutral-700">
                     {section.paragraphs.map((paragraph, index) => (
-                      <p key={index}>{paragraph}</p>
+                      <p key={index}>{renderLinkedText(paragraph)}</p>
                     ))}
                   </div>
 
@@ -329,7 +469,7 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
                             aria-hidden="true"
                             className="mt-[0.62em] w-1.5 h-1.5 bg-black shrink-0"
                           />
-                          <span>{bullet}</span>
+                          <span>{renderLinkedText(bullet)}</span>
                         </li>
                       ))}
                     </ul>
@@ -357,16 +497,16 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
                             {section.table.rows.map((row, rIdx) => (
                               <tr key={rIdx} className="bg-white">
                                 <td className="px-4 py-3 font-medium text-black align-top">
-                                  {row.category}
+                                  {renderLinkedText(row.category)}
                                 </td>
                                 <td className="px-4 py-3 text-neutral-700 align-top">
-                                  {row.collectedData}
+                                  {renderLinkedText(row.collectedData)}
                                 </td>
                                 <td className="px-4 py-3 text-neutral-700 align-top">
-                                  {row.processor}
+                                  {renderLinkedText(row.processor)}
                                 </td>
                                 <td className="px-4 py-3 text-neutral-700 align-top tabular-nums">
-                                  {row.retention}
+                                  {renderLinkedText(row.retention)}
                                 </td>
                               </tr>
                             ))}
@@ -381,26 +521,32 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
                             key={rIdx}
                             className="p-4 bg-neutral-50/70 rounded-xl space-y-2 text-[13.5px]"
                           >
-                            <p className="font-semibold text-black">{row.category}</p>
+                            <p className="font-semibold text-black">
+                              {renderLinkedText(row.category)}
+                            </p>
                             <dl className="space-y-1.5 text-neutral-700">
                               <div>
                                 <dt className="text-[11px] font-medium text-neutral-400">
                                   {section.table!.headers[1]}
                                 </dt>
-                                <dd className="leading-snug">{row.collectedData}</dd>
+                                <dd className="leading-snug">
+                                  {renderLinkedText(row.collectedData)}
+                                </dd>
                               </div>
                               <div>
                                 <dt className="text-[11px] font-medium text-neutral-400">
                                   {section.table!.headers[2]}
                                 </dt>
-                                <dd className="leading-snug">{row.processor}</dd>
+                                <dd className="leading-snug">
+                                  {renderLinkedText(row.processor)}
+                                </dd>
                               </div>
                               <div>
                                 <dt className="text-[11px] font-medium text-neutral-400">
                                   {section.table!.headers[3]}
                                 </dt>
                                 <dd className="leading-snug tabular-nums">
-                                  {row.retention}
+                                  {renderLinkedText(row.retention)}
                                 </dd>
                               </div>
                             </dl>
@@ -413,8 +559,8 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
               ))}
             </div>
 
-            {/* Bottom Metadata & Footer Summary (placed cleanly at the bottom) */}
-            <footer className="mt-14 pt-8 border-t border-neutral-200 space-y-5">
+            {/* Bottom Metadata, Full Interlinked Documentation Directory & Platform Credits */}
+            <footer className="mt-14 pt-8 border-t border-neutral-200 space-y-7">
               <dl className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
                 <div>
                   <dt className="text-neutral-400">{doc.effectiveLabel}</dt>
@@ -437,8 +583,47 @@ export function LegalDocumentPage({ docId, onClose }: LegalDocumentPageProps) {
               </dl>
 
               <p className="text-xs leading-relaxed text-neutral-500">
-                {doc.footerNote}
+                {renderLinkedText(doc.footerNote)}
               </p>
+
+              {/* Complete Directory of All Search Link Documentations */}
+              <div className="pt-6 border-t border-neutral-200/80 space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-neutral-400">
+                  {footerTexts.allDocsHeading}
+                </p>
+
+                <nav aria-label={footerTexts.allDocsHeading}>
+                  <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
+                    {allDocuments.map((item) => {
+                      const isCurrent = item.id === docId;
+                      return (
+                        <li key={item.id}>
+                          {isCurrent ? (
+                            <span
+                              aria-current="page"
+                              className="font-semibold text-black"
+                            >
+                              {item.label}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onNavigateDoc(item.id)}
+                              className="font-medium text-blue-600 hover:text-blue-700 hover:underline underline-offset-2 cursor-pointer transition-colors text-left"
+                            >
+                              {item.label}
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </nav>
+
+                <p className="pt-2 text-[11.5px] leading-relaxed text-neutral-500">
+                  {footerTexts.creditsLine}
+                </p>
+              </div>
             </footer>
           </article>
         </div>

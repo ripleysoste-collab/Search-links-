@@ -102,7 +102,7 @@ export const CONTENT_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de contenido.',
+      'Search Link · Políticas de contenido. Estas reglas operan en conjunto con nuestros Términos y condiciones, Políticas de privacidad y uso y Propiedad intelectual, límites y responsabilidad.',
   },
 
   en: {
@@ -205,7 +205,7 @@ export const CONTENT_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
       },
     ],
     footerNote:
-      'Search Link · Official Content Policies.',
+      'Search Link · Content Policies. These standards operate together with our Terms and Conditions, Privacy and Usage Policies, and Intellectual Property, Limits, and Liability.',
   },
 
   pt: {
@@ -308,6 +308,6 @@ export const CONTENT_POLICY_CONTENT: Record<SupportedLocale, PrivacyPolicyDocume
       },
     ],
     footerNote:
-      'Search Link · Documento oficial de Políticas de conteúdo.',
+      'Search Link · Políticas de conteúdo. Estas diretrizes atuam em conjunto com nossos Termos e condições, Políticas de privacidade e uso e Propriedade intelectual, limites e responsabilidade.',
   },
 };
