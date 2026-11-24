@@ -1,7 +1,85 @@
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 import { isValidMediaKey, readImageFromR2 } from './r2Storage.ts';
 
-export const GEMINI_MAPPER_MODEL = 'gemini-3.1-flash-lite';
+export const GEMINI_MAPPER_MODEL = 'gemini-4-hydrogen';
+export const GEMINI_MAPPER_FALLBACK_MODELS = [
+  'gemini-4-hydrogen',
+  'gemini-3.1-flash-lite',
+] as const;
+
+const DEPRECATED_GEMINI_MODELS = new Set([
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+  'gemini-pro',
+  'gemini-2.0-flash',
+  'gemini-2.0-pro',
+  'gemini-2.0-flash-thinking',
+]);
+
+const GEMINI_REQUEST_TIMEOUT_MS = 45_000;
+
+let cachedAiClient: GoogleGenAI | null = null;
+let cachedAiApiKey = '';
+
+function getGeminiClient(apiKey: string): GoogleGenAI {
+  if (!cachedAiClient || cachedAiApiKey !== apiKey) {
+    cachedAiClient = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
+    cachedAiApiKey = apiKey;
+  }
+  return cachedAiClient;
+}
+
+function resolveCandidateModels(): string[] {
+  const customModel = (process.env.GEMINI_MODEL || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
+
+  if (customModel && !DEPRECATED_GEMINI_MODELS.has(customModel.toLowerCase())) {
+    return [
+      customModel,
+      ...GEMINI_MAPPER_FALLBACK_MODELS.filter((m) => m !== customModel),
+    ];
+  }
+
+  return [...GEMINI_MAPPER_FALLBACK_MODELS];
+}
+
+function getThinkingConfigForModel(model: string) {
+  if (model === 'gemini-3.1-flash-lite') {
+    return { thinkingLevel: ThinkingLevel.MINIMAL };
+  }
+  if (model.startsWith('gemini-4-') || model.startsWith('gemini-3.')) {
+    return { thinkingLevel: ThinkingLevel.LOW };
+  }
+  return undefined;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`DEADLINE_EXCEEDED: ${label} superó ${Math.round(ms / 1000)}s`));
+    }, ms);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 export interface VisualInspectionDetails {
   cantidad_productos_visibles: number;
@@ -79,6 +157,132 @@ export class GeminiMapError extends Error {
   }
 }
 
+const SAFETY_BLOCK_REASONS = new Set([
+  'SAFETY',
+  'PROHIBITED_CONTENT',
+  'IMAGE_SAFETY',
+  'SEXUALLY_EXPLICIT',
+  'DANGEROUS_CONTENT',
+  'HATE_SPEECH',
+  'HARASSMENT',
+  'BLOCKLIST',
+  'SPII',
+]);
+
+const MAPPER_PROMPT_TEXT =
+  'Audita SEGURIDAD y detalle visual milimétrico para catálogo e-commerce sin inventar precios, tallas ni marcas ilegibles.\n\n' +
+  'PASO 0 ("moderacion"):\n' +
+  '- BLOQUEAR ("aprobada": false):\n' +
+  '  • "extreme": CSAM, pornografía/actos sexuales o genitales expuestos, violencia sexual, cadáveres, gore/mutilación, violencia letal activa con armas, suicidio o autolesión.\n' +
+  '  • "moderate": desnudez explícita sin contexto comercial válido (senos/glúteos/genitales descubiertos), sangre o amenazas violentas con armas.\n' +
+  '- PERMITIR ("aprobada": true): lencería, ropa interior o trajes de baño comerciales sin desnudez explícita ni actos sexuales; cuchillos de cocina o herramientas de catálogo limpio sin sangre ni violencia.\n' +
+  '- Si aprobada=false, indica motivo_usuario breve y respetuoso en español.\n\n' +
+  'PASO 1 ("analisis_visual", solo si aprobada=true):\n' +
+  '- cantidad_productos_visibles: entero exacto de unidades visibles.\n' +
+  '- conteo_detallado: inventario numerado de cada capa, pieza o ingrediente visible (arriba-abajo o exterior-interior).\n' +
+  '- colores: tonos, matices y acabados exactos.\n' +
+  '- forma_y_estructura: silueta, geometría, proporciones, grosor/altura y ensamblaje.\n' +
+  '- materiales_y_texturas: materiales, tejidos, superficies o ingredientes.\n' +
+  '- tamano_minimo_estimado: tamaño/porción mínima aproximada por proporción visual (aclarando que es estimación visual).\n' +
+  '- micro_detalles: costuras, perforaciones, patrón de suela, semillas o texto/logo solo si es 100% legible.\n\n' +
+  'PASO 2 (Síntesis comercial basada en PASO 1):\n' +
+  '- nombre: nombre comercial específico y claro.\n' +
+  '- categoria: "Categoría · Subcategoría" precisa.\n' +
+  '- descripcion: 3 a 4 oraciones concisas en español integrando colores, estructura, conteo exacto, materiales y tamaño estimado.';
+
+const MAPPER_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  propertyOrdering: [
+    'moderacion',
+    'analisis_visual',
+    'nombre',
+    'categoria',
+    'descripcion',
+  ],
+  properties: {
+    moderacion: {
+      type: Type.OBJECT,
+      propertyOrdering: ['aprobada', 'severidad', 'categoria', 'motivo_usuario'],
+      properties: {
+        aprobada: { type: Type.BOOLEAN },
+        severidad: { type: Type.STRING },
+        categoria: { type: Type.STRING },
+        motivo_usuario: { type: Type.STRING },
+      },
+      required: ['aprobada', 'severidad', 'categoria', 'motivo_usuario'],
+    },
+    analisis_visual: {
+      type: Type.OBJECT,
+      propertyOrdering: [
+        'cantidad_productos_visibles',
+        'conteo_detallado',
+        'colores',
+        'forma_y_estructura',
+        'materiales_y_texturas',
+        'tamano_minimo_estimado',
+        'micro_detalles',
+      ],
+      properties: {
+        cantidad_productos_visibles: { type: Type.INTEGER },
+        conteo_detallado: { type: Type.STRING },
+        colores: { type: Type.ARRAY, items: { type: Type.STRING } },
+        forma_y_estructura: { type: Type.STRING },
+        materiales_y_texturas: { type: Type.ARRAY, items: { type: Type.STRING } },
+        tamano_minimo_estimado: { type: Type.STRING },
+        micro_detalles: { type: Type.STRING },
+      },
+      required: [
+        'cantidad_productos_visibles',
+        'conteo_detallado',
+        'colores',
+        'forma_y_estructura',
+        'materiales_y_texturas',
+        'tamano_minimo_estimado',
+        'micro_detalles',
+      ],
+    },
+    nombre: { type: Type.STRING },
+    categoria: { type: Type.STRING },
+    descripcion: { type: Type.STRING },
+  },
+  required: ['moderacion', 'analisis_visual', 'nombre', 'categoria', 'descripcion'],
+};
+
+function isAuthErrorMessage(msg: string): boolean {
+  const upper = msg.toUpperCase();
+  return (
+    upper.includes('API_KEY_INVALID') ||
+    upper.includes('API_KEY') ||
+    upper.includes('PERMISSION_DENIED') ||
+    upper.includes('403')
+  );
+}
+
+function isModelNotFoundMessage(msg: string): boolean {
+  const upper = msg.toUpperCase();
+  return upper.includes('NOT_FOUND') || upper.includes('404');
+}
+
+function isTransientGeminiError(msg: string): boolean {
+  const upper = msg.toUpperCase();
+  return (
+    upper.includes('503') ||
+    upper.includes('502') ||
+    upper.includes('504') ||
+    upper.includes('500') ||
+    upper.includes('UNAVAILABLE') ||
+    upper.includes('OVERLOADED') ||
+    upper.includes('HIGH DEMAND') ||
+    upper.includes('CAPACITY') ||
+    upper.includes('429') ||
+    upper.includes('RESOURCE_EXHAUSTED') ||
+    upper.includes('DEADLINE_EXCEEDED') ||
+    upper.includes('ETIMEDOUT') ||
+    upper.includes('ECONNRESET') ||
+    upper.includes('FETCH FAILED')
+  );
+}
+
 export async function mapStoredImageWithGemini(options: {
   key?: string;
   imageUrl: string;
@@ -126,237 +330,55 @@ export async function mapStoredImageWithGemini(options: {
     throw new GeminiMapError('La imagen para mapear está vacía.', 'fatal');
   }
 
-  const ai = new GoogleGenAI({
-    apiKey,
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-
-  const promptText =
-    'Realiza una auditoría de SEGURIDAD y una auditoría visual MILIMÉTRICA de esta imagen para un catálogo comercial conectado a un asesor de ventas.\n' +
-    'Regla de oro: evalúa únicamente lo que muestran los píxeles; nunca inventes precios, tallas impresas ni marcas ilegibles.\n\n' +
-    'PASO 0 — "moderacion" (CONTROL DE POLÍTICAS ANTES DE CATALOGAR):\n' +
-    '  Evalúa con precisión quirúrgica la intención real de la escena (en inglés y español):\n' +
-    '  • BLOQUEO INMEDIATO ("aprobada": false):\n' +
-    '    - "extreme" ("severidad": "extreme"): child sexual abuse/exploitation (CSAM), explicit pornography, sexual acts or exposed genitalia (actos sexuales, sexo explícito, acceso carnal), sexual violence, dead bodies/corpses (personas muertas), real gore/mutilation, active lethal violence with firearms or bladed weapons (violencia real con armas de fuego o armas blancas, heridas sangrientas), suicide or self-harm.\n' +
-    '    - "moderate" ("severidad": "moderate"): explicit non-commercial nudity (senos, glúteos o genitales descubiertos sin contexto comercial válido), escenas sangrientas o amenazas violentas explícitas con armas.\n' +
-    '  • CATÁLOGOS COMERCIALES PERMITIDOS ("aprobada": true, NUNCA confundir ni bloquear por error):\n' +
-    '    - Lencería, ropa interior, trajes de baño o bikinis en maniquí o modelo comercial (si NO hay genitales expuestos, NO hay actos sexuales ni pornografía).\n' +
-    '    - Cuchillos de cocina, utensilios culinarios, navajas de camping, herramientas o réplicas/artículos comerciales neutros de catálogo (si NO hay sangre, heridas, cadáveres ni violencia contra personas o animales).\n' +
-    '  Si "aprobada" es false, redacta "motivo_usuario" en español claro, breve y respetuoso explicando por qué infringe nuestras políticas (sin detalles morbosos).\n\n' +
-    'PASO 1 — "analisis_visual" (solo si "aprobada": true; inspección física capa por capa):\n' +
-    '  • "cantidad_productos_visibles": Entero exacto de unidades o artículos principales visibles (ej. 2 si hay un par de tenis o hamburguesa + papas; 1 si es una unidad única).\n' +
-    '  • "conteo_detallado": Inventario numerado y exacto de CADA parte o capa visible (de arriba a abajo o de exterior a interior):\n' +
-    '    - En alimentos/bebidas: tipo de pan o base, semillas, número exacto de carnes/proteínas, láminas de queso, tiras de tocineta, rodajas de tomate, hojas verdes, aros, salsas y acompañamientos.\n' +
-    '    - En calzado/moda: si es par o unidad, corte (bajo/medio/alto), cantidad de ojales visibles por lado, cordones/cierres, lengüeta, puntera, talonera, entresuela y suela.\n' +
-    '    - En otros productos: cuerpo principal, botones, tapas, asas, conectores y accesorios visibles.\n' +
-    '  • "colores": Lista precisa de tonos, matices y acabados (ej. "blanco óptico", "blanco hueso", "gris perla mate", "amarillo cheddar fundido").\n' +
-    '  • "forma_y_estructura": Geometría, silueta, horma o ensamblaje: proporciones, grosor de suela o altura de capas, costuras, ángulos y acabado superficial.\n' +
-    '  • "materiales_y_texturas": Lista exacta de materiales, tejidos, superficies o ingredientes visibles y su textura.\n' +
-    '  • "tamano_minimo_estimado": Deducción visual del tamaño mínimo aproximado comparando proporciones entre elementos visibles (ej. diámetro y altura mínimos estimados en cm o porción en alimentos; altura de suela/plataforma en cm y horma adulto/infantil en calzado). Aclara siempre que es estimación visual.\n' +
-    '  • "micro_detalles": Detalles finos reales: patrón de suela, perforaciones, tipo de puntada, semillas, marcas de plancha/parrilla, texto o logotipo solo si es 100% legible.\n\n' +
-    'PASO 2 — Síntesis comercial basada exactamente en el PASO 1:\n' +
-    '  • "nombre": Nombre comercial específico, completo y atractivo (nunca genérico).\n' +
-    '  • "categoria": "Categoría · Subcategoría" precisa (ej. "Calzado · Tenis urbanos", "Alimentos · Hamburguesas").\n' +
-    '  • "descripcion": 3 a 4 oraciones densas, claras y sin relleno repetitivo en español que integren colores, estructura, conteo exacto de elementos/ingredientes, materiales y tamaño mínimo estimado para responder dudas de clientes al instante.';
-
-  const MAX_GEMINI_ATTEMPTS =
+  const ai = getGeminiClient(apiKey);
+  const candidateModels = resolveCandidateModels();
+  const maxAttempts =
     typeof options.maxAttempts === 'number' && options.maxAttempts >= 1
-      ? Math.min(6, Math.trunc(options.maxAttempts))
+      ? Math.min(6, Math.max(candidateModels.length, Math.trunc(options.maxAttempts)))
       : 4;
 
-  const isTransientError = (msg: string): boolean => {
-    const upper = msg.toUpperCase();
-    return (
-      upper.includes('503') ||
-      upper.includes('502') ||
-      upper.includes('504') ||
-      upper.includes('UNAVAILABLE') ||
-      upper.includes('OVERLOADED') ||
-      upper.includes('HIGH DEMAND') ||
-      upper.includes('429') ||
-      upper.includes('RESOURCE_EXHAUSTED') ||
-      upper.includes('DEADLINE_EXCEEDED') ||
-      upper.includes('ETIMEDOUT') ||
-      upper.includes('ECONNRESET') ||
-      upper.includes('FETCH FAILED')
-    );
-  };
+  const attemptedModels: string[] = [];
 
-  for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS; attempt++) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const model = candidateModels[(attempt - 1) % candidateModels.length];
+    if (!attemptedModels.includes(model)) {
+      attemptedModels.push(model);
+    }
+
+    const thinkingConfig = getThinkingConfigForModel(model);
+
     try {
-      const response = await ai.models.generateContent({
-        model: GEMINI_MAPPER_MODEL,
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: resolvedMimeType,
-                data: imageBase64,
-              },
-            },
-            { text: promptText },
-          ],
-        },
-        config: {
-          systemInstruction:
-            'Eres un auditor de seguridad comercial y catalogador experto en e-commerce, gastronomía y retail. Antes de catalogar, verificas que la imagen no contenga desnudez explícita, actos sexuales, abuso, cadáveres, heridas reales ni violencia con armas o armas blancas, sin confundir nunca lencería comercial, trajes de baño o cuchillos de cocina/catálogo limpio. Luego inspeccionas y cuentas cada componente, capa, color, textura, geometría y proporción visual de forma milimétrica y redactas el nombre, categoría y descripción comercial. Responde exclusivamente JSON válido en español.',
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
-          },
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            propertyOrdering: [
-              'moderacion',
-              'analisis_visual',
-              'nombre',
-              'categoria',
-              'descripcion',
-            ],
-            properties: {
-              moderacion: {
-                type: Type.OBJECT,
-                description:
-                  'Verificación previa de seguridad y políticas de contenido antes de catalogar.',
-                propertyOrdering: [
-                  'aprobada',
-                  'severidad',
-                  'categoria',
-                  'motivo_usuario',
-                ],
-                properties: {
-                  aprobada: {
-                    type: Type.BOOLEAN,
-                    description:
-                      'true si es segura o un producto comercial válido (incluida ropa interior o cuchillos de cocina sin violencia); false si infringe políticas de desnudez explícita, actos sexuales o violencia real.',
-                  },
-                  severidad: {
-                    type: Type.STRING,
-                    description:
-                      'none si aprobada=true; extreme si hay actos sexuales, CSAM, cadáveres, gore o violencia real con armas; moderate en infracciones menores.',
-                  },
-                  categoria: {
-                    type: Type.STRING,
-                    description:
-                      'safe, nudity_sexual, violence_gore, self_harm o illegal_harm.',
-                  },
-                  motivo_usuario: {
-                    type: Type.STRING,
-                    description:
-                      'Explicación clara y respetuosa en español para el usuario cuando aprobada es false; cadena vacía si aprobada es true.',
-                  },
+      const response = await withTimeout(
+        ai.models.generateContent({
+          model,
+          contents: {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: resolvedMimeType,
+                  data: imageBase64,
                 },
-                required: ['aprobada', 'severidad', 'categoria', 'motivo_usuario'],
               },
-              analisis_visual: {
-                type: Type.OBJECT,
-                description:
-                  'Auditoría visual milimétrica del producto, conteo exacto de piezas/capas y escala proporcional.',
-                propertyOrdering: [
-                  'cantidad_productos_visibles',
-                  'conteo_detallado',
-                  'colores',
-                  'forma_y_estructura',
-                  'materiales_y_texturas',
-                  'tamano_minimo_estimado',
-                  'micro_detalles',
-                ],
-                properties: {
-                  cantidad_productos_visibles: {
-                    type: Type.INTEGER,
-                    description:
-                      'Cantidad exacta de unidades o productos principales visibles en la imagen.',
-                  },
-                  conteo_detallado: {
-                    type: Type.STRING,
-                    description:
-                      'Conteo e inventario minucioso de cada elemento, capa, ingrediente, ojal o pieza visible.',
-                  },
-                  colores: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description:
-                      'Lista exacta de colores, matices y acabados visibles.',
-                  },
-                  forma_y_estructura: {
-                    type: Type.STRING,
-                    description:
-                      'Silueta, figura, geometría, ensamblaje y estructura/construcción física.',
-                  },
-                  materiales_y_texturas: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING },
-                    description:
-                      'Materiales, ingredientes o texturas visibles en superficie y capas.',
-                  },
-                  tamano_minimo_estimado: {
-                    type: Type.STRING,
-                    description:
-                      'Estimación visual del tamaño mínimo, volumen o porción deducida por proporción.',
-                  },
-                  micro_detalles: {
-                    type: Type.STRING,
-                    description:
-                      'Microdetalles visibles: costuras, perforaciones, sellado, cierres o marcas legibles.',
-                  },
-                },
-                required: [
-                  'cantidad_productos_visibles',
-                  'conteo_detallado',
-                  'colores',
-                  'forma_y_estructura',
-                  'materiales_y_texturas',
-                  'tamano_minimo_estimado',
-                  'micro_detalles',
-                ],
-              },
-              nombre: {
-                type: Type.STRING,
-                description:
-                  'Nombre comercial específico, descriptivo y preciso del producto en español.',
-              },
-              categoria: {
-                type: Type.STRING,
-                description:
-                  'Categoría y subcategoría comercial precisa en español.',
-              },
-              descripcion: {
-                type: Type.STRING,
-                description:
-                  'Descripción comercial de 3 a 4 oraciones concisas con colores, estructura, conteo exacto de piezas/ingredientes, materiales y tamaño mínimo estimado.',
-              },
-            },
-            required: [
-              'moderacion',
-              'analisis_visual',
-              'nombre',
-              'categoria',
-              'descripcion',
+              { text: MAPPER_PROMPT_TEXT },
             ],
           },
-        },
-      });
+          config: {
+            systemInstruction:
+              'Eres un auditor de seguridad comercial y catalogador experto en e-commerce. Verificas que no exista desnudez explícita, abuso, gore o violencia real (sin bloquear lencería o utensilios comerciales limpios), cuentas cada capa/pieza/color/textura visible y respondes exclusivamente JSON válido en español.',
+            ...(thinkingConfig ? { thinkingConfig } : {}),
+            responseMimeType: 'application/json',
+            responseSchema: MAPPER_RESPONSE_SCHEMA,
+          },
+        }),
+        GEMINI_REQUEST_TIMEOUT_MS,
+        model,
+      );
 
       const candidate = response.candidates?.[0];
       const finishReason = String(candidate?.finishReason || '').toUpperCase();
       const blockReason = String(
         response.promptFeedback?.blockReason || '',
       ).toUpperCase();
-      const SAFETY_BLOCK_REASONS = new Set([
-        'SAFETY',
-        'PROHIBITED_CONTENT',
-        'IMAGE_SAFETY',
-        'SEXUALLY_EXPLICIT',
-        'DANGEROUS_CONTENT',
-        'HATE_SPEECH',
-        'HARASSMENT',
-        'BLOCKLIST',
-        'SPII',
-      ]);
       if (
         SAFETY_BLOCK_REASONS.has(finishReason) ||
         SAFETY_BLOCK_REASONS.has(blockReason)
@@ -457,40 +479,50 @@ export async function mapStoredImageWithGemini(options: {
       const message =
         err instanceof Error ? err.message : 'Error al consultar Gemini';
 
-      if (
-        message.includes('API_KEY') ||
-        message.includes('PERMISSION_DENIED') ||
-        message.includes('403')
-      ) {
+      if (isAuthErrorMessage(message)) {
         throw new GeminiMapError(
-          'La clave GEMINI_API_KEY fue rechazada o falta en el servidor.',
+          'La clave GEMINI_API_KEY fue rechazada o no tiene permisos en el servidor.',
           'auth',
         );
       }
 
-      const transient = isTransientError(message);
-      if (transient && attempt < MAX_GEMINI_ATTEMPTS) {
-        const baseDelay = attempt === 1 ? 950 : attempt === 2 ? 2200 : 4200;
-        const jitter = Math.floor(Math.random() * 400);
+      const nextModel = candidateModels[attempt % candidateModels.length];
+      const switchingModel = nextModel !== model;
+      const modelMissing = isModelNotFoundMessage(message);
+      const transient = isTransientGeminiError(message);
+
+      if ((transient || modelMissing) && attempt < maxAttempts) {
+        // Immediate failover when switching to a different model capacity pool; brief backoff on same model
+        const baseDelay = switchingModel
+          ? 350
+          : attempt === 1
+            ? 900
+            : attempt === 2
+              ? 2000
+              : 3600;
+        const jitter = Math.floor(Math.random() * 250);
         await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
         continue;
       }
 
+      const modelsNote =
+        attemptedModels.length > 0 ? ` (${attemptedModels.join(' -> ')})` : '';
+
       if (message.includes('503') || message.toUpperCase().includes('UNAVAILABLE')) {
         throw new GeminiMapError(
-          'El servidor de Gemini tuvo saturación temporal (503).',
+          `Saturación temporal 503 en Gemini tras probar${modelsNote}.`,
           'transient',
         );
       }
-      if (message.includes('429') || message.includes('RESOURCE_EXHAUSTED')) {
+      if (message.includes('429') || message.toUpperCase().includes('RESOURCE_EXHAUSTED')) {
         throw new GeminiMapError(
-          'Se alcanzó el límite temporal de Gemini (429).',
+          `Se alcanzó el límite temporal de Gemini (429)${modelsNote}.`,
           'transient',
         );
       }
       if (transient) {
         throw new GeminiMapError(
-          `Saturación o corte temporal al consultar Gemini: ${message.slice(0, 100)}`,
+          `Corte o saturación temporal en Gemini${modelsNote}: ${message.slice(0, 100)}`,
           'transient',
         );
       }

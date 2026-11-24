@@ -253,28 +253,3 @@ export async function fetchActiveMappingJob(
   };
   return data.job ?? null;
 }
-
-export async function cancelBackgroundMappingJob(
-  jobId: string,
-): Promise<MappingQueueJobClient | null> {
-  const token = await getSupabaseAccessToken();
-  if (!token) return null;
-
-  const res = await fetch(
-    resolveApiUrl(`/api/jobs/map/${encodeURIComponent(jobId)}/cancel`),
-    {
-      method: 'POST',
-      credentials: 'include',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
-
-  if (!res.ok) return null;
-  const data = (await res.json().catch(() => ({}))) as {
-    ok?: boolean;
-    job?: MappingQueueJobClient;
-  };
-  return data.job ?? null;
-}

@@ -7,10 +7,6 @@ import { isBlockedPolicyDomain } from './lib/blockedDomains.ts';
 import { extractImagesFromUrl } from './lib/extractor.ts';
 import { PolicyBlockedDomainError } from './lib/urlSafety.ts';
 import {
-  GeminiMapError,
-  mapStoredImageWithGemini,
-} from './lib/geminiMapper.ts';
-import {
   cancelMappingJobForUser,
   createAndStartMappingJob,
   getLatestMappingJobForUser,
@@ -31,7 +27,6 @@ import {
   invalidateUserImageQuotaCache,
   isAdminTestEmail,
   markFreeAccountImageConsumed,
-  unmarkFreeAccountImageConsumed,
   verifySupabaseBearerUser,
 } from './lib/planLimits.ts';
 import {
@@ -63,7 +58,6 @@ import {
   searchPublicImageBank,
 } from './lib/imageBank.ts';
 import {
-  deleteImageFromR2,
   getMissingR2EnvNames,
   isR2Configured,
   isValidMediaKey,
@@ -157,7 +151,6 @@ async function startServer() {
   app.use((req, res, next) => {
     if (
       req.path === '/api/upload' ||
-      req.path === '/api/map-image' ||
       req.path === '/api/jobs/map' ||
       req.path === '/api/chat'
     ) {
@@ -531,83 +524,6 @@ async function startServer() {
           err instanceof Error
             ? err.message
             : 'Ocurrió un error al subir la imagen.';
-        return res.status(400).json({ error: message });
-      }
-    },
-  );
-
-  app.post(
-    '/api/map-image',
-    express.json({ type: 'application/json', limit: '5mb' }),
-    async (req, res) => {
-      try {
-        const authUser = await verifySupabaseBearerUser(req.headers);
-        if (!authUser) {
-          return res.status(401).json({
-            error: 'Inicia sesión con Google para mapear imágenes con IA.',
-          });
-        }
-
-        const body = (req.body ?? {}) as Record<string, unknown>;
-        const key = typeof body.key === 'string' ? body.key : undefined;
-        const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl : '';
-        const dataBase64 =
-          typeof body.dataBase64 === 'string' ? body.dataBase64 : undefined;
-        const mimeType =
-          typeof body.mimeType === 'string' ? body.mimeType : undefined;
-
-        if (!imageUrl) {
-          return res.status(400).json({
-            error: 'Falta la URL de la imagen para mapear.',
-          });
-        }
-
-        const trackingKey = key || imageUrl;
-        const quota = await checkFreeAccountImageQuota(authUser, trackingKey);
-        if (!quota.allowed) {
-          return res.status(429).json({
-            quotaExceeded: true,
-            used: quota.used,
-            limit: quota.limit,
-            error: `Has alcanzado el límite de ${FREE_PLAN_MAX_IMAGES} imágenes del plan gratuito.`,
-          });
-        }
-
-        const mapped = await mapStoredImageWithGemini({
-          key,
-          imageUrl,
-          dataBase64,
-          mimeType,
-        });
-
-        markFreeAccountImageConsumed(authUser, trackingKey);
-
-        return res.json(mapped);
-      } catch (err) {
-        if (err instanceof GeminiMapError && err.kind === 'policy') {
-          const bodyKey =
-            req.body && typeof req.body === 'object' && typeof (req.body as Record<string, unknown>).key === 'string'
-              ? ((req.body as Record<string, unknown>).key as string)
-              : undefined;
-          if (bodyKey && isValidMediaKey(bodyKey)) {
-            void deleteImageFromR2(bodyKey);
-            if (req.headers.authorization) {
-              const user = await verifySupabaseBearerUser(req.headers);
-              if (user) {
-                unmarkFreeAccountImageConsumed(user.userId, bodyKey);
-              }
-            }
-          }
-          return res.status(422).json({
-            policyBlocked: true,
-            error: err.message,
-          });
-        }
-
-        const message =
-          err instanceof Error
-            ? err.message
-            : 'No se pudo mapear la imagen con IA.';
         return res.status(400).json({ error: message });
       }
     },

@@ -26,12 +26,12 @@ import { processAndStoreUploadedImage } from './uploadHandler.ts';
 import { triggerServerAgencyAutoSyncOnServiceCreated } from './agencySync.ts';
 
 export const R2_UPLOAD_CONCURRENCY = 4;
-export const QUEUE_BATCH_BEFORE_PAUSE = 5;
-export const QUEUE_COOLDOWN_MS = 10_000;
+export const QUEUE_BATCH_BEFORE_PAUSE = 6;
+export const QUEUE_COOLDOWN_MS = 5_000;
 export const QUEUE_INTER_ITEM_MS = 100;
-export const QUEUE_MAX_TRANSIENT_ATTEMPTS = 6;
+export const QUEUE_MAX_TRANSIENT_ATTEMPTS = 5;
 
-const TRANSIENT_BACKOFF_MS = [10_000, 20_000, 35_000, 50_000, 60_000];
+const TRANSIENT_BACKOFF_MS = [4_000, 10_000, 20_000, 35_000];
 
 export type MappingQueueItemUploadStatus =
   | 'pending'
@@ -1043,6 +1043,10 @@ export async function createAndStartMappingJob(
   invalidateCoreCatalogCache({ slug: input.serviceSlug, keyHash: input.keyHash });
 
   jobsById.set(jobId, job);
+  if (latestJobIdByUser.size > 2000) {
+    const oldestUser = latestJobIdByUser.keys().next().value;
+    if (oldestUser) latestJobIdByUser.delete(oldestUser);
+  }
   latestJobIdByUser.set(input.authUser.userId, jobId);
   runtimeByJobId.set(jobId, ctx);
 

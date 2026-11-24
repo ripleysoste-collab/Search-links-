@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { isBlockedPolicyDomain } from '../lib/blockedDomains.ts';
 import { extractImagesFromUrl } from '../lib/extractor.ts';
+import { PolicyBlockedDomainError } from '../lib/urlSafety.ts';
 import {
   checkAndConsumeGuestExtractQuota,
   FREE_PLAN_MAX_IMAGES,
@@ -74,6 +76,15 @@ export default async function handler(req: VercelLikeRequest, res: VercelLikeRes
   }
 
   try {
+    const body = await readRequestBody(req);
+    const rawUrl = typeof body.url === 'string' ? body.url : '';
+    if (isBlockedPolicyDomain(rawUrl).blocked) {
+      return sendJson(res, 403, {
+        policyBlocked: true,
+        error: 'Este dominio viola nuestras políticas de contenido',
+      });
+    }
+
     const authUser = await verifySupabaseBearerUser(req.headers);
     const guestQuota = checkAndConsumeGuestExtractQuota(
       req.headers,
@@ -89,8 +100,6 @@ export default async function handler(req: VercelLikeRequest, res: VercelLikeRes
       });
     }
 
-    const body = await readRequestBody(req);
-    const rawUrl = typeof body.url === 'string' ? body.url : '';
     const requestedMax =
       typeof body.maxResults === 'number' && Number.isFinite(body.maxResults)
         ? Math.max(1, Math.trunc(body.maxResults))
@@ -114,6 +123,12 @@ export default async function handler(req: VercelLikeRequest, res: VercelLikeRes
 
     return sendJson(res, 200, result);
   } catch (err) {
+    if (err instanceof PolicyBlockedDomainError) {
+      return sendJson(res, 403, {
+        policyBlocked: true,
+        error: err.message,
+      });
+    }
     const message =
       err instanceof Error ? err.message : 'Ocurrió un error al analizar la página.';
     return sendJson(res, 400, { error: message });

@@ -1,7 +1,7 @@
 import type { SupportedLocale } from './i18n';
 import { buildCoreServiceEndpointUrl } from './searchLinkCore';
 
-export interface SchemaExportInput {
+interface SchemaExportInput {
   serviceName: string;
   serviceSlug?: string;
   endpointUrl?: string;
@@ -11,7 +11,7 @@ export interface SchemaExportInput {
   locale?: SupportedLocale;
 }
 
-export interface ZipEntryInput {
+interface ZipEntryInput {
   name: string;
   content: string | Uint8Array;
 }
@@ -53,7 +53,7 @@ function getDosDateTime(date: Date): { dosTime: number; dosDate: number } {
  * Pure TypeScript PKZIP builder (Store compression method 0 with UTF-8 flag 0x0800).
  * Produces a universally valid .zip archive without external dependencies.
  */
-export function createZipBlob(entries: ZipEntryInput[]): Blob {
+function createZipBlob(entries: ZipEntryInput[]): Blob {
   const encoder = new TextEncoder();
   const now = new Date();
   const { dosTime, dosDate } = getDosDateTime(now);
@@ -215,7 +215,7 @@ function getSafeOrgName(name?: string): string {
   return trimmed;
 }
 
-export function buildServiceOpenApiSchemaObject(
+function buildServiceOpenApiSchemaObject(
   input: SchemaExportInput,
 ): Record<string, unknown> {
   const { serverOrigin, servicePath } = resolveSlugAndEndpoint(input);
@@ -549,7 +549,7 @@ function buildReadmeText(input: SchemaExportInput): string {
   ].join('\n');
 }
 
-export function buildServiceSchemaBundleFiles(
+function buildServiceSchemaBundleFiles(
   input: SchemaExportInput,
 ): Array<{ name: string; content: string }> {
   const { slug, endpointUrl } = resolveSlugAndEndpoint(input);
@@ -637,7 +637,7 @@ export function downloadServiceSchemaZip(input: SchemaExportInput): void {
   }, 4000);
 }
 
-export interface ServiceLikeForSchema {
+interface ServiceLikeForSchema {
   name: string;
   slug?: string;
   endpointUrl: string;

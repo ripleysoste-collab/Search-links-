@@ -102,6 +102,10 @@ function isDuplicateRecentSync(dedupeKey?: string): boolean {
   if (existingExp && existingExp > now) {
     return true;
   }
+  if (recentSyncDedupeMap.size >= 2000) {
+    const oldest = recentSyncDedupeMap.keys().next().value;
+    if (oldest) recentSyncDedupeMap.delete(oldest);
+  }
   recentSyncDedupeMap.set(clean, now + DEDUPE_WINDOW_MS);
   return false;
 }

@@ -452,6 +452,10 @@ export function recordInMemoryR2PurgeLedger(
   const current = deletedEmailLedgerFallback.get(emailHash);
   const month = getCurrentMonthKey();
   const day = new Date().toISOString().slice(0, 10);
+  if (deletedEmailLedgerFallback.size >= 5000) {
+    const oldest = deletedEmailLedgerFallback.keys().next().value;
+    if (oldest) deletedEmailLedgerFallback.delete(oldest);
+  }
   deletedEmailLedgerFallback.set(emailHash, {
     freeImagesUsed: (current?.freeImagesUsed ?? 0) + Math.max(0, Math.trunc(purgedImages)),
     apiMonth: current?.apiMonth || month,
@@ -491,6 +495,10 @@ export function recordInMemoryDeletedAccountLedger(input: {
   const prevChat =
     prev && prev.chatDay === input.chatDay ? prev.chatUsed : 0;
 
+  if (deletedEmailLedgerFallback.size >= 5000) {
+    const oldest = deletedEmailLedgerFallback.keys().next().value;
+    if (oldest) deletedEmailLedgerFallback.delete(oldest);
+  }
   deletedEmailLedgerFallback.set(emailHash, {
     freeImagesUsed:
       (prev?.freeImagesUsed ?? 0) + Math.max(0, Math.trunc(input.activeImages)),
@@ -696,6 +704,10 @@ export function recordAndCheckMonthlyApiQuota(
   dbRequestsHint = 0,
 ): { allowed: boolean; used: number; limit: number } {
   const month = getCurrentMonthKey();
+  if (keyHashToServiceScope.size >= 10000) {
+    const oldestKey = keyHashToServiceScope.keys().next().value;
+    if (oldestKey) keyHashToServiceScope.delete(oldestKey);
+  }
   keyHashToServiceScope.set(keyHash, scopeId);
   const counterKey = `${month}:${scopeId}`;
   const currentMem = monthlyApiCounterMemory.get(counterKey) ?? 0;

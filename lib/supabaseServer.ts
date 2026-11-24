@@ -539,7 +539,7 @@ export async function resolveSearchLinkCoreEndpoint(
   };
 }
 
-export async function fetchCatalogByApiKey(
+async function fetchCatalogByApiKey(
   rawApiKey: string,
 ): Promise<
   | { ok: true; data: PublicCatalogResult }

@@ -188,11 +188,6 @@ export async function fetchImageBankAccessStatus(): Promise<{
   };
 }
 
-export async function fetchImageBankPlusAccess(): Promise<boolean> {
-  const status = await fetchImageBankAccessStatus();
-  return status.hasPlusAccess;
-}
-
 export async function generateAiImageFromPrompt(
   prompt: string,
   signal?: AbortSignal,

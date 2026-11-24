@@ -1,5 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { verifySupabaseBearerUser } from '../lib/planLimits.ts';
+import {
+  fetchUserFreeUsageLedger,
+  verifySupabaseBearerUser,
+} from '../lib/planLimits.ts';
 import {
   checkDailyLimit,
   consumeDailyLimit,
@@ -81,10 +84,15 @@ export default async function handler(req: VercelLikeRequest, res: ServerRespons
       }>)
     : undefined;
 
+  const carriedChatUsed = authUser
+    ? (await fetchUserFreeUsageLedger(authUser)).freeChatUsed
+    : 0;
+
   const limitStatus = checkDailyLimit(
     req.headers,
     userId,
     req.socket?.remoteAddress,
+    carriedChatUsed,
   );
   if (!limitStatus.allowed) {
     return sendJson(res, 429, {
@@ -129,6 +137,7 @@ export default async function handler(req: VercelLikeRequest, res: ServerRespons
         req.headers,
         userId,
         req.socket?.remoteAddress,
+        carriedChatUsed,
       );
       res.setHeader('Set-Cookie', consumedDaily.cookieHeader);
       res.statusCode = 200;
@@ -154,5 +163,7 @@ export default async function handler(req: VercelLikeRequest, res: ServerRespons
 
   if (headersSentAsStream) {
     res.end();
+    return;
   }
+  return sendJson(res, 500, { ok: false, error: 'Sin respuesta del servidor.' });
 }
