@@ -47,7 +47,9 @@ interface MobileAccountMenuProps {
   onCloseConnectServerModal: () => void;
   onOpenPanel: () => void;
   onClosePanel: () => void;
-  onOpenDocumentation: (docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency') => void;
+  onOpenDocumentation: (
+    docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency' | 'liability',
+  ) => void;
   onSignOut: () => Promise<void>;
 }
 
@@ -377,6 +379,18 @@ export function MobileAccountMenu({
                                 className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                               >
                                 {t.menu.agencyMode}
+                              </button>
+                            </li>
+                            <li>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onCloseMenu();
+                                  onOpenDocumentation('liability');
+                                }}
+                                className="w-full py-2 px-1.5 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
+                              >
+                                {t.menu.intellectualPropertyAndLiability}
                               </button>
                             </li>
                           </ul>

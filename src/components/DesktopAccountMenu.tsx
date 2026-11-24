@@ -35,7 +35,9 @@ interface DesktopAccountMenuProps {
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
-  onOpenDocumentation: (docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency') => void;
+  onOpenDocumentation: (
+    docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency' | 'liability',
+  ) => void;
   onClose: () => void;
   onSignOut: () => Promise<void>;
 }
@@ -499,6 +501,18 @@ export function DesktopAccountMenu({
                                   className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
                                 >
                                   {t.menu.agencyMode}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onOpenDocumentation('liability');
+                                  }}
+                                  className="w-full py-1.5 px-2 text-left text-[13px] font-medium text-slate-900 hover:text-black hover:bg-slate-100/75 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  {t.menu.intellectualPropertyAndLiability}
                                 </button>
                               </li>
                             </ul>

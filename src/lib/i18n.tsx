@@ -77,6 +77,8 @@ export interface TranslationDictionary {
     guestExtractOnlyNotice: string;
     guestIpBlockedError: string;
     adminExtractOnlyNotice: (count: number) => string;
+    domainRightsPromptQuestion: string;
+    domainRightsPromptAccept: string;
     domainPromptQuestion: string;
     domainPromptCancel: string;
     domainPromptContinue: string;
@@ -196,6 +198,7 @@ export interface TranslationDictionary {
     contentPolicies: string;
     cookiePolicies: string;
     agencyMode: string;
+    intellectualPropertyAndLiability: string;
     comingSoon: string;
     connectServer: string;
     closeConnectServerAria: string;
@@ -466,6 +469,9 @@ const ES_DICTIONARY: TranslationDictionary = {
     guestIpBlockedError: 'Su IP ha sido bloqueado. Inicia sesión.',
     adminExtractOnlyNotice: (count) =>
       `Modo prueba admin: ${count} imagen${count === 1 ? '' : 'es'} extraída${count === 1 ? '' : 's'} del dominio (detenido tras la extracción, sin compresión ni mapeo IA).`,
+    domainRightsPromptQuestion:
+      'Al confirmar, aceptas que estas imágenes son de tu propiedad o cuentas con licencia y permiso de uso, siendo tu responsabilidad y no de Search Link.',
+    domainRightsPromptAccept: 'Aceptar',
     domainPromptQuestion:
       'Si lo deseas, puedes detenerlo y subir desde almacenamiento.',
     domainPromptCancel: 'Cancelar',
@@ -696,6 +702,7 @@ const ES_DICTIONARY: TranslationDictionary = {
     contentPolicies: 'Políticas de contenido',
     cookiePolicies: 'Políticas de cookies',
     agencyMode: 'Modo Agencia',
+    intellectualPropertyAndLiability: 'Propiedad intelectual y responsabilidad',
     comingSoon: 'Próximamente',
     connectServer: 'Conecta tu servidor',
     closeConnectServerAria: 'Cerrar Conecta tu servidor',
@@ -1010,6 +1017,9 @@ const EN_DICTIONARY: TranslationDictionary = {
     guestIpBlockedError: 'Your IP has been blocked. Sign in.',
     adminExtractOnlyNotice: (count) =>
       `Admin test mode: ${count} image${count === 1 ? '' : 's'} extracted from domain (stopped after extraction, no compression or AI mapping).`,
+    domainRightsPromptQuestion:
+      'By confirming, you agree that you own these images or hold a valid license and permission to use them, under your sole responsibility and not Search Link’s.',
+    domainRightsPromptAccept: 'Accept',
     domainPromptQuestion:
       "If you'd like, you can stop here and upload from storage.",
     domainPromptCancel: 'Cancel',
@@ -1241,6 +1251,7 @@ const EN_DICTIONARY: TranslationDictionary = {
     contentPolicies: 'Content Policies',
     cookiePolicies: 'Cookie Policies',
     agencyMode: 'Agency Mode',
+    intellectualPropertyAndLiability: 'Intellectual Property and Liability',
     comingSoon: 'Coming soon',
     connectServer: 'Connect your server',
     closeConnectServerAria: 'Close Connect your server',
@@ -1555,6 +1566,9 @@ const PT_DICTIONARY: TranslationDictionary = {
     guestIpBlockedError: 'Seu IP foi bloqueado. Inicie sessão.',
     adminExtractOnlyNotice: (count) =>
       `Modo teste admin: ${count} image${count === 1 ? 'm extraída' : 'ns extraídas'} do domínio (parado após a extração, sem compressão nem mapeamento IA).`,
+    domainRightsPromptQuestion:
+      'Ao confirmar, você concorda que estas imagens são de sua propriedade ou possui licença e permissão de uso, sob sua exclusiva responsabilidade e não do Search Link.',
+    domainRightsPromptAccept: 'Aceitar',
     domainPromptQuestion:
       'Se quiser, você pode parar aqui e enviar do armazenamento.',
     domainPromptCancel: 'Cancelar',
@@ -1786,6 +1800,7 @@ const PT_DICTIONARY: TranslationDictionary = {
     contentPolicies: 'Políticas de conteúdo',
     cookiePolicies: 'Políticas de cookies',
     agencyMode: 'Modo Agência',
+    intellectualPropertyAndLiability: 'Propriedade intelectual e responsabilidade',
     comingSoon: 'Em breve',
     connectServer: 'Conecte seu servidor',
     closeConnectServerAria: 'Fechar Conecte seu servidor',

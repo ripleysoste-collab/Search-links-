@@ -49,8 +49,8 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
         number: '04',
         title: 'Responsabilidad sobre URLs, imágenes y derechos de terceros',
         paragraphs: [
-          'El usuario conserva la titularidad jurídica de los catálogos, fotografías comerciales y textos que aporte o genere para su organización, y es el único responsable de verificar que posee los derechos de propiedad intelectual, licencias comerciales o autorizaciones necesarias sobre cualquier sitio web cuya URL pegue en la plataforma o sobre cualquier imagen que suba desde su dispositivo.',
-          'Queda estrictamente prohibido utilizar el extractor de URLs para copiar o apropiarse indebidamente de catálogos de competidores sin autorización, vulnerar derechos de autor, marcas registradas, secretos comerciales ni eludir medidas técnicas de restricción de acceso de terceros.',
+          'El usuario conserva la titularidad jurídica de los catálogos, fotografías comerciales y textos que aporte o genere para su organización, y declara de forma expresa al confirmar cada lote que posee los derechos de propiedad intelectual, licencias comerciales o autorizaciones vigentes sobre cualquier sitio web cuya URL pegue en la plataforma o sobre cualquier imagen que suba desde su dispositivo.',
+          'Al confirmar el procesamiento, otorgas a Search Link únicamente una licencia técnica limitada y revocable para optimizar, alojar en Cloudflare R2 y distribuir dichos recursos a través de tus endpoints o servidor externo. Queda estrictamente prohibido usar el extractor para apropiarse indebidamente de catálogos de competidores sin permiso o eludir restricciones de acceso; el usuario asume toda responsabilidad y mantendrá indemne a Search Link frente a reclamaciones de terceros sobre los contenidos que procese.',
         ],
       },
       {
@@ -97,10 +97,11 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
       {
         id: 'disponibilidad-y-limitacion-de-responsabilidad',
         number: '09',
-        title: 'Disponibilidad del servicio, terceros y limitación de responsabilidad',
+        title: 'Disponibilidad, Modo Agencia y limitación de responsabilidad',
         paragraphs: [
           'Search Link se presta "tal cual" y "según disponibilidad". Aunque diseñamos la plataforma con colas resilientes, cachés de protección y almacenamiento redundante, ciertas operaciones dependen de proveedores externos especializados (Supabase, Cloudflare, Render, Google Gemini y Groq) así como de la disponibilidad y estructura HTML de las páginas web externas que el usuario decida consultar.',
-          'En la máxima medida permitida por la ley aplicable, Search Link no será responsable por pérdidas indirectas, lucro cesante, interrupciones derivadas de sitios web de terceros bloqueados por firewalls externos, fallos de red ajenos a nuestro control ni decisiones comerciales tomadas a partir de respuestas generadas por modelos de inteligencia artificial.',
+          'Cuando conectes tu propio servidor mediante Modo Agencia (Conecta tu servidor), la operación, seguridad, verificación de firma criptográfica y manejo de datos dentro de dicho servidor externo recaen exclusivamente bajo tu responsabilidad. Asimismo, respetamos solicitudes verificadas de retirada DMCA o exclusión inmediata de dominios.',
+          'En la máxima medida permitida por la ley aplicable, Search Link no será responsable por pérdidas indirectas, lucro cesante, interrupciones de servidores externos, sitios web de terceros ni decisiones comerciales tomadas a partir de respuestas generadas por IA, limitándose cualquier eventual responsabilidad directa acumulada al monto efectivamente pagado por el usuario durante los últimos tres (3) meses previos al evento (siendo cero en modalidad gratuita o visitante).',
         ],
       },
       {
@@ -164,8 +165,8 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
         number: '04',
         title: 'Responsibility for URLs, images, and third-party rights',
         paragraphs: [
-          'You retain ownership over the product catalogs, commercial photography, and metadata generated for your organization. You are solely responsible for verifying that you hold all required intellectual property rights, commercial licenses, or authorizations for every webpage URL you submit and every image file you upload.',
-          'You may not use Search Link to misappropriate third-party catalogs without authorization, infringe copyrights or trademarks, or bypass technical access restrictions imposed by external website operators.',
+          'You retain ownership over the product catalogs, commercial photography, and metadata generated for your organization, and by confirming each batch you expressly warrant that you hold all required intellectual property rights, commercial licenses, or valid authorizations for every webpage URL you submit and every image file you upload.',
+          'By confirming processing, you grant Search Link solely a limited, revocable technical license to optimize, store in Cloudflare R2, and serve those assets via your configured endpoints or external server. Misappropriating third-party catalogs without authorization or bypassing external access controls is strictly prohibited, and you agree to assume sole responsibility and indemnify Search Link against any third-party claims arising from your submitted inputs.',
         ],
       },
       {
@@ -212,10 +213,11 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
       {
         id: 'availability-and-liability',
         number: '09',
-        title: 'Service availability, third-party dependencies, and liability',
+        title: 'Service availability, Agency Mode, and liability limits',
         paragraphs: [
           'Search Link is provided on an "as is" and "as available" basis. While engineered with resilient background queues, memory caches, and redundant object storage, platform execution depends on specialized infrastructure providers (Supabase, Cloudflare, Render, Google Gemini, and Groq) as well as the availability and structure of third-party websites submitted by users.',
-          'To the maximum extent permitted by applicable law, Search Link shall not be liable for indirect or consequential damages, lost profits, failures of external websites blocking automated requests, network outages outside our control, or commercial decisions made based on AI-generated outputs.',
+          'When you connect your own external server under Agency Mode (Connect your server), uptime, security, signature verification, and data handling on that external server remain solely under your responsibility. We also honor verified DMCA takedown and immediate domain opt-out requests.',
+          'To the maximum extent permitted by applicable law, Search Link shall not be liable for indirect or consequential damages, lost profits, external server outages, third-party websites, or commercial decisions based on AI outputs, and any aggregate direct liability is capped at fees actually paid by you during the three (3) months preceding the claim (zero for free or guest accounts).',
         ],
       },
       {
@@ -279,8 +281,8 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
         number: '04',
         title: 'Responsabilidade sobre URLs, imagens e direitos de terceiros',
         paragraphs: [
-          'O usuário mantém a titularidade sobre os catálogos, fotografias comerciais e metadados produzidos para sua organização, sendo integralmente responsável por garantir que detém os direitos autorais, licenças comerciais ou autorizações sobre cada URL submetida e cada imagem enviada do dispositivo.',
-          'É proibido utilizar o extrator para copiar catálogos de terceiros sem autorização, violar direitos de propriedade intelectual ou contornar barreiras técnicas de acesso de sites externos.',
+          'O usuário mantém a titularidade sobre os catálogos, fotografias comerciais e metadados produzidos para sua organização e declara expressamente, ao confirmar cada lote, que detém os direitos autorais, licenças comerciais ou autorizações válidas sobre cada URL submetida e cada imagem enviada do dispositivo.',
+          'Ao confirmar o processamento, você concede ao Search Link apenas uma licença técnica limitada e revogável para otimizar, armazenar no Cloudflare R2 e entregar tais recursos via seus endpoints ou servidor externo. É proibido usar o extrator para copiar catálogos de terceiros sem permissão, assumindo o usuário total responsabilidade e obrigação de indenidade diante de reclamações de terceiros sobre seus materiais.',
         ],
       },
       {
@@ -327,10 +329,11 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
       {
         id: 'disponibilidade-e-limitacao-de-responsabilidade',
         number: '09',
-        title: 'Disponibilidade do serviço, terceiros e limitação de responsabilidade',
+        title: 'Disponibilidade, Modo Agência e limitação de responsabilidade',
         paragraphs: [
           'O Search Link é fornecido "no estado em que se encontra" e "conforme disponibilidade". Embora operado com filas resilientes, caches em memória e armazenamento redundante, a execução depende de provedores externos especializados (Supabase, Cloudflare, Render, Google Gemini e Groq) e da disponibilidade dos sites externos informados pelo usuário.',
-          'Na máxima extensão permitida em lei, o Search Link não se responsabiliza por danos indiretos, lucros cessantes, bloqueios impostos por sites de terceiros, falhas de rede externas ou decisões comerciais baseadas em respostas geradas por inteligência artificial.',
+          'Ao conectar seu próprio servidor no Modo Agência (Conecte seu servidor), a operação, segurança, verificação de assinatura e tratamento de dados nesse servidor externo permanecem sob sua exclusiva responsabilidade. Também atendemos solicitações verificadas de remoção DMCA ou exclusão imediata de domínios.',
+          'Na máxima extensão permitida em lei, o Search Link não se responsabiliza por danos indiretos, lucros cessantes, falhas em servidores externos, bloqueios impostos por sites de terceiros ou decisões comerciais baseadas em respostas geradas por IA, ficando eventual responsabilidade direta limitada aos valores pagos pelo usuário nos últimos três (3) meses anteriores ao evento (zero no plano gratuito ou visitante).',
         ],
       },
       {

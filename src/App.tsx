@@ -100,6 +100,7 @@ const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
 const CONTENT_POLICY_PATH = '/politicas-de-contenido';
 const COOKIE_POLICY_PATH = '/politicas-de-cookies';
 const AGENCY_MODE_PATH = '/modo-agencia';
+const INTELLECTUAL_PROPERTY_PATH = '/propiedad-intelectual-y-responsabilidad';
 const IMAGE_BANK_PATH = '/banco-publico';
 
 function isImageBankPathname(pathname: string): boolean {
@@ -153,6 +154,20 @@ const AGENCY_MODE_ALIASES = new Set([
   '/modo-agencia-desarrollo',
 ]);
 
+const INTELLECTUAL_PROPERTY_ALIASES = new Set([
+  '/propiedad-intelectual-y-responsabilidad',
+  '/propiedad-intelectual',
+  '/limites-y-responsabilidad',
+  '/responsabilidad',
+  '/intellectual-property',
+  '/intellectual-property-and-liability',
+  '/liability',
+  '/dmca',
+  '/propriedade-intelectual-e-responsabilidade',
+  '/propriedade-intelectual',
+  '/responsabilidade',
+]);
+
 function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
   const normalized = pathname.replace(/\/+$/, '').toLowerCase();
   if (PRIVACY_POLICY_ALIASES.has(normalized)) return 'privacy';
@@ -160,6 +175,7 @@ function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
   if (CONTENT_POLICY_ALIASES.has(normalized)) return 'content';
   if (COOKIE_POLICY_ALIASES.has(normalized)) return 'cookies';
   if (AGENCY_MODE_ALIASES.has(normalized)) return 'agency';
+  if (INTELLECTUAL_PROPERTY_ALIASES.has(normalized)) return 'liability';
   return null;
 }
 
@@ -168,6 +184,7 @@ function getCanonicalLegalDocPath(docId: LegalDocId): string {
   if (docId === 'content') return CONTENT_POLICY_PATH;
   if (docId === 'cookies') return COOKIE_POLICY_PATH;
   if (docId === 'agency') return AGENCY_MODE_PATH;
+  if (docId === 'liability') return INTELLECTUAL_PROPERTY_PATH;
   return PRIVACY_POLICY_PATH;
 }
 
@@ -259,6 +276,7 @@ export default function App() {
     originUrl: string;
     overflowNotice: string | null;
     promptKind?: 'domain' | 'savedCatalog';
+    legalAccepted?: boolean;
   } | null>(null);
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [orgProfile, setOrgProfile] = useState<OrganizationProfile>({
@@ -1748,6 +1766,7 @@ export default function App() {
         originUrl: trimmed.toLowerCase(),
         overflowNotice,
         promptKind: 'savedCatalog',
+        legalAccepted: true,
       });
       inputRef.current?.blur();
       return;
@@ -1907,6 +1926,8 @@ export default function App() {
         items: extractedImages,
         originUrl: normalized,
         overflowNotice,
+        promptKind: 'domain',
+        legalAccepted: false,
       });
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -1918,8 +1939,21 @@ export default function App() {
     }
   };
 
+  const handleAcceptDomainRights = () => {
+    setPendingDomainBatch((prev) =>
+      prev ? { ...prev, legalAccepted: true } : prev,
+    );
+  };
+
   const handleConfirmDomainContinue = () => {
     if (!pendingDomainBatch) return;
+    if (
+      pendingDomainBatch.promptKind !== 'savedCatalog' &&
+      !pendingDomainBatch.legalAccepted
+    ) {
+      handleAcceptDomainRights();
+      return;
+    }
     const currentUser = authUserRef.current;
     if (!currentUser) {
       const wasSavedCatalog = pendingDomainBatch.promptKind === 'savedCatalog';
@@ -2824,34 +2858,60 @@ export default function App() {
                   {extractError}
                 </p>
               ) : pendingDomainBatch ? (
-                <p
-                  role="status"
-                  className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
-                >
-                  <span>
-                    {pendingDomainBatch.promptKind === 'savedCatalog'
-                      ? t.app.savedCatalogPromptQuestion
-                      : t.app.domainPromptQuestion}
-                  </span>{' '}
-                  <span className="inline-flex items-center gap-3.5 ml-1.5">
-                    <button
-                      type="button"
-                      onClick={handleCancelDomainBatch}
-                      className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-red-600 lg:text-red-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                    >
-                      {t.app.domainPromptCancel}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleConfirmDomainContinue}
-                      className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-blue-600 lg:text-sky-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
-                    >
+                pendingDomainBatch.promptKind !== 'savedCatalog' &&
+                !pendingDomainBatch.legalAccepted ? (
+                  <p
+                    role="status"
+                    className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
+                  >
+                    <span>{t.app.domainRightsPromptQuestion}</span>{' '}
+                    <span className="inline-flex items-center gap-3.5 ml-1.5">
+                      <button
+                        type="button"
+                        onClick={handleCancelDomainBatch}
+                        className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-red-600 lg:text-red-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                      >
+                        {t.app.domainPromptCancel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAcceptDomainRights}
+                        className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-blue-600 lg:text-sky-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                      >
+                        {t.app.domainRightsPromptAccept}
+                      </button>
+                    </span>
+                  </p>
+                ) : (
+                  <p
+                    role="status"
+                    className="mt-2 px-3 text-[11px] sm:text-xs font-normal leading-snug text-black lg:text-white lg:drop-shadow-[0_1px_5px_rgba(0,0,0,0.9)] text-center"
+                  >
+                    <span>
                       {pendingDomainBatch.promptKind === 'savedCatalog'
-                        ? t.app.savedCatalogPromptAccept
-                        : t.app.domainPromptContinue}
-                    </button>
-                  </span>
-                </p>
+                        ? t.app.savedCatalogPromptQuestion
+                        : t.app.domainPromptQuestion}
+                    </span>{' '}
+                    <span className="inline-flex items-center gap-3.5 ml-1.5">
+                      <button
+                        type="button"
+                        onClick={handleCancelDomainBatch}
+                        className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-red-600 lg:text-red-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                      >
+                        {t.app.domainPromptCancel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmDomainContinue}
+                        className="bg-transparent border-0 p-0 text-[11px] sm:text-xs font-semibold text-blue-600 lg:text-sky-400 hover:underline focus-visible:outline-none focus-visible:underline cursor-pointer"
+                      >
+                        {pendingDomainBatch.promptKind === 'savedCatalog'
+                          ? t.app.savedCatalogPromptAccept
+                          : t.app.domainPromptContinue}
+                      </button>
+                    </span>
+                  </p>
+                )
               ) : (
                 batchNotice && (
                   <p
