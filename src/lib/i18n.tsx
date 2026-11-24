@@ -448,7 +448,9 @@ export interface TranslationDictionary {
     pauseAllApisTitle: string;
     pauseAllApisButton: string;
     pauseAllApisConfirmText: string;
-    step1PreviewNotice: string;
+    r2PurgeSuccess: (deletedCount: number) => string;
+    pauseApisSuccess: (servicesCount: number) => string;
+    actionErrorFallback: string;
   };
 }
 
@@ -1021,8 +1023,15 @@ const ES_DICTIONARY: TranslationDictionary = {
     pauseAllApisButton: 'Confirmar',
     pauseAllApisConfirmText:
       'Se pausarán de inmediato todas las API Keys activas de todos tus servicios y ninguna responderá peticiones hasta que vuelvas a activarlas manualmente. Esta acción se realiza bajo tu responsabilidad.',
-    step1PreviewNotice:
-      'Confirmación de interfaz verificada. En el siguiente paso conectaremos la ejecución real de cada acción.',
+    r2PurgeSuccess: (count) =>
+      count > 0
+        ? `Se eliminaron ${count} ${count === 1 ? 'imagen' : 'imágenes'} de R2 y se limpiaron tus catálogos publicados.`
+        : 'Tus catálogos e imágenes en R2 quedaron completamente limpios.',
+    pauseApisSuccess: (count) =>
+      count > 0
+        ? `Se pausaron ${count} ${count === 1 ? 'servicio' : 'servicios'} y todas sus API Keys activas dejaron de responder.`
+        : 'Todas las API Keys activas quedaron pausadas.',
+    actionErrorFallback: 'No se pudo completar la operación. Intenta nuevamente.',
   },
 };
 
@@ -1596,8 +1605,15 @@ const EN_DICTIONARY: TranslationDictionary = {
     pauseAllApisButton: 'Confirm',
     pauseAllApisConfirmText:
       'All active API keys across all of your services will be paused immediately and will reject requests until manually re-enabled. This action is carried out under your responsibility.',
-    step1PreviewNotice:
-      'UI confirmation verified. In the next step we will connect live execution for each action.',
+    r2PurgeSuccess: (count) =>
+      count > 0
+        ? `Deleted ${count} ${count === 1 ? 'image' : 'images'} from R2 and cleared your published catalogs.`
+        : 'Your R2 media and published catalogs have been cleared.',
+    pauseApisSuccess: (count) =>
+      count > 0
+        ? `Paused ${count} ${count === 1 ? 'service' : 'services'} and disabled all active API keys.`
+        : 'All active API keys have been paused.',
+    actionErrorFallback: 'Could not complete the operation. Please try again.',
   },
 };
 
@@ -2173,8 +2189,15 @@ const PT_DICTIONARY: TranslationDictionary = {
     pauseAllApisButton: 'Confirmar',
     pauseAllApisConfirmText:
       'Todas as API Keys ativas de todos os seus serviços serão pausadas imediatamente e não responderão requisições até que você as reative manualmente. Esta ação é executada sob sua responsabilidade.',
-    step1PreviewNotice:
-      'Confirmação de interface verificada. No próximo passo conectaremos a execução real de cada ação.',
+    r2PurgeSuccess: (count) =>
+      count > 0
+        ? `${count} ${count === 1 ? 'imagem foi removida' : 'imagens foram removidas'} do R2 e seus catálogos publicados foram limpos.`
+        : 'Suas mídias no R2 e catálogos publicados foram limpos.',
+    pauseApisSuccess: (count) =>
+      count > 0
+        ? `${count} ${count === 1 ? 'serviço foi pausado' : 'serviços foram pausados'} e todas as API Keys ativas foram desativadas.`
+        : 'Todas as API Keys ativas foram pausadas.',
+    actionErrorFallback: 'Não foi possível concluir a operação. Tente novamente.',
   },
 };
 

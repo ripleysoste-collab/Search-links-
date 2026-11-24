@@ -53,9 +53,36 @@ const verifiedTokenCache = new Map<string, VerifiedTokenCacheEntry>();
 const monthlyApiCounterMemory = new Map<string, number>();
 const keyHashToServiceScope = new Map<string, string>();
 
+interface DeletedAccountLedgerFallback {
+  freeImagesUsed: number;
+  apiMonth: string;
+  apiRequestsUsed: number;
+  chatDay: string;
+  chatUsed: number;
+  lastDeletedPlan: 'free' | 'plus';
+}
+
+const deletedEmailLedgerFallback = new Map<string, DeletedAccountLedgerFallback>();
+
+export function hashNormalizedEmail(email?: string | null): string {
+  const normalized = (email || '').trim().toLowerCase();
+  if (!normalized) return '';
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
+}
+
 export function invalidateUserImageQuotaCache(userId: string): void {
   if (!userId) return;
   accountImageMemory.delete(userId);
+}
+
+export function clearUserVerificationCacheByUserId(userId: string): void {
+  if (!userId) return;
+  accountImageMemory.delete(userId);
+  for (const [tokenHash, entry] of verifiedTokenCache.entries()) {
+    if (entry.userId === userId) {
+      verifiedTokenCache.delete(tokenHash);
+    }
+  }
 }
 
 export function isAdminTestEmail(email?: string | null): boolean {
@@ -402,7 +429,142 @@ export function checkAndConsumeGuestExtractQuota(
   };
 }
 
-async function fetchUserDbImageCount(
+export interface FreeUsageLedgerSnapshot {
+  freeImagesUsed: number;
+  freeApiRequestsUsed: number;
+  freeChatUsed: number;
+  lastDeletedPlan: 'free' | 'plus';
+}
+
+function getFallbackLedgerByEmail(email?: string | null): DeletedAccountLedgerFallback | null {
+  const emailHash = hashNormalizedEmail(email);
+  if (!emailHash) return null;
+  return deletedEmailLedgerFallback.get(emailHash) ?? null;
+}
+
+export function recordInMemoryR2PurgeLedger(
+  email: string | undefined,
+  purgedImages: number,
+  hasPlus: boolean,
+): void {
+  const emailHash = hashNormalizedEmail(email);
+  if (!emailHash || hasPlus || purgedImages <= 0) return;
+  const current = deletedEmailLedgerFallback.get(emailHash);
+  const month = getCurrentMonthKey();
+  const day = new Date().toISOString().slice(0, 10);
+  deletedEmailLedgerFallback.set(emailHash, {
+    freeImagesUsed: (current?.freeImagesUsed ?? 0) + Math.max(0, Math.trunc(purgedImages)),
+    apiMonth: current?.apiMonth || month,
+    apiRequestsUsed: current?.apiRequestsUsed ?? 0,
+    chatDay: current?.chatDay || day,
+    chatUsed: current?.chatUsed ?? 0,
+    lastDeletedPlan: 'free',
+  });
+}
+
+export function recordInMemoryDeletedAccountLedger(input: {
+  email?: string | null;
+  hasPlus: boolean;
+  activeImages: number;
+  apiMonth: string;
+  apiRequests: number;
+  chatDay: string;
+  chatUsed: number;
+}): void {
+  const emailHash = hashNormalizedEmail(input.email);
+  if (!emailHash) return;
+  if (input.hasPlus) {
+    deletedEmailLedgerFallback.set(emailHash, {
+      freeImagesUsed: 0,
+      apiMonth: input.apiMonth,
+      apiRequestsUsed: 0,
+      chatDay: input.chatDay,
+      chatUsed: 0,
+      lastDeletedPlan: 'plus',
+    });
+    return;
+  }
+
+  const prev = deletedEmailLedgerFallback.get(emailHash);
+  const prevApi =
+    prev && prev.apiMonth === input.apiMonth ? prev.apiRequestsUsed : 0;
+  const prevChat =
+    prev && prev.chatDay === input.chatDay ? prev.chatUsed : 0;
+
+  deletedEmailLedgerFallback.set(emailHash, {
+    freeImagesUsed:
+      (prev?.freeImagesUsed ?? 0) + Math.max(0, Math.trunc(input.activeImages)),
+    apiMonth: input.apiMonth,
+    apiRequestsUsed: prevApi + Math.max(0, Math.trunc(input.apiRequests)),
+    chatDay: input.chatDay,
+    chatUsed: Math.max(prevChat, Math.max(0, Math.trunc(input.chatUsed))),
+    lastDeletedPlan: 'free',
+  });
+}
+
+export async function fetchUserFreeUsageLedger(
+  user: AuthenticatedRequestUser,
+): Promise<FreeUsageLedgerSnapshot> {
+  const fallback = getFallbackLedgerByEmail(user.email);
+  const month = getCurrentMonthKey();
+  const day = new Date().toISOString().slice(0, 10);
+
+  const fallbackResult: FreeUsageLedgerSnapshot = {
+    freeImagesUsed: fallback?.freeImagesUsed ?? 0,
+    freeApiRequestsUsed:
+      fallback && fallback.apiMonth === month ? fallback.apiRequestsUsed : 0,
+    freeChatUsed:
+      fallback && fallback.chatDay === day ? fallback.chatUsed : 0,
+    lastDeletedPlan: fallback?.lastDeletedPlan ?? 'free',
+  };
+
+  const { url, key } = getSupabaseServerConfig();
+  if (!url || !key) return fallbackResult;
+
+  try {
+    const userClient = createClient(url, key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: {
+        headers: {
+          Authorization: `Bearer ${user.accessToken}`,
+        },
+      },
+    });
+    const { data, error } = await userClient.rpc('get_my_free_usage_ledger');
+    if (error || !data || typeof data !== 'object') {
+      return fallbackResult;
+    }
+    const row = data as Record<string, unknown>;
+    const dbImages =
+      typeof row.free_images_used === 'number' && Number.isFinite(row.free_images_used)
+        ? Math.max(0, Math.trunc(row.free_images_used))
+        : 0;
+    const dbApi =
+      typeof row.free_api_requests_used === 'number' &&
+      Number.isFinite(row.free_api_requests_used)
+        ? Math.max(0, Math.trunc(row.free_api_requests_used))
+        : 0;
+    const dbChat =
+      typeof row.free_chat_used === 'number' && Number.isFinite(row.free_chat_used)
+        ? Math.max(0, Math.trunc(row.free_chat_used))
+        : 0;
+    const plan = row.last_deleted_plan === 'plus' ? 'plus' : 'free';
+
+    return {
+      freeImagesUsed:
+        plan === 'plus' && dbImages === 0
+          ? dbImages
+          : Math.max(dbImages, fallbackResult.freeImagesUsed),
+      freeApiRequestsUsed: Math.max(dbApi, fallbackResult.freeApiRequestsUsed),
+      freeChatUsed: Math.max(dbChat, fallbackResult.freeChatUsed),
+      lastDeletedPlan: plan,
+    };
+  } catch {
+    return fallbackResult;
+  }
+}
+
+export async function fetchUserActiveDbImageCount(
   user: AuthenticatedRequestUser,
 ): Promise<number> {
   const { url, key } = getSupabaseServerConfig();
@@ -433,6 +595,16 @@ async function fetchUserDbImageCount(
   } catch {
     return 0;
   }
+}
+
+async function fetchUserDbImageCount(
+  user: AuthenticatedRequestUser,
+): Promise<number> {
+  const [activeDbCount, ledger] = await Promise.all([
+    fetchUserActiveDbImageCount(user),
+    fetchUserFreeUsageLedger(user),
+  ]);
+  return activeDbCount + ledger.freeImagesUsed;
 }
 
 export async function checkFreeAccountImageQuota(
@@ -554,6 +726,11 @@ export function recordAndCheckMonthlyApiQuota(
     used: nextUsed,
     limit: FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
   };
+}
+
+export function getMonthlyApiRequestsForServiceScope(scopeId: string): number {
+  const month = getCurrentMonthKey();
+  return monthlyApiCounterMemory.get(`${month}:${scopeId}`) ?? 0;
 }
 
 function pruneGuestImageBankMemory(now: number) {

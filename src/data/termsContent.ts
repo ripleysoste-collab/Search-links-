@@ -64,7 +64,7 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
           'Modo visitante (sin inicio de sesión): permite realizar pruebas limitadas de extracción directa de imágenes desde URLs públicas (máximo 10 imágenes visibles por consulta y límite por dirección IP/cookie firmada), sin almacenamiento en la nube ni mapeo con inteligencia artificial.',
           'Cuenta gratuita autenticada: habilita la compresión WebP, almacenamiento en Cloudflare R2, indexación semántica con IA y endpoints Search Link Core hasta un máximo acumulado de 20 imágenes dentro del plan gratuito.',
           'Simulador Search Link IA: sujeto a límites diarios razonables de consultas por navegador/sesión para evitar saturación automatizada.',
-          'Prohibición de evasión: queda prohibido crear múltiples cuentas automatizadas, rotar proxies o manipular encabezados y cookies con el propósito de eludir las cuotas asignadas.',
+          'Prohibición de evasión y conservación antifraude de cuota gratuita: queda prohibido crear múltiples cuentas automatizadas, rotar proxies o borrar cuentas o archivos de almacenamiento para reiniciar créditos gratuitos. Si una cuenta en plan gratuito borra imágenes de R2 o elimina definitivamente su cuenta, Search Link conserva únicamente un registro mínimo cifrado por hash SHA-256 de las cuotas gratuitas ya consumidas para aplicarlo si vuelve a registrarse con el mismo correo. Quienes eliminen una cuenta con suscripción Plus activa y regresen posteriormente sin suscripción iniciarán normalmente con el límite estándar del plan gratuito.',
         ],
       },
       {
@@ -180,7 +180,7 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
           'Guest mode (unauthenticated): supports limited extraction tests from public URLs (up to 10 preview images per query, subject to IP/signed-cookie limits), without cloud hosting or AI catalog mapping.',
           'Authenticated free plan: provides WebP optimization, Cloudflare R2 storage, AI safety screening and indexing, and Search Link Core endpoints up to a cumulative allowance of 20 catalog images.',
           'Search Link AI simulator: subject to daily conversational rate limits per session/browser to prevent automated abuse.',
-          'No circumvention: creating multiple automated accounts, rotating proxies, or tampering with cookies and headers to bypass quota controls is strictly prohibited.',
+          'No circumvention and free-tier quota ledger: creating multiple automated accounts, rotating proxies, or deleting accounts or storage files to reset free credits is strictly prohibited. When a free-tier account purges R2 media or permanently deletes its account, Search Link retains only a minimal one-way SHA-256 email-hash ledger of consumed free quota to preserve accurate limits if the same email registers again. Accounts holding an active Plus subscription that are permanently deleted start cleanly under standard free-tier limits if later re-registered without a subscription.',
         ],
       },
       {
@@ -296,7 +296,7 @@ export const TERMS_AND_CONDITIONS_CONTENT: Record<SupportedLocale, PrivacyPolicy
           'Modo visitante (sem login): permite testes limitados de extração direta de URLs públicas (máximo de 10 imagens por consulta, sujeito a controle por IP/cookie assinado), sem hospedagem em nuvem nem mapeamento por IA.',
           'Conta gratuita autenticada: habilita otimização WebP, armazenamento no Cloudflare R2, triagem e indexação por IA e endpoints Search Link Core até o limite acumulado de 20 imagens do plano gratuito.',
           'Simulador Search Link IA: sujeito a limites diários razoáveis de consultas por sessão/navegador contra abuso automatizado.',
-          'Vedação a burla: é estritamente proibido criar múltiplas contas automatizadas, rotacionar proxies ou adulterar cookies e cabeçalhos para contornar limites.',
+          'Vedação a burla e registro antifraude de cota gratuita: é estritamente proibido criar múltiplas contas automatizadas, rotacionar proxies ou excluir contas e arquivos para reiniciar créditos gratuitos. Quando uma conta do plano gratuito exclui imagens do R2 ou encerra definitivamente a conta, o Search Link mantém apenas um registro mínimo por hash SHA-256 das cotas gratuitas já consumidas para preservar os limites reais caso o mesmo e-mail volte a se cadastrar. Contas com assinatura Plus ativa que forem excluídas definitivamente iniciam normalmente no limite padrão gratuito caso retornem depois sem assinatura.',
         ],
       },
       {

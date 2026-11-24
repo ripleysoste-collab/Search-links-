@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
 import { useI18n } from '../lib/i18n';
 
 export type AdvancedActionKey =
@@ -10,14 +11,28 @@ export type AdvancedActionKey =
 
 interface AdvancedSettingsViewProps {
   variant: 'desktop' | 'mobile';
+  onPurgeAllR2: () => Promise<{ deletedR2Count: number }>;
+  onClearBrowserData: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
+  onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
 }
 
-export function AdvancedSettingsView({ variant }: AdvancedSettingsViewProps) {
+export function AdvancedSettingsView({
+  variant,
+  onPurgeAllR2,
+  onClearBrowserData,
+  onDeleteAccount,
+  onPauseAllApis,
+}: AdvancedSettingsViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
 
   const [pendingAction, setPendingAction] = useState<AdvancedActionKey | null>(null);
-  const [step1Status, setStep1Status] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const isPaused = pendingAction !== null;
 
@@ -57,19 +72,57 @@ export function AdvancedSettingsView({ variant }: AdvancedSettingsViewProps) {
     actions.find((item) => item.key === pendingAction) ?? null;
 
   const handleRequestAction = (key: AdvancedActionKey) => {
-    if (isPaused) return;
-    setStep1Status(null);
+    if (isPaused || isExecuting) return;
+    setActionFeedback(null);
     setPendingAction(key);
   };
 
   const handleCancelInline = () => {
+    if (isExecuting) return;
     setPendingAction(null);
+    setActionFeedback(null);
   };
 
-  const handleAcceptInline = () => {
-    if (!pendingAction) return;
-    setPendingAction(null);
-    setStep1Status(t.advancedSettings.step1PreviewNotice);
+  const handleAcceptInline = async () => {
+    if (!pendingAction || isExecuting) return;
+    const actionKey = pendingAction;
+    setIsExecuting(true);
+    setActionFeedback(null);
+
+    try {
+      if (actionKey === 'r2-delete') {
+        const res = await onPurgeAllR2();
+        setPendingAction(null);
+        setActionFeedback({
+          type: 'success',
+          text: t.advancedSettings.r2PurgeSuccess(res.deletedR2Count),
+        });
+      } else if (actionKey === 'pause-apis') {
+        const res = await onPauseAllApis();
+        setPendingAction(null);
+        setActionFeedback({
+          type: 'success',
+          text: t.advancedSettings.pauseApisSuccess(res.pausedServicesCount),
+        });
+      } else if (actionKey === 'clear-browser') {
+        await onClearBrowserData();
+        setPendingAction(null);
+      } else if (actionKey === 'delete-account') {
+        await onDeleteAccount();
+        setPendingAction(null);
+      }
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t.advancedSettings.actionErrorFallback;
+      setActionFeedback({
+        type: 'error',
+        text: msg,
+      });
+    } finally {
+      setIsExecuting(false);
+    }
   };
 
   const containerPadding = variant === 'desktop' ? 'px-8 py-7' : 'px-5 py-5';
@@ -106,19 +159,31 @@ export function AdvancedSettingsView({ variant }: AdvancedSettingsViewProps) {
             <p className="text-[13px] leading-relaxed text-slate-900">
               {activeConfig.confirmText}
             </p>
+
+            {actionFeedback?.type === 'error' && (
+              <p className="mt-2 text-xs leading-relaxed text-rose-600">
+                {actionFeedback.text}
+              </p>
+            )}
+
             <div className="mt-3 flex items-center gap-5">
               <button
                 type="button"
+                disabled={isExecuting}
                 onClick={handleCancelInline}
-                className="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer"
+                className="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-45 disabled:cursor-default"
               >
                 {t.common.cancel}
               </button>
               <button
                 type="button"
-                onClick={handleAcceptInline}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer"
+                disabled={isExecuting}
+                onClick={() => void handleAcceptInline()}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-60 disabled:cursor-default"
               >
+                {isExecuting && (
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                )}
                 {t.common.accept}
               </button>
             </div>
@@ -126,9 +191,13 @@ export function AdvancedSettingsView({ variant }: AdvancedSettingsViewProps) {
         )}
       </AnimatePresence>
 
-      {step1Status && !activeConfig && (
-        <p className="mb-4 text-xs leading-relaxed text-slate-600 border-b border-slate-200/75 pb-3.5">
-          {step1Status}
+      {actionFeedback && !activeConfig && (
+        <p
+          className={`mb-4 text-xs leading-relaxed border-b border-slate-200/75 pb-3.5 ${
+            actionFeedback.type === 'error' ? 'text-rose-600' : 'text-slate-700'
+          }`}
+        >
+          {actionFeedback.text}
         </p>
       )}
 

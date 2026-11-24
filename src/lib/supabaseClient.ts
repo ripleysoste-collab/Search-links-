@@ -432,6 +432,22 @@ export async function toggleCoreServiceActiveInSupabase(
     .from('servicios')
     .update({ is_active: isActive })
     .eq('id', serviceId);
+
+  if (!error && isActive) {
+    const { data: keys } = await supabase
+      .from('servicio_api_keys')
+      .select('id, is_active, created_at')
+      .eq('servicio_id', serviceId)
+      .order('created_at', { ascending: false });
+
+    if (Array.isArray(keys) && keys.length > 0 && !keys.some((k) => k.is_active)) {
+      await supabase
+        .from('servicio_api_keys')
+        .update({ is_active: true })
+        .eq('id', keys[0].id);
+    }
+  }
+
   if (!error) {
     void notifyServerCacheInvalidation();
   }

@@ -41,6 +41,10 @@ interface DesktopAccountMenuProps {
   ) => void;
   onClose: () => void;
   onSignOut: () => Promise<void>;
+  onPurgeAllR2: () => Promise<{ deletedR2Count: number }>;
+  onClearBrowserData: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
+  onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
 }
 
 type DesktopMenuView =
@@ -94,6 +98,10 @@ export function DesktopAccountMenu({
   onOpenDocumentation,
   onClose,
   onSignOut,
+  onPurgeAllR2,
+  onClearBrowserData,
+  onDeleteAccount,
+  onPauseAllApis,
 }: DesktopAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
@@ -723,7 +731,13 @@ export function DesktopAccountMenu({
                   transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   className="flex-1 min-h-0 bg-white flex flex-col"
                 >
-                  <AdvancedSettingsView variant="desktop" />
+                  <AdvancedSettingsView
+                    variant="desktop"
+                    onPurgeAllR2={onPurgeAllR2}
+                    onClearBrowserData={onClearBrowserData}
+                    onDeleteAccount={onDeleteAccount}
+                    onPauseAllApis={onPauseAllApis}
+                  />
                 </motion.div>
               ) : (
                 <motion.div

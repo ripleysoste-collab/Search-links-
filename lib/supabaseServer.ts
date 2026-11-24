@@ -154,6 +154,9 @@ export function getSupabaseServerConfig(): { url: string; key: string } {
   return { url, key };
 }
 
+let cachedAdminClient: SupabaseClient | null = null;
+let cachedAdminSignature = '';
+
 export function getSupabaseServerClient(): SupabaseClient | null {
   if (cachedServerClient) return cachedServerClient;
   const { url, key } = getSupabaseServerConfig();
@@ -166,6 +169,25 @@ export function getSupabaseServerClient(): SupabaseClient | null {
     },
   });
   return cachedServerClient;
+}
+
+export function getSupabaseAdminClient(): SupabaseClient | null {
+  const { url } = getSupabaseServerConfig();
+  const serviceRoleKey = cleanEnv(process.env.SUPABASE_SERVICE_ROLE_KEY)
+    .replace(/^SUPABASE_SERVICE_ROLE_KEY\s*=\s*/i, '')
+    .trim();
+  if (!url || !serviceRoleKey || /^TU_/i.test(serviceRoleKey)) return null;
+  const sig = `${url}:${serviceRoleKey.slice(0, 16)}`;
+  if (!cachedAdminClient || cachedAdminSignature !== sig) {
+    cachedAdminClient = createClient(url, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+    cachedAdminSignature = sig;
+  }
+  return cachedAdminClient;
 }
 
 export interface SearchLinkCoreProduct {
@@ -468,7 +490,29 @@ export async function resolveSearchLinkCoreEndpoint(
     record.servicio?.id ||
     (Array.isArray(catalogosList) && catalogosList[0]?.id) ||
     `key:${keyHash.slice(0, 16)}`;
-  const quota = recordAndCheckMonthlyApiQuota(scopeId, keyHash);
+
+  let carriedMonthlyApiHint = 0;
+  try {
+    const { data: ledgerApiCount, error: ledgerApiErr } = await supabase.rpc(
+      'get_monthly_api_usage_by_key_hash',
+      { p_key_hash: keyHash },
+    );
+    if (
+      !ledgerApiErr &&
+      typeof ledgerApiCount === 'number' &&
+      Number.isFinite(ledgerApiCount)
+    ) {
+      carriedMonthlyApiHint = Math.max(0, Math.trunc(ledgerApiCount));
+    }
+  } catch {
+    carriedMonthlyApiHint = 0;
+  }
+
+  const quota = recordAndCheckMonthlyApiQuota(
+    scopeId,
+    keyHash,
+    carriedMonthlyApiHint,
+  );
   if (!quota.allowed) {
     return {
       ok: false,

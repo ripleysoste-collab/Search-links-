@@ -174,6 +174,7 @@ export function checkDailyLimit(
   headers: IncomingHttpHeaders,
   userId?: string,
   remoteAddress?: string,
+  carriedUsed = 0,
 ): { allowed: boolean; day: string; used: number; limit: number } {
   const day = getTodayUtcDateString();
   if (!isDailyLimitEnforced()) {
@@ -195,7 +196,11 @@ export function checkDailyLimit(
 
   const key = getQuotaKey(headers, userId, remoteAddress);
   const memCount = dailyUsageMemory.get(key) ?? 0;
-  const used = Math.max(memCount, cookieCount);
+  const ledgerCount =
+    Number.isFinite(carriedUsed) && carriedUsed > 0
+      ? Math.trunc(carriedUsed)
+      : 0;
+  const used = Math.max(memCount, cookieCount, ledgerCount);
 
   return {
     allowed: used < SEARCH_LINK_IA_DAILY_LIMIT,
@@ -209,6 +214,7 @@ export function consumeDailyLimit(
   headers: IncomingHttpHeaders,
   userId?: string,
   remoteAddress?: string,
+  carriedUsed = 0,
 ): { day: string; used: number; limit: number; cookieHeader: string } {
   const day = getTodayUtcDateString();
   const cookies = parseCookies(
@@ -219,7 +225,11 @@ export function consumeDailyLimit(
     day,
   );
   const key = getQuotaKey(headers, userId, remoteAddress);
-  const prev = Math.max(dailyUsageMemory.get(key) ?? 0, cookieCount);
+  const ledgerCount =
+    Number.isFinite(carriedUsed) && carriedUsed > 0
+      ? Math.trunc(carriedUsed)
+      : 0;
+  const prev = Math.max(dailyUsageMemory.get(key) ?? 0, cookieCount, ledgerCount);
   const nextUsed = prev + 1;
   dailyUsageMemory.set(key, nextUsed);
 

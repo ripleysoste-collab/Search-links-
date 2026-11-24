@@ -61,6 +61,15 @@ import {
   type MappingQueueJobStatus,
 } from './lib/mappingQueueClient';
 import {
+  fetchAccountQuotaSummary,
+  requestClearBrowserData,
+  requestDeleteAccountPermanently,
+  requestPauseAllApis,
+  requestPurgeAllR2Images,
+  wipeAccountLocalStorageEntries,
+  wipeAllClientBrowsingStorage,
+} from './lib/accountActionsClient';
+import {
   buildCoreServiceEndpointUrl,
   generateCoreApiKey,
   generateCoreServiceSlug,
@@ -287,6 +296,7 @@ export default function App() {
     hasCompletedSetup: false,
   });
   const [orgServices, setOrgServices] = useState<OrganizationServiceItem[]>([]);
+  const [carriedFreeImagesUsed, setCarriedFreeImagesUsed] = useState(0);
   const [activeChatServiceId, setActiveChatServiceId] = useState<string | null>(
     null,
   );
@@ -429,10 +439,12 @@ export default function App() {
   const imageBankGuestIpBlockedNotice =
     !authUser && imageBankGuestIpBlocked ? t.app.guestIpBlockedError : null;
 
-  const usedFreeImages = orgServices.reduce(
-    (sum, srv) => sum + (srv.itemCount || srv.products?.length || 0),
-    0,
-  );
+  const usedFreeImages =
+    carriedFreeImagesUsed +
+    orgServices.reduce(
+      (sum, srv) => sum + (srv.itemCount || srv.products?.length || 0),
+      0,
+    );
   const getRemainingFreeImages = (user: User | null): number => {
     if (!user) return MAX_GUEST_EXTRACT_IMAGES;
     if (user.email?.trim().toLowerCase() === ADMIN_EXTRACT_ONLY_EMAIL) {
@@ -512,6 +524,7 @@ export default function App() {
         hasCompletedSetup: false,
       });
       setOrgServices([]);
+      setCarriedFreeImagesUsed(0);
       return;
     }
 
@@ -560,14 +573,22 @@ export default function App() {
 
     let active = true;
     void (async () => {
-      const [{ organization, tableMissing: orgMissing }, { services: remoteServices, tableMissing: srvMissing }] =
-        await Promise.all([
-          fetchUserOrganizationSafe(),
-          fetchUserCoreServicesSafe(),
-          hydrateAgencyConnectionFromCloud(authUser.id),
-        ]);
+      const [
+        { organization, tableMissing: orgMissing },
+        { services: remoteServices, tableMissing: srvMissing },
+        quotaSummary,
+      ] = await Promise.all([
+        fetchUserOrganizationSafe(),
+        fetchUserCoreServicesSafe(),
+        fetchAccountQuotaSummary(),
+        hydrateAgencyConnectionFromCloud(authUser.id),
+      ]);
 
       if (!active) return;
+
+      if (quotaSummary) {
+        setCarriedFreeImagesUsed(quotaSummary.carriedFreeImagesUsed);
+      }
 
       if (!orgMissing) {
         if (organization) {
@@ -1600,19 +1621,119 @@ export default function App() {
     };
   }, []);
 
-  const handleSignOut = async () => {
-    if (supabase) {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    }
+  const resetSignedOutWorkspace = () => {
     setAuthUser(null);
+    setCarriedFreeImagesUsed(0);
     setActiveChatServiceId(null);
     setIsDesktopMenuOpen(false);
     setIsMobileMenuOpen(false);
     setIsMobileAccountModalOpen(false);
     setIsMobileLanguageModalOpen(false);
     setIsMobileConnectServerOpen(false);
+    setIsMobileAdvancedSettingsOpen(false);
     setIsMobilePanelOpen(false);
+  };
+
+  const handleSignOut = async () => {
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    }
+    resetSignedOutWorkspace();
+  };
+
+  const handlePurgeAllR2 = async (): Promise<{ deletedR2Count: number }> => {
+    const res = await requestPurgeAllR2Images();
+    const currentUserId = authUserRef.current?.id;
+
+    orgServicesRef.current = [];
+    setOrgServices([]);
+    setCarriedFreeImagesUsed(res.quota.carriedFreeImagesUsed);
+    setActiveChatServiceId(null);
+    setActiveServiceCredentials(null);
+
+    if (res.clearedLogo) {
+      setOrgProfile((prev) => {
+        const next: OrganizationProfile = {
+          ...prev,
+          logoUrl: null,
+          logoR2Key: null,
+        };
+        if (currentUserId) {
+          try {
+            window.localStorage.setItem(
+              `searchlink_org_${currentUserId}`,
+              JSON.stringify(next),
+            );
+          } catch {
+            // Ignore storage errors
+          }
+        }
+        return next;
+      });
+    }
+
+    if (currentUserId) {
+      try {
+        window.localStorage.removeItem(`searchlink_services_${currentUserId}`);
+      } catch {
+        // Ignore storage errors
+      }
+    }
+
+    return { deletedR2Count: res.deletedR2Count };
+  };
+
+  const handlePauseAllApis = async (): Promise<{ pausedServicesCount: number }> => {
+    const res = await requestPauseAllApis();
+    const updated = orgServicesRef.current.map((srv) => ({
+      ...srv,
+      isActive: false,
+    }));
+    orgServicesRef.current = updated;
+    setOrgServices(updated);
+    if (authUserRef.current) {
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${authUserRef.current.id}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage errors
+      }
+    }
+    return { pausedServicesCount: res.pausedServicesCount };
+  };
+
+  const handleClearBrowserData = async (): Promise<void> => {
+    await requestClearBrowserData();
+    if (supabase) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    }
+    wipeAllClientBrowsingStorage();
+    setSavedImageBankItems([]);
+    setActiveServiceCredentials(null);
+    setPendingDomainBatch(null);
+    setHasSearched(false);
+    setUrl('');
+    resetSignedOutWorkspace();
+  };
+
+  const handleDeleteAccountPermanently = async (): Promise<void> => {
+    const currentUserId = authUserRef.current?.id;
+    await requestDeleteAccountPermanently();
+    if (supabase) {
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    }
+    if (currentUserId) {
+      wipeAccountLocalStorageEntries(currentUserId);
+    }
+    setSavedImageBankItems([]);
+    setActiveServiceCredentials(null);
+    setPendingDomainBatch(null);
+    setHasSearched(false);
+    setUrl('');
+    resetSignedOutWorkspace();
   };
 
   useEffect(() => {
@@ -3072,6 +3193,10 @@ export default function App() {
           onOpenDocumentation={openDocumentationRoute}
           onClose={() => setIsDesktopMenuOpen(false)}
           onSignOut={handleSignOut}
+          onPurgeAllR2={handlePurgeAllR2}
+          onClearBrowserData={handleClearBrowserData}
+          onDeleteAccount={handleDeleteAccountPermanently}
+          onPauseAllApis={handlePauseAllApis}
         />
       )}
 
@@ -3107,6 +3232,10 @@ export default function App() {
           onClosePanel={() => setIsMobilePanelOpen(false)}
           onOpenDocumentation={openDocumentationRoute}
           onSignOut={handleSignOut}
+          onPurgeAllR2={handlePurgeAllR2}
+          onClearBrowserData={handleClearBrowserData}
+          onDeleteAccount={handleDeleteAccountPermanently}
+          onPauseAllApis={handlePauseAllApis}
         />
       )}
 

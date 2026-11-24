@@ -55,6 +55,10 @@ interface MobileAccountMenuProps {
     docId: 'privacy' | 'terms' | 'content' | 'cookies' | 'agency' | 'liability',
   ) => void;
   onSignOut: () => Promise<void>;
+  onPurgeAllR2: () => Promise<{ deletedR2Count: number }>;
+  onClearBrowserData: () => Promise<void>;
+  onDeleteAccount: () => Promise<void>;
+  onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
 }
 
 function getUserDisplayInfo(
@@ -113,6 +117,10 @@ export function MobileAccountMenu({
   onClosePanel,
   onOpenDocumentation,
   onSignOut,
+  onPurgeAllR2,
+  onClearBrowserData,
+  onDeleteAccount,
+  onPauseAllApis,
 }: MobileAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
@@ -810,7 +818,13 @@ export function MobileAccountMenu({
               </button>
             </header>
 
-            <AdvancedSettingsView variant="mobile" />
+            <AdvancedSettingsView
+              variant="mobile"
+              onPurgeAllR2={onPurgeAllR2}
+              onClearBrowserData={onClearBrowserData}
+              onDeleteAccount={onDeleteAccount}
+              onPauseAllApis={onPauseAllApis}
+            />
           </motion.section>
         )}
       </AnimatePresence>

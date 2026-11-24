@@ -23,6 +23,7 @@ import {
   checkAndConsumeGuestExtractQuota,
   checkFreeAccountImageQuota,
   consumeGuestImageBankAttempt,
+  fetchUserFreeUsageLedger,
   FREE_PLAN_MAX_IMAGES,
   GUEST_EXTRACT_MAX_IMAGES,
   inspectGuestExtractStatus,
@@ -33,6 +34,13 @@ import {
   unmarkFreeAccountImageConsumed,
   verifySupabaseBearerUser,
 } from './lib/planLimits.ts';
+import {
+  buildClearQuotaCookiesHeaders,
+  getUserQuotaSummary,
+  pauseAllUserApis,
+  permanentlyDeleteUserAccount,
+  purgeAllUserR2Images,
+} from './lib/accountActions.ts';
 import {
   checkDailyLimit,
   consumeDailyLimit,
@@ -874,10 +882,15 @@ async function startServer() {
           }>)
         : undefined;
 
+      const carriedChatUsed = authUser
+        ? (await fetchUserFreeUsageLedger(authUser)).freeChatUsed
+        : 0;
+
       const limitStatus = checkDailyLimit(
         req.headers,
         userId,
         req.socket?.remoteAddress,
+        carriedChatUsed,
       );
       if (!limitStatus.allowed) {
         return res.status(429).json({
@@ -922,6 +935,7 @@ async function startServer() {
             req.headers,
             userId,
             req.socket?.remoteAddress,
+            carriedChatUsed,
           );
           res.setHeader('Set-Cookie', consumedDaily.cookieHeader);
           res.status(200);
@@ -1053,6 +1067,72 @@ async function startServer() {
       return res.status(result.status).json(result);
     }
 
+    return res.json(result);
+  });
+
+  app.get('/api/account/quota', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'Inicia sesión para consultar tu cuota.' });
+    }
+    const summary = await getUserQuotaSummary(authUser);
+    return res.json(summary);
+  });
+
+  app.post('/api/account/r2-purge', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'No autorizado.' });
+    }
+    const result = await purgeAllUserR2Images(authUser);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    return res.json(result);
+  });
+
+  app.post('/api/account/pause-all-apis', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'No autorizado.' });
+    }
+    const result = await pauseAllUserApis(authUser);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    return res.json(result);
+  });
+
+  app.post('/api/account/clear-browser-data', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const clearHeaders = buildClearQuotaCookiesHeaders(req.headers);
+    for (const cookieHeader of clearHeaders) {
+      res.append('Set-Cookie', cookieHeader);
+    }
+    return res.json({ ok: true });
+  });
+
+  app.post('/api/account/delete', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'No autorizado.' });
+    }
+    const result = await permanentlyDeleteUserAccount(
+      authUser,
+      req.headers,
+      req.socket?.remoteAddress,
+    );
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    const clearHeaders = buildClearQuotaCookiesHeaders(req.headers);
+    for (const cookieHeader of clearHeaders) {
+      res.append('Set-Cookie', cookieHeader);
+    }
     return res.json(result);
   });
 
