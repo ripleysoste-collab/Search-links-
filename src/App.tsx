@@ -238,6 +238,7 @@ export default function App() {
   const [isMobileAccountModalOpen, setIsMobileAccountModalOpen] = useState(false);
   const [isMobileLanguageModalOpen, setIsMobileLanguageModalOpen] = useState(false);
   const [isMobileConnectServerOpen, setIsMobileConnectServerOpen] = useState(false);
+  const [isMobileAdvancedSettingsOpen, setIsMobileAdvancedSettingsOpen] = useState(false);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [isFileUploadFlow, setIsFileUploadFlow] = useState(false);
@@ -1622,6 +1623,7 @@ export default function App() {
       !isMobileAccountModalOpen &&
       !isMobileLanguageModalOpen &&
       !isMobileConnectServerOpen &&
+      !isMobileAdvancedSettingsOpen &&
       !isMobilePanelOpen &&
       !activeChatServiceId
     ) {
@@ -1641,6 +1643,7 @@ export default function App() {
         if (isMobileAccountModalOpen) setIsMobileAccountModalOpen(false);
         if (isMobileLanguageModalOpen) setIsMobileLanguageModalOpen(false);
         if (isMobileConnectServerOpen) setIsMobileConnectServerOpen(false);
+        if (isMobileAdvancedSettingsOpen) setIsMobileAdvancedSettingsOpen(false);
         if (isMobilePanelOpen) setIsMobilePanelOpen(false);
         return;
       }
@@ -1666,6 +1669,7 @@ export default function App() {
     isMobileAccountModalOpen,
     isMobileLanguageModalOpen,
     isMobileConnectServerOpen,
+    isMobileAdvancedSettingsOpen,
     isMobilePanelOpen,
     activeChatServiceId,
   ]);
@@ -3078,6 +3082,7 @@ export default function App() {
           accountModalOpen={isMobileAccountModalOpen}
           languageModalOpen={isMobileLanguageModalOpen}
           connectServerModalOpen={isMobileConnectServerOpen}
+          advancedSettingsModalOpen={isMobileAdvancedSettingsOpen}
           panelOpen={isMobilePanelOpen}
           user={authUser}
           orgProfile={orgProfile}
@@ -3096,6 +3101,8 @@ export default function App() {
           onCloseLanguageModal={() => setIsMobileLanguageModalOpen(false)}
           onOpenConnectServerModal={() => setIsMobileConnectServerOpen(true)}
           onCloseConnectServerModal={() => setIsMobileConnectServerOpen(false)}
+          onOpenAdvancedSettingsModal={() => setIsMobileAdvancedSettingsOpen(true)}
+          onCloseAdvancedSettingsModal={() => setIsMobileAdvancedSettingsOpen(false)}
           onOpenPanel={() => setIsMobilePanelOpen(true)}
           onClosePanel={() => setIsMobilePanelOpen(false)}
           onOpenDocumentation={openDocumentationRoute}

@@ -9,6 +9,7 @@ import type {
 import { MobileOrganizationView } from './MobileOrganizationView';
 import { MobileStoreView } from './MobileStoreView';
 import { ConnectServerView } from './ConnectServerView';
+import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
   buildSchemaInputFromService,
@@ -27,6 +28,7 @@ interface MobileAccountMenuProps {
   accountModalOpen: boolean;
   languageModalOpen: boolean;
   connectServerModalOpen: boolean;
+  advancedSettingsModalOpen: boolean;
   panelOpen: boolean;
   user: User;
   orgProfile: OrganizationProfile;
@@ -45,6 +47,8 @@ interface MobileAccountMenuProps {
   onCloseLanguageModal: () => void;
   onOpenConnectServerModal: () => void;
   onCloseConnectServerModal: () => void;
+  onOpenAdvancedSettingsModal: () => void;
+  onCloseAdvancedSettingsModal: () => void;
   onOpenPanel: () => void;
   onClosePanel: () => void;
   onOpenDocumentation: (
@@ -84,6 +88,7 @@ export function MobileAccountMenu({
   accountModalOpen,
   languageModalOpen,
   connectServerModalOpen,
+  advancedSettingsModalOpen,
   panelOpen,
   user,
   orgProfile,
@@ -102,6 +107,8 @@ export function MobileAccountMenu({
   onCloseLanguageModal,
   onOpenConnectServerModal,
   onCloseConnectServerModal,
+  onOpenAdvancedSettingsModal,
+  onCloseAdvancedSettingsModal,
   onOpenPanel,
   onClosePanel,
   onOpenDocumentation,
@@ -606,6 +613,19 @@ export function MobileAccountMenu({
                 <button
                   type="button"
                   onClick={() => {
+                    setConfirmSignOut(false);
+                    setSignOutError(null);
+                    onCloseAccountModal();
+                    onOpenAdvancedSettingsModal();
+                  }}
+                  className="block mb-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                >
+                  {t.menu.goToAdvancedSettings}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
                     setSignOutError(null);
                     setConfirmSignOut((prev) => !prev);
                   }}
@@ -745,6 +765,52 @@ export function MobileAccountMenu({
               services={services}
               variant="mobile"
             />
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* 3c. Mobile full-screen white Ajustes avanzados view */}
+      <AnimatePresence>
+        {advancedSettingsModalOpen && (
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.menu.advancedSettings}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-50 lg:hidden bg-white flex flex-col"
+          >
+            <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
+              <div className="flex items-center gap-2 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onCloseAdvancedSettingsModal();
+                    onOpenAccountModal();
+                  }}
+                  aria-label={t.menu.backToGoogleAccountAria}
+                  className="w-8 h-8 -ml-1 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-950 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+                >
+                  <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                </button>
+                <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                  {t.menu.advancedSettings}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={onCloseAdvancedSettingsModal}
+                aria-label={t.menu.closeAdvancedSettingsAria}
+                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4.5 h-4.5" aria-hidden="true" />
+              </button>
+            </header>
+
+            <AdvancedSettingsView variant="mobile" />
           </motion.section>
         )}
       </AnimatePresence>

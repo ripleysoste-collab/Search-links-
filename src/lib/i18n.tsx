@@ -202,6 +202,10 @@ export interface TranslationDictionary {
     comingSoon: string;
     connectServer: string;
     closeConnectServerAria: string;
+    goToAdvancedSettings: string;
+    advancedSettings: string;
+    backToGoogleAccountAria: string;
+    closeAdvancedSettingsAria: string;
   };
   auth: {
     acceptTermsLabel: string;
@@ -428,6 +432,23 @@ export interface TranslationDictionary {
     authRequired: string;
     syncSuccess: (services: number, products: number, durationMs: number) => string;
     syncNetworkError: string;
+  };
+  advancedSettings: {
+    title: string;
+    confirmPromptAria: string;
+    r2DeleteTitle: string;
+    r2DeleteButton: string;
+    r2DeleteConfirmText: string;
+    clearBrowserDataTitle: string;
+    clearBrowserDataButton: string;
+    clearBrowserDataConfirmText: string;
+    deleteAccountTitle: string;
+    deleteAccountButton: string;
+    deleteAccountConfirmText: string;
+    pauseAllApisTitle: string;
+    pauseAllApisButton: string;
+    pauseAllApisConfirmText: string;
+    step1PreviewNotice: string;
   };
 }
 
@@ -706,6 +727,10 @@ const ES_DICTIONARY: TranslationDictionary = {
     comingSoon: 'Próximamente',
     connectServer: 'Conecta tu servidor',
     closeConnectServerAria: 'Cerrar Conecta tu servidor',
+    goToAdvancedSettings: 'Ir a ajustes avanzados',
+    advancedSettings: 'Ajustes avanzados',
+    backToGoogleAccountAria: 'Volver a Cuenta de Google',
+    closeAdvancedSettingsAria: 'Cerrar Ajustes avanzados',
   },
   auth: {
     acceptTermsLabel: 'Acepto los términos y políticas de privacidad de Search Link.',
@@ -976,6 +1001,28 @@ const ES_DICTIONARY: TranslationDictionary = {
     syncSuccess: (srv, prod, ms) =>
       `Sincronizado: ${srv} ${srv === 1 ? 'servicio' : 'servicios'} (${prod} ${prod === 1 ? 'producto' : 'productos'}) en ${ms} ms.`,
     syncNetworkError: 'No pudimos conectar con Search Link para enviar la sincronización.',
+  },
+  advancedSettings: {
+    title: 'Ajustes avanzados',
+    confirmPromptAria: 'Confirmación de acción en ajustes avanzados',
+    r2DeleteTitle: 'Borrar todas las imágenes de R2',
+    r2DeleteButton: 'Borrar',
+    r2DeleteConfirmText:
+      'Esta acción eliminará de forma permanente todas las imágenes que publicaste y guardaste en R2. Tus enlaces actuales dejarán de cargar y esta operación se ejecuta bajo tu responsabilidad. ¿Deseas continuar?',
+    clearBrowserDataTitle: 'Borrar todos los datos de navegación',
+    clearBrowserDataButton: 'Confirmar',
+    clearBrowserDataConfirmText:
+      'Se eliminarán todos los datos locales de navegación, cookies y caché de Search Link en este dispositivo, cerrando tu sesión actual para que debas iniciar sesión nuevamente con Google. Esta acción se realiza bajo tu responsabilidad.',
+    deleteAccountTitle: 'Borrar la cuenta de Google definitivamente',
+    deleteAccountButton: 'Confirmar',
+    deleteAccountConfirmText:
+      'Se eliminará de forma definitiva tu cuenta vinculada a Google junto con tu organización, servicios, claves e imágenes asociadas, sin posibilidad de recuperación. Esta acción se ejecuta bajo tu total responsabilidad.',
+    pauseAllApisTitle: 'Pausar todas las APIs activas',
+    pauseAllApisButton: 'Confirmar',
+    pauseAllApisConfirmText:
+      'Se pausarán de inmediato todas las API Keys activas de todos tus servicios y ninguna responderá peticiones hasta que vuelvas a activarlas manualmente. Esta acción se realiza bajo tu responsabilidad.',
+    step1PreviewNotice:
+      'Confirmación de interfaz verificada. En el siguiente paso conectaremos la ejecución real de cada acción.',
   },
 };
 
@@ -1255,6 +1302,10 @@ const EN_DICTIONARY: TranslationDictionary = {
     comingSoon: 'Coming soon',
     connectServer: 'Connect your server',
     closeConnectServerAria: 'Close Connect your server',
+    goToAdvancedSettings: 'Go to advanced settings',
+    advancedSettings: 'Advanced settings',
+    backToGoogleAccountAria: 'Back to Google Account',
+    closeAdvancedSettingsAria: 'Close Advanced settings',
   },
   auth: {
     acceptTermsLabel: 'I accept the Search Link terms of service and privacy policy.',
@@ -1525,6 +1576,28 @@ const EN_DICTIONARY: TranslationDictionary = {
     syncSuccess: (srv, prod, ms) =>
       `Synced: ${srv} ${srv === 1 ? 'service' : 'services'} (${prod} ${prod === 1 ? 'product' : 'products'}) in ${ms} ms.`,
     syncNetworkError: 'Could not reach Search Link to run the sync.',
+  },
+  advancedSettings: {
+    title: 'Advanced settings',
+    confirmPromptAria: 'Advanced settings action confirmation',
+    r2DeleteTitle: 'Delete all images from R2',
+    r2DeleteButton: 'Delete',
+    r2DeleteConfirmText:
+      'This will permanently delete all images you published and stored in R2. Existing image links will stop loading, and this action is carried out under your responsibility. Do you want to continue?',
+    clearBrowserDataTitle: 'Clear all browsing data',
+    clearBrowserDataButton: 'Confirm',
+    clearBrowserDataConfirmText:
+      'All local Search Link browsing data, cookies, and cached storage on this device will be cleared, signing you out so you must sign in again with Google. This action is carried out under your responsibility.',
+    deleteAccountTitle: 'Permanently delete Google account',
+    deleteAccountButton: 'Confirm',
+    deleteAccountConfirmText:
+      'Your Google-linked account, organization, services, API keys, and associated images will be permanently deleted with no recovery option. This action is carried out under your sole responsibility.',
+    pauseAllApisTitle: 'Pause all active APIs',
+    pauseAllApisButton: 'Confirm',
+    pauseAllApisConfirmText:
+      'All active API keys across all of your services will be paused immediately and will reject requests until manually re-enabled. This action is carried out under your responsibility.',
+    step1PreviewNotice:
+      'UI confirmation verified. In the next step we will connect live execution for each action.',
   },
 };
 
@@ -1804,6 +1877,10 @@ const PT_DICTIONARY: TranslationDictionary = {
     comingSoon: 'Em breve',
     connectServer: 'Conecte seu servidor',
     closeConnectServerAria: 'Fechar Conecte seu servidor',
+    goToAdvancedSettings: 'Ir para configurações avançadas',
+    advancedSettings: 'Configurações avançadas',
+    backToGoogleAccountAria: 'Voltar para Conta Google',
+    closeAdvancedSettingsAria: 'Fechar Configurações avançadas',
   },
   auth: {
     acceptTermsLabel:
@@ -2076,6 +2153,28 @@ const PT_DICTIONARY: TranslationDictionary = {
     syncSuccess: (srv, prod, ms) =>
       `Sincronizado: ${srv} ${srv === 1 ? 'serviço' : 'serviços'} (${prod} ${prod === 1 ? 'produto' : 'produtos'}) em ${ms} ms.`,
     syncNetworkError: 'Não foi possível conectar ao Search Link para sincronizar.',
+  },
+  advancedSettings: {
+    title: 'Configurações avançadas',
+    confirmPromptAria: 'Confirmação de ação nas configurações avançadas',
+    r2DeleteTitle: 'Apagar todas as imagens do R2',
+    r2DeleteButton: 'Apagar',
+    r2DeleteConfirmText:
+      'Esta ação apagará permanentemente todas as imagens que você publicou e salvou no R2. Seus links atuais deixarão de carregar e esta operação é executada sob sua responsabilidade. Deseja continuar?',
+    clearBrowserDataTitle: 'Limpar todos os dados de navegação',
+    clearBrowserDataButton: 'Confirmar',
+    clearBrowserDataConfirmText:
+      'Todos os dados locais de navegação, cookies e cache do Search Link neste dispositivo serão apagados, encerrando sua sessão para que você precise entrar novamente com o Google. Esta ação é executada sob sua responsabilidade.',
+    deleteAccountTitle: 'Excluir conta Google definitivamente',
+    deleteAccountButton: 'Confirmar',
+    deleteAccountConfirmText:
+      'Sua conta vinculada ao Google será excluída definitivamente junto com sua organização, serviços, chaves e imagens associadas, sem possibilidade de recuperação. Esta ação é executada sob sua total responsabilidade.',
+    pauseAllApisTitle: 'Pausar todas as APIs ativas',
+    pauseAllApisButton: 'Confirmar',
+    pauseAllApisConfirmText:
+      'Todas as API Keys ativas de todos os seus serviços serão pausadas imediatamente e não responderão requisições até que você as reative manualmente. Esta ação é executada sob sua responsabilidade.',
+    step1PreviewNotice:
+      'Confirmação de interface verificada. No próximo passo conectaremos a execução real de cada ação.',
   },
 };
 

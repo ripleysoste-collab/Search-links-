@@ -10,6 +10,7 @@ import {
 } from './DesktopOrganizationView';
 import { DesktopStoreView } from './DesktopStoreView';
 import { ConnectServerView } from './ConnectServerView';
+import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
   buildSchemaInputFromService,
@@ -45,6 +46,7 @@ interface DesktopAccountMenuProps {
 type DesktopMenuView =
   | 'menu'
   | 'google-account'
+  | 'advanced-settings'
   | 'organization'
   | 'connect-server'
   | 'store'
@@ -185,6 +187,7 @@ export function DesktopAccountMenu({
 
   const isExpandedPanelView =
     view === 'google-account' ||
+    view === 'advanced-settings' ||
     view === 'organization' ||
     view === 'connect-server' ||
     view === 'store' ||
@@ -193,17 +196,19 @@ export function DesktopAccountMenu({
   const topTitle =
     view === 'google-account'
       ? t.menu.googleAccount
-      : view === 'organization'
-        ? t.menu.organization
-        : view === 'connect-server'
-          ? t.connectServer.title
-          : view === 'store'
-            ? t.menu.myStore
-            : view === 'schema'
-              ? t.org.schemaTitle
-              : view === 'language'
-                ? t.menu.language
-                : t.menu.account;
+      : view === 'advanced-settings'
+        ? t.menu.advancedSettings
+        : view === 'organization'
+          ? t.menu.organization
+          : view === 'connect-server'
+            ? t.connectServer.title
+            : view === 'store'
+              ? t.menu.myStore
+              : view === 'schema'
+                ? t.org.schemaTitle
+                : view === 'language'
+                  ? t.menu.language
+                  : t.menu.account;
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -224,15 +229,17 @@ export function DesktopAccountMenu({
           aria-label={
             view === 'google-account'
               ? t.menu.googleAccountDetailsAria
-              : view === 'organization'
-                ? t.menu.organization
-                : view === 'connect-server'
-                  ? t.connectServer.title
-                  : view === 'store'
-                    ? t.menu.myStore
-                    : view === 'language'
-                      ? t.menu.languagesTitle
-                      : t.menu.accountMenuAria
+              : view === 'advanced-settings'
+                ? t.menu.advancedSettings
+                : view === 'organization'
+                  ? t.menu.organization
+                  : view === 'connect-server'
+                    ? t.connectServer.title
+                    : view === 'store'
+                      ? t.menu.myStore
+                      : view === 'language'
+                        ? t.menu.languagesTitle
+                        : t.menu.accountMenuAria
           }
           initial={
             shouldReduceMotion
@@ -335,12 +342,20 @@ export function DesktopAccountMenu({
                       onClick={() => {
                         setConfirmSignOut(false);
                         setSignOutError(null);
-                        setView(view === 'store' ? 'organization' : 'menu');
+                        setView(
+                          view === 'store'
+                            ? 'organization'
+                            : view === 'advanced-settings'
+                              ? 'google-account'
+                              : 'menu',
+                        );
                       }}
                       aria-label={
                         view === 'store'
                           ? t.menu.backToOrgAria
-                          : t.menu.backToMenuAria
+                          : view === 'advanced-settings'
+                            ? t.menu.backToGoogleAccountAria
+                            : t.menu.backToMenuAria
                       }
                       className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
                     >
@@ -699,6 +714,17 @@ export function DesktopAccountMenu({
                     </p>
                   </div>
                 </motion.div>
+              ) : view === 'advanced-settings' ? (
+                <motion.div
+                  key="desktop-advanced-settings-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <AdvancedSettingsView variant="desktop" />
+                </motion.div>
               ) : (
                 <motion.div
                   key="desktop-google-account-view"
@@ -853,6 +879,18 @@ export function DesktopAccountMenu({
                         </motion.div>
                       )}
                     </AnimatePresence>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setConfirmSignOut(false);
+                        setSignOutError(null);
+                        setView('advanced-settings');
+                      }}
+                      className="block mb-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors duration-150 focus-visible:outline-none focus-visible:underline cursor-pointer"
+                    >
+                      {t.menu.goToAdvancedSettings}
+                    </button>
 
                     <button
                       type="button"
