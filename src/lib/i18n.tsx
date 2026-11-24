@@ -449,7 +449,12 @@ export interface TranslationDictionary {
     pauseAllApisButton: string;
     pauseAllApisConfirmText: string;
     r2PurgeSuccess: (deletedCount: number) => string;
+    r2EmptyError: string;
     pauseApisSuccess: (servicesCount: number) => string;
+    thingsYouCanDoTitle: string;
+    unfreezeApisSubtitle: string;
+    unfreezeApisButton: string;
+    unfreezeApisSuccess: (servicesCount: number) => string;
     actionErrorFallback: string;
   };
 }
@@ -1027,10 +1032,18 @@ const ES_DICTIONARY: TranslationDictionary = {
       count > 0
         ? `Se eliminaron ${count} ${count === 1 ? 'imagen' : 'imágenes'} de R2 y se limpiaron tus catálogos publicados.`
         : 'Tus catálogos e imágenes en R2 quedaron completamente limpios.',
+    r2EmptyError: 'No tienes imágenes en R2.',
     pauseApisSuccess: (count) =>
       count > 0
         ? `Se pausaron ${count} ${count === 1 ? 'servicio' : 'servicios'} y todas sus API Keys activas dejaron de responder.`
         : 'Todas las API Keys activas quedaron pausadas.',
+    thingsYouCanDoTitle: 'Cosas que puedes hacer ahora',
+    unfreezeApisSubtitle: 'Despausar tus servicios',
+    unfreezeApisButton: 'Descongelar',
+    unfreezeApisSuccess: (count) =>
+      count > 0
+        ? `Se descongelaron ${count} ${count === 1 ? 'servicio' : 'servicios'} y todas tus APIs volvieron a funcionar.`
+        : 'Todas tus APIs volvieron a funcionar.',
     actionErrorFallback: 'No se pudo completar la operación. Intenta nuevamente.',
   },
 };
@@ -1609,10 +1622,18 @@ const EN_DICTIONARY: TranslationDictionary = {
       count > 0
         ? `Deleted ${count} ${count === 1 ? 'image' : 'images'} from R2 and cleared your published catalogs.`
         : 'Your R2 media and published catalogs have been cleared.',
+    r2EmptyError: 'You have no images in R2.',
     pauseApisSuccess: (count) =>
       count > 0
         ? `Paused ${count} ${count === 1 ? 'service' : 'services'} and disabled all active API keys.`
         : 'All active API keys have been paused.',
+    thingsYouCanDoTitle: 'Things you can do now',
+    unfreezeApisSubtitle: 'Unpause your services',
+    unfreezeApisButton: 'Unfreeze',
+    unfreezeApisSuccess: (count) =>
+      count > 0
+        ? `Unfroze ${count} ${count === 1 ? 'service' : 'services'} and all your APIs are active again.`
+        : 'All your APIs are active again.',
     actionErrorFallback: 'Could not complete the operation. Please try again.',
   },
 };
@@ -2193,10 +2214,18 @@ const PT_DICTIONARY: TranslationDictionary = {
       count > 0
         ? `${count} ${count === 1 ? 'imagem foi removida' : 'imagens foram removidas'} do R2 e seus catálogos publicados foram limpos.`
         : 'Suas mídias no R2 e catálogos publicados foram limpos.',
+    r2EmptyError: 'Você não tem imagens no R2.',
     pauseApisSuccess: (count) =>
       count > 0
         ? `${count} ${count === 1 ? 'serviço foi pausado' : 'serviços foram pausados'} e todas as API Keys ativas foram desativadas.`
         : 'Todas as API Keys ativas foram pausadas.',
+    thingsYouCanDoTitle: 'Coisas que você pode fazer agora',
+    unfreezeApisSubtitle: 'Despausar seus serviços',
+    unfreezeApisButton: 'Descongelar',
+    unfreezeApisSuccess: (count) =>
+      count > 0
+        ? `${count} ${count === 1 ? 'serviço foi descongelado' : 'serviços foram descongelados'} e todas as suas APIs voltaram a funcionar.`
+        : 'Todas as suas APIs voltaram a funcionar.',
     actionErrorFallback: 'Não foi possível concluir a operação. Tente novamente.',
   },
 };

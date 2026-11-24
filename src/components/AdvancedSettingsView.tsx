@@ -11,24 +11,32 @@ export type AdvancedActionKey =
 
 interface AdvancedSettingsViewProps {
   variant: 'desktop' | 'mobile';
+  hasR2Images: boolean;
+  hasPausedApis: boolean;
   onPurgeAllR2: () => Promise<{ deletedR2Count: number }>;
   onClearBrowserData: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
   onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
+  onUnfreezeAllApis: () => Promise<{ unfrozenServicesCount: number }>;
 }
 
 export function AdvancedSettingsView({
   variant,
+  hasR2Images,
+  hasPausedApis,
   onPurgeAllR2,
   onClearBrowserData,
   onDeleteAccount,
   onPauseAllApis,
+  onUnfreezeAllApis,
 }: AdvancedSettingsViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
 
   const [pendingAction, setPendingAction] = useState<AdvancedActionKey | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isUnfreezing, setIsUnfreezing] = useState(false);
+  const [showEmptyR2Notice, setShowEmptyR2Notice] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -72,8 +80,13 @@ export function AdvancedSettingsView({
     actions.find((item) => item.key === pendingAction) ?? null;
 
   const handleRequestAction = (key: AdvancedActionKey) => {
-    if (isPaused || isExecuting) return;
+    if (isPaused || isExecuting || isUnfreezing) return;
     setActionFeedback(null);
+    if (key === 'r2-delete' && !hasR2Images) {
+      setShowEmptyR2Notice(true);
+      return;
+    }
+    setShowEmptyR2Notice(false);
     setPendingAction(key);
   };
 
@@ -122,6 +135,32 @@ export function AdvancedSettingsView({
       });
     } finally {
       setIsExecuting(false);
+    }
+  };
+
+  const handleUnfreezeAllApis = async () => {
+    if (isPaused || isExecuting || isUnfreezing) return;
+    setIsUnfreezing(true);
+    setShowEmptyR2Notice(false);
+    setActionFeedback(null);
+
+    try {
+      const res = await onUnfreezeAllApis();
+      setActionFeedback({
+        type: 'success',
+        text: t.advancedSettings.unfreezeApisSuccess(res.unfrozenServicesCount),
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t.advancedSettings.actionErrorFallback;
+      setActionFeedback({
+        type: 'error',
+        text: msg,
+      });
+    } finally {
+      setIsUnfreezing(false);
     }
   };
 
@@ -218,15 +257,48 @@ export function AdvancedSettingsView({
             </p>
             <button
               type="button"
-              disabled={isPaused}
+              disabled={isPaused || isUnfreezing}
               onClick={() => handleRequestAction(item.key)}
               className="mt-2.5 inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 cursor-pointer disabled:cursor-default"
             >
               {item.buttonLabel}
             </button>
+            {item.key === 'r2-delete' && showEmptyR2Notice && !hasR2Images && (
+              <p className="mt-2 text-xs text-rose-600">
+                {t.advancedSettings.r2EmptyError}
+              </p>
+            )}
           </div>
         ))}
       </div>
+
+      {/* Conditional recovery section — only shown if the user has paused APIs/services */}
+      {hasPausedApis && (
+        <div
+          aria-disabled={isPaused}
+          className={`mt-1 pt-5 border-t border-slate-200/80 transition-opacity duration-150 ${
+            isPaused ? 'opacity-40 pointer-events-none select-none' : 'opacity-100'
+          }`}
+        >
+          <p className="text-xs font-semibold text-slate-500">
+            {t.advancedSettings.thingsYouCanDoTitle}
+          </p>
+          <p className="mt-2 text-sm font-medium text-slate-950">
+            {t.advancedSettings.unfreezeApisSubtitle}
+          </p>
+          <button
+            type="button"
+            disabled={isPaused || isUnfreezing}
+            onClick={() => void handleUnfreezeAllApis()}
+            className="mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-60 disabled:cursor-default"
+          >
+            {isUnfreezing && (
+              <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+            )}
+            {t.advancedSettings.unfreezeApisButton}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -35,6 +35,7 @@ import {
   pauseAllUserApis,
   permanentlyDeleteUserAccount,
   purgeAllUserR2Images,
+  unfreezeAllUserApis,
 } from './lib/accountActions.ts';
 import {
   checkDailyLimit,
@@ -1016,6 +1017,19 @@ async function startServer() {
       return res.status(401).json({ error: 'No autorizado.' });
     }
     const result = await pauseAllUserApis(authUser);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    return res.json(result);
+  });
+
+  app.post('/api/account/unfreeze-all-apis', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'No autorizado.' });
+    }
+    const result = await unfreezeAllUserApis(authUser);
     if (!result.ok) {
       return res.status(result.status).json({ error: result.error });
     }

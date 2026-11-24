@@ -59,6 +59,9 @@ interface MobileAccountMenuProps {
   onClearBrowserData: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
   onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
+  onUnfreezeAllApis: () => Promise<{ unfrozenServicesCount: number }>;
+  hasR2Images: boolean;
+  hasPausedApis: boolean;
 }
 
 function getUserDisplayInfo(
@@ -121,6 +124,9 @@ export function MobileAccountMenu({
   onClearBrowserData,
   onDeleteAccount,
   onPauseAllApis,
+  onUnfreezeAllApis,
+  hasR2Images,
+  hasPausedApis,
 }: MobileAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
@@ -820,10 +826,13 @@ export function MobileAccountMenu({
 
             <AdvancedSettingsView
               variant="mobile"
+              hasR2Images={hasR2Images}
+              hasPausedApis={hasPausedApis}
               onPurgeAllR2={onPurgeAllR2}
               onClearBrowserData={onClearBrowserData}
               onDeleteAccount={onDeleteAccount}
               onPauseAllApis={onPauseAllApis}
+              onUnfreezeAllApis={onUnfreezeAllApis}
             />
           </motion.section>
         )}

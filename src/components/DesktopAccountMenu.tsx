@@ -45,6 +45,9 @@ interface DesktopAccountMenuProps {
   onClearBrowserData: () => Promise<void>;
   onDeleteAccount: () => Promise<void>;
   onPauseAllApis: () => Promise<{ pausedServicesCount: number }>;
+  onUnfreezeAllApis: () => Promise<{ unfrozenServicesCount: number }>;
+  hasR2Images: boolean;
+  hasPausedApis: boolean;
 }
 
 type DesktopMenuView =
@@ -102,6 +105,9 @@ export function DesktopAccountMenu({
   onClearBrowserData,
   onDeleteAccount,
   onPauseAllApis,
+  onUnfreezeAllApis,
+  hasR2Images,
+  hasPausedApis,
 }: DesktopAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
@@ -733,10 +739,13 @@ export function DesktopAccountMenu({
                 >
                   <AdvancedSettingsView
                     variant="desktop"
+                    hasR2Images={hasR2Images}
+                    hasPausedApis={hasPausedApis}
                     onPurgeAllR2={onPurgeAllR2}
                     onClearBrowserData={onClearBrowserData}
                     onDeleteAccount={onDeleteAccount}
                     onPauseAllApis={onPauseAllApis}
+                    onUnfreezeAllApis={onUnfreezeAllApis}
                   />
                 </motion.div>
               ) : (

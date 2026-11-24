@@ -25,6 +25,11 @@ export interface PauseAllApisResponse {
   pausedServicesCount: number;
 }
 
+export interface UnfreezeAllApisResponse {
+  ok: true;
+  unfrozenServicesCount: number;
+}
+
 export interface DeleteAccountResponse {
   ok: true;
   deletedR2Count: number;
@@ -98,6 +103,26 @@ export async function requestPauseAllApis(): Promise<PauseAllApisResponse> {
     throw new Error(data.error || 'No se pudieron pausar las APIs activas.');
   }
   return data as PauseAllApisResponse;
+}
+
+export async function requestUnfreezeAllApis(): Promise<UnfreezeAllApisResponse> {
+  const token = await getRequiredAccessToken();
+  const response = await fetch(resolveApiUrl('/api/account/unfreeze-all-apis'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  });
+  const data = (await response.json().catch(() => ({}))) as Partial<UnfreezeAllApisResponse> & {
+    error?: string;
+  };
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'No se pudieron descongelar las APIs.');
+  }
+  return data as UnfreezeAllApisResponse;
 }
 
 export async function requestClearBrowserData(): Promise<void> {

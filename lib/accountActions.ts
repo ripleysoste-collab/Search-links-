@@ -300,6 +300,64 @@ export async function pauseAllUserApis(
   };
 }
 
+export async function unfreezeAllUserApis(
+  authUser: AuthenticatedRequestUser,
+): Promise<
+  | { ok: true; unfrozenServicesCount: number }
+  | { ok: false; status: number; error: string }
+> {
+  const userClient = createAuthenticatedUserClient(authUser.accessToken);
+  if (!userClient) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'Configuración de Supabase no disponible en el servidor.',
+    };
+  }
+
+  const { data: serviceRows, error: servicesFetchErr } = await userClient
+    .from('servicios')
+    .select('id, is_active')
+    .eq('user_id', authUser.userId);
+
+  if (servicesFetchErr) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'No se pudieron consultar los servicios para descongelar sus APIs.',
+    };
+  }
+
+  const servicesList = Array.isArray(serviceRows) ? serviceRows : [];
+  const pausedCount = servicesList.filter((s) => s?.is_active === false).length;
+
+  const [keysRes, srvRes] = await Promise.all([
+    userClient
+      .from('servicio_api_keys')
+      .update({ is_active: true })
+      .eq('user_id', authUser.userId),
+    userClient
+      .from('servicios')
+      .update({ is_active: true })
+      .eq('user_id', authUser.userId),
+  ]);
+
+  if (keysRes.error && srvRes.error) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'No se pudieron reactivar las API Keys en Supabase.',
+    };
+  }
+
+  invalidateCoreCatalogCache();
+
+  return {
+    ok: true,
+    unfrozenServicesCount: pausedCount > 0 ? pausedCount : servicesList.length,
+  };
+}
+
 export function buildClearQuotaCookiesHeaders(
   headers: IncomingHttpHeaders,
 ): string[] {

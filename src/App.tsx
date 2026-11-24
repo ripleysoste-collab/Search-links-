@@ -66,6 +66,7 @@ import {
   requestDeleteAccountPermanently,
   requestPauseAllApis,
   requestPurgeAllR2Images,
+  requestUnfreezeAllApis,
   wipeAccountLocalStorageEntries,
   wipeAllClientBrowsingStorage,
 } from './lib/accountActionsClient';
@@ -1705,6 +1706,36 @@ export default function App() {
     return { pausedServicesCount: res.pausedServicesCount };
   };
 
+  const handleUnfreezeAllApis = async (): Promise<{ unfrozenServicesCount: number }> => {
+    const res = await requestUnfreezeAllApis();
+    const updated = orgServicesRef.current.map((srv) => ({
+      ...srv,
+      isActive: true,
+    }));
+    orgServicesRef.current = updated;
+    setOrgServices(updated);
+    if (authUserRef.current) {
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${authUserRef.current.id}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage errors
+      }
+    }
+    return { unfrozenServicesCount: res.unfrozenServicesCount };
+  };
+
+  const hasR2Images =
+    Boolean(orgProfile.logoR2Key?.trim()) ||
+    (typeof orgProfile.logoUrl === 'string' &&
+      (orgProfile.logoUrl.includes('.r2.dev/') ||
+        orgProfile.logoUrl.includes('/api/media?'))) ||
+    orgServices.some((srv) => srv.itemCount > 0 || (srv.products?.length ?? 0) > 0);
+
+  const hasPausedApis = orgServices.some((srv) => !srv.isActive);
+
   const handleClearBrowserData = async (): Promise<void> => {
     await requestClearBrowserData();
     if (supabase) {
@@ -3197,6 +3228,9 @@ export default function App() {
           onClearBrowserData={handleClearBrowserData}
           onDeleteAccount={handleDeleteAccountPermanently}
           onPauseAllApis={handlePauseAllApis}
+          onUnfreezeAllApis={handleUnfreezeAllApis}
+          hasR2Images={hasR2Images}
+          hasPausedApis={hasPausedApis}
         />
       )}
 
@@ -3236,6 +3270,9 @@ export default function App() {
           onClearBrowserData={handleClearBrowserData}
           onDeleteAccount={handleDeleteAccountPermanently}
           onPauseAllApis={handlePauseAllApis}
+          onUnfreezeAllApis={handleUnfreezeAllApis}
+          hasR2Images={hasR2Images}
+          hasPausedApis={hasPausedApis}
         />
       )}
 
