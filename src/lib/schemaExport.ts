@@ -11,7 +11,7 @@ interface SchemaExportInput {
   locale?: SupportedLocale;
 }
 
-interface ZipEntryInput {
+export interface ZipEntryInput {
   name: string;
   content: string | Uint8Array;
 }
@@ -53,7 +53,7 @@ function getDosDateTime(date: Date): { dosTime: number; dosDate: number } {
  * Pure TypeScript PKZIP builder (Store compression method 0 with UTF-8 flag 0x0800).
  * Produces a universally valid .zip archive without external dependencies.
  */
-function createZipBlob(entries: ZipEntryInput[]): Blob {
+export function createZipBlob(entries: ZipEntryInput[]): Blob {
   const encoder = new TextEncoder();
   const now = new Date();
   const { dosTime, dosDate } = getDosDateTime(now);

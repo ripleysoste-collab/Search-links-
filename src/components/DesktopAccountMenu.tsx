@@ -10,8 +10,15 @@ import {
 } from './DesktopOrganizationView';
 import { DesktopStoreView } from './DesktopStoreView';
 import { ConnectServerView } from './ConnectServerView';
+import { QuickServerCodeViewer } from './QuickServerCodeViewer';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
+import {
+  AGENCY_SYNC_UPDATED_EVENT,
+  hydrateAgencyConnectionFromCloud,
+  loadAgencyConnectionState,
+  type AgencyConnectionState,
+} from '../lib/agencySyncClient';
 import {
   buildSchemaInputFromService,
   buildServiceOpenApiSchemaJson,
@@ -134,6 +141,9 @@ export function DesktopAccountMenu({
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
+  const [serverConnState, setServerConnState] = useState<AgencyConnectionState>(() =>
+    loadAgencyConnectionState(user.id),
+  );
 
   const info = getUserDisplayInfo(
     user,
@@ -145,6 +155,35 @@ export function DesktopAccountMenu({
   useEffect(() => {
     setImgFailed(false);
   }, [info.photoUrl]);
+
+  useEffect(() => {
+    setServerConnState(loadAgencyConnectionState(user.id));
+    const handleSyncUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ userId?: string; state?: AgencyConnectionState }>
+      ).detail;
+      if (detail?.userId === user.id && detail.state) {
+        setServerConnState(detail.state);
+      }
+    };
+    window.addEventListener(AGENCY_SYNC_UPDATED_EVENT, handleSyncUpdated);
+    return () =>
+      window.removeEventListener(AGENCY_SYNC_UPDATED_EVENT, handleSyncUpdated);
+  }, [user.id]);
+
+  useEffect(() => {
+    if (!open || view !== 'connect-server') return;
+    setServerConnState(loadAgencyConnectionState(user.id));
+    let active = true;
+    void hydrateAgencyConnectionFromCloud(user.id).then((cloudState) => {
+      if (active && cloudState) {
+        setServerConnState(cloudState);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, view, user.id]);
 
   useEffect(() => {
     if (!open) {
@@ -217,6 +256,8 @@ export function DesktopAccountMenu({
     view === 'store' ||
     view === 'schema' ||
     view === 'language';
+  const isServerConnected = serverConnState.autoSyncEnabled;
+  const isConnectSplitView = view === 'connect-server' && !isServerConnected;
   const topTitle =
     view === 'google-account'
       ? t.menu.googleAccount
@@ -279,10 +320,22 @@ export function DesktopAccountMenu({
             shouldReduceMotion
               ? { opacity: 1 }
               : {
-                  width: isExpandedPanelView ? '50%' : '25%',
+                  width: isConnectSplitView
+                    ? '100%'
+                    : isExpandedPanelView
+                      ? '50%'
+                      : '25%',
                   opacity: 1,
-                  borderTopLeftRadius: isExpandedPanelView ? 28 : 0,
-                  borderBottomLeftRadius: isExpandedPanelView ? 28 : 0,
+                  borderTopLeftRadius: isConnectSplitView
+                    ? 0
+                    : isExpandedPanelView
+                      ? 28
+                      : 0,
+                  borderBottomLeftRadius: isConnectSplitView
+                    ? 0
+                    : isExpandedPanelView
+                      ? 28
+                      : 0,
                 }
           }
           exit={
@@ -624,13 +677,27 @@ export function DesktopAccountMenu({
                   animate={{ opacity: 1, x: 0 }}
                   exit={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
                   transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  className="flex-1 min-h-0 bg-white flex flex-col"
+                  className={`flex-1 min-h-0 bg-white ${
+                    isConnectSplitView
+                      ? 'grid grid-cols-2 divide-x divide-slate-200/80'
+                      : 'flex flex-col'
+                  }`}
                 >
-                  <ConnectServerView
-                    userId={user.id}
-                    services={services}
-                    variant="desktop"
-                  />
+                  {isConnectSplitView && (
+                    <div className="min-h-0 min-w-0 flex flex-col bg-white">
+                      <QuickServerCodeViewer
+                        secretKey={serverConnState.secretKey}
+                        variant="desktop"
+                      />
+                    </div>
+                  )}
+                  <div className="min-h-0 min-w-0 flex flex-col bg-white">
+                    <ConnectServerView
+                      userId={user.id}
+                      services={services}
+                      variant="desktop"
+                    />
+                  </div>
                 </motion.div>
               ) : view === 'store' && selectedStoreService ? (
                 <motion.div

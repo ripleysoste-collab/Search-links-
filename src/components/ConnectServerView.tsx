@@ -17,12 +17,14 @@ interface ConnectServerViewProps {
   userId: string;
   services: OrganizationServiceItem[];
   variant: 'desktop' | 'mobile';
+  onOpenQuickServer?: () => void;
 }
 
 export function ConnectServerView({
   userId,
   services,
   variant,
+  onOpenQuickServer,
 }: ConnectServerViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
@@ -569,6 +571,38 @@ export function ConnectServerView({
           </p>
         )}
       </div>
+
+      {/* Minimal skeletal swipe cue on mobile right above Sincronizar before server connection */}
+      {variant === 'mobile' && !isConnected && onOpenQuickServer && (
+        <div className="mt-auto pt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={onOpenQuickServer}
+            aria-label={t.connectServer.swipeToQuickServerAria}
+            className="group min-h-[44px] min-w-[44px] inline-flex items-center gap-2 py-2 px-2 text-slate-400 hover:text-slate-700 active:opacity-70 transition-colors cursor-pointer focus-visible:outline-none focus-visible:text-slate-900"
+          >
+            <span className="text-[11px] font-medium tracking-tight whitespace-nowrap">
+              {t.connectServer.swipeHintLabel}
+            </span>
+            <span className="w-6 h-6 rounded-full border border-slate-300/85 group-hover:border-slate-400 flex items-center justify-center transition-colors shrink-0">
+              <svg
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+                className="w-3 h-3"
+              >
+                <path
+                  d="M2.5 8H13M9.5 4.5L13 8L9.5 11.5"
+                  stroke="currentColor"
+                  strokeWidth="1.25"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Bottom CTA & Inline Confirmations */}
       <div className="pt-4 border-t border-slate-200/75 shrink-0 space-y-3.5">

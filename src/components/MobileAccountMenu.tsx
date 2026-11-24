@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
-import { ArrowLeft, Calendar, Check, ChevronDown, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Calendar,
+  Check,
+  ChevronDown,
+  Copy,
+  FileArchive,
+  Loader2,
+  Mail,
+  User as UserIcon,
+  X,
+} from 'lucide-react';
 import type {
   OrganizationProfile,
   OrganizationServiceItem,
@@ -9,8 +20,19 @@ import type {
 import { MobileOrganizationView } from './MobileOrganizationView';
 import { MobileStoreView } from './MobileStoreView';
 import { ConnectServerView } from './ConnectServerView';
+import { QuickServerCodeViewer } from './QuickServerCodeViewer';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
+import {
+  AGENCY_SYNC_UPDATED_EVENT,
+  hydrateAgencyConnectionFromCloud,
+  loadAgencyConnectionState,
+  type AgencyConnectionState,
+} from '../lib/agencySyncClient';
+import {
+  buildQuickServerFiles,
+  downloadQuickServerZip,
+} from '../lib/quickServerTemplate';
 import {
   buildSchemaInputFromService,
   buildServiceOpenApiSchemaJson,
@@ -154,6 +176,20 @@ export function MobileAccountMenu({
   const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
     null,
   );
+  const [serverConnState, setServerConnState] = useState<AgencyConnectionState>(() =>
+    loadAgencyConnectionState(user.id),
+  );
+  const [connectServerPage, setConnectServerPage] = useState<0 | 1>(0);
+  const [quickServerFileId, setQuickServerFileId] = useState('server');
+  const [quickServerCopied, setQuickServerCopied] = useState(false);
+  const swipeTouchRef = useRef<{
+    startX: number;
+    startY: number;
+    lockedAxis: 'x' | 'y' | null;
+    blocked: boolean;
+  } | null>(null);
+
+  const isServerConnected = serverConnState.autoSyncEnabled;
 
   const info = getUserDisplayInfo(
     user,
@@ -186,9 +222,60 @@ export function MobileAccountMenu({
     [activeSchemaInput],
   );
 
+  const quickServerFiles = useMemo(
+    () => buildQuickServerFiles(serverConnState.secretKey),
+    [serverConnState.secretKey],
+  );
+
+  const activeQuickServerFile = useMemo(
+    () =>
+      quickServerFiles.find((file) => file.id === quickServerFileId) ??
+      quickServerFiles[0],
+    [quickServerFiles, quickServerFileId],
+  );
+
   useEffect(() => {
     setImgFailed(false);
   }, [info.photoUrl]);
+
+  useEffect(() => {
+    setServerConnState(loadAgencyConnectionState(user.id));
+    const handleSyncUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ userId?: string; state?: AgencyConnectionState }>
+      ).detail;
+      if (detail?.userId === user.id && detail.state) {
+        setServerConnState(detail.state);
+      }
+    };
+    window.addEventListener(AGENCY_SYNC_UPDATED_EVENT, handleSyncUpdated);
+    return () =>
+      window.removeEventListener(AGENCY_SYNC_UPDATED_EVENT, handleSyncUpdated);
+  }, [user.id]);
+
+  useEffect(() => {
+    if (!connectServerModalOpen) {
+      setConnectServerPage(0);
+      setQuickServerCopied(false);
+      return;
+    }
+    setServerConnState(loadAgencyConnectionState(user.id));
+    let active = true;
+    void hydrateAgencyConnectionFromCloud(user.id).then((cloudState) => {
+      if (active && cloudState) {
+        setServerConnState(cloudState);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [connectServerModalOpen, user.id]);
+
+  useEffect(() => {
+    if (isServerConnected) {
+      setConnectServerPage(0);
+    }
+  }, [isServerConnected]);
 
   useEffect(() => {
     if (!panelOpen) {
@@ -211,6 +298,69 @@ export function MobileAccountMenu({
       setSignOutError(null);
     }
   }, [accountModalOpen]);
+
+  const handleCopyQuickServerFile = async () => {
+    if (!activeQuickServerFile) return;
+    try {
+      await navigator.clipboard.writeText(activeQuickServerFile.code);
+      setQuickServerCopied(true);
+      window.setTimeout(() => setQuickServerCopied(false), 1600);
+    } catch {
+      setQuickServerCopied(false);
+    }
+  };
+
+  const handleConnectTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (isServerConnected || event.touches.length !== 1) {
+      swipeTouchRef.current = null;
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    const insideNoSwipe = Boolean(target?.closest('[data-no-page-swipe="true"]'));
+    const codeScroller = target?.closest('[data-code-scroller="true"]') as
+      | HTMLElement
+      | null;
+    const scrollerNotAtLeft = Boolean(
+      connectServerPage === 1 && codeScroller && codeScroller.scrollLeft > 4,
+    );
+
+    swipeTouchRef.current = {
+      startX: event.touches[0].clientX,
+      startY: event.touches[0].clientY,
+      lockedAxis: null,
+      blocked: insideNoSwipe || scrollerNotAtLeft,
+    };
+  };
+
+  const handleConnectTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const tracker = swipeTouchRef.current;
+    if (!tracker || tracker.blocked || isServerConnected || event.touches.length !== 1) {
+      return;
+    }
+    const dx = event.touches[0].clientX - tracker.startX;
+    const dy = event.touches[0].clientY - tracker.startY;
+
+    if (!tracker.lockedAxis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+      tracker.lockedAxis = Math.abs(dx) > Math.abs(dy) * 1.25 ? 'x' : 'y';
+    }
+  };
+
+  const handleConnectTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const tracker = swipeTouchRef.current;
+    swipeTouchRef.current = null;
+    if (!tracker || tracker.blocked || isServerConnected) return;
+    if (tracker.lockedAxis !== 'x') return;
+
+    const endTouch = event.changedTouches[0];
+    if (!endTouch) return;
+    const dx = endTouch.clientX - tracker.startX;
+
+    if (connectServerPage === 0 && dx < -48) {
+      setConnectServerPage(1);
+    } else if (connectServerPage === 1 && dx > 48) {
+      setConnectServerPage(0);
+    }
+  };
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -780,13 +930,17 @@ export function MobileAccountMenu({
         )}
       </AnimatePresence>
 
-      {/* 3b. Mobile full-screen white Conecta tu servidor view */}
+      {/* 3b. Mobile full-screen white Conecta tu servidor + swipeable Rápido y ejecutable */}
       <AnimatePresence>
         {connectServerModalOpen && (
           <motion.section
             role="dialog"
             aria-modal="true"
-            aria-label={t.connectServer.title}
+            aria-label={
+              connectServerPage === 1 && !isServerConnected
+                ? t.connectServer.quickServerTitle
+                : t.connectServer.title
+            }
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
             exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
@@ -794,25 +948,116 @@ export function MobileAccountMenu({
             className="fixed inset-0 z-50 lg:hidden bg-white flex flex-col"
           >
             <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
-              <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
-                {t.connectServer.title}
-              </span>
+              <div className="flex items-center gap-2 min-w-0">
+                {connectServerPage === 1 && !isServerConnected && (
+                  <button
+                    type="button"
+                    onClick={() => setConnectServerPage(0)}
+                    aria-label={t.connectServer.backToConnectServerAria}
+                    className="w-8 h-8 -ml-1 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-950 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+                  >
+                    <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                )}
+                <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                  {connectServerPage === 1 && !isServerConnected
+                    ? t.connectServer.quickServerTitle
+                    : t.connectServer.title}
+                </span>
+              </div>
 
-              <button
-                type="button"
-                onClick={onCloseConnectServerModal}
-                aria-label={t.menu.closeConnectServerAria}
-                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-4.5 h-4.5" aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {connectServerPage === 1 && !isServerConnected && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyQuickServerFile()}
+                      aria-label={t.connectServer.copyQuickServerFileAria}
+                      title={quickServerCopied ? t.common.copied : t.common.copy}
+                      className="w-8 h-8 rounded-full bg-transparent flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/80 transition-colors cursor-pointer"
+                    >
+                      {quickServerCopied ? (
+                        <Check
+                          className="w-4 h-4 text-emerald-600 stroke-[2.5]"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Copy className="w-4 h-4" aria-hidden="true" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        downloadQuickServerZip(serverConnState.secretKey)
+                      }
+                      aria-label={t.connectServer.downloadQuickServerZipAria}
+                      title={t.connectServer.downloadQuickServerZipTitle}
+                      className="w-8 h-8 rounded-full bg-transparent flex items-center justify-center text-slate-500 hover:text-slate-950 hover:bg-slate-100/80 transition-colors cursor-pointer"
+                    >
+                      <FileArchive className="w-4 h-4" aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onCloseConnectServerModal}
+                  aria-label={t.menu.closeConnectServerAria}
+                  className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-4.5 h-4.5" aria-hidden="true" />
+                </button>
+              </div>
             </header>
 
-            <ConnectServerView
-              userId={user.id}
-              services={services}
-              variant="mobile"
-            />
+            <div
+              onTouchStart={handleConnectTouchStart}
+              onTouchMove={handleConnectTouchMove}
+              onTouchEnd={handleConnectTouchEnd}
+              className="flex-1 min-h-0 overflow-hidden flex flex-col"
+            >
+              <motion.div
+                initial={false}
+                animate={{
+                  x: connectServerPage === 1 && !isServerConnected ? '-50%' : '0%',
+                }}
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0 }
+                    : { duration: 0.28, ease: [0.22, 1, 0.36, 1] }
+                }
+                className="w-[200%] flex-1 min-h-0 flex"
+              >
+                <div className="w-1/2 h-full min-h-0 flex flex-col shrink-0">
+                  <ConnectServerView
+                    userId={user.id}
+                    services={services}
+                    variant="mobile"
+                    onOpenQuickServer={
+                      isServerConnected
+                        ? undefined
+                        : () => setConnectServerPage(1)
+                    }
+                  />
+                </div>
+
+                <div className="w-1/2 h-full min-h-0 flex flex-col shrink-0 bg-white">
+                  {!isServerConnected && (
+                    <QuickServerCodeViewer
+                      secretKey={serverConnState.secretKey}
+                      variant="mobile"
+                      hideHeader
+                      activeFileId={quickServerFileId}
+                      onSelectFileId={(fileId) => {
+                        setQuickServerFileId(fileId);
+                        setQuickServerCopied(false);
+                      }}
+                    />
+                  )}
+                </div>
+              </motion.div>
+            </div>
           </motion.section>
         )}
       </AnimatePresence>

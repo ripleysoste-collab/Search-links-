@@ -443,6 +443,14 @@ export interface TranslationDictionary {
     disconnectConfirmInputAria: string;
     disconnectSuccess: string;
     disconnectNetworkError: string;
+    quickServerTitle: string;
+    quickServerFilesAria: string;
+    downloadQuickServerZipAria: string;
+    downloadQuickServerZipTitle: string;
+    copyQuickServerFileAria: string;
+    swipeHintLabel: string;
+    swipeToQuickServerAria: string;
+    backToConnectServerAria: string;
   };
   advancedSettings: {
     title: string;
@@ -1034,6 +1042,14 @@ const ES_DICTIONARY: TranslationDictionary = {
       'Servidor desconectado. Las peticiones ahora se procesan nuevamente en Search Link.',
     disconnectNetworkError:
       'No pudimos conectar con Search Link para desconectar tu servidor.',
+    quickServerTitle: 'Rápido y ejecutable',
+    quickServerFilesAria: 'Archivos del servidor Rápido y ejecutable',
+    downloadQuickServerZipAria: 'Descargar servidor Rápido y ejecutable en ZIP',
+    downloadQuickServerZipTitle: 'Descargar ZIP',
+    copyQuickServerFileAria: 'Copiar código de este archivo',
+    swipeHintLabel: 'Desliza',
+    swipeToQuickServerAria: 'Desliza para ver el código de Rápido y ejecutable',
+    backToConnectServerAria: 'Volver a Conecta tu servidor',
   },
   advancedSettings: {
     title: 'Ajustes avanzados',
@@ -1639,6 +1655,14 @@ const EN_DICTIONARY: TranslationDictionary = {
       'Server disconnected. Requests are now handled again by Search Link.',
     disconnectNetworkError:
       'Could not reach Search Link to disconnect your server.',
+    quickServerTitle: 'Quick & Runnable',
+    quickServerFilesAria: 'Quick & Runnable server files',
+    downloadQuickServerZipAria: 'Download Quick & Runnable server ZIP',
+    downloadQuickServerZipTitle: 'Download ZIP',
+    copyQuickServerFileAria: 'Copy file source code',
+    swipeHintLabel: 'Swipe',
+    swipeToQuickServerAria: 'Swipe to view Quick & Runnable server code',
+    backToConnectServerAria: 'Back to Connect your server',
   },
   advancedSettings: {
     title: 'Advanced settings',
@@ -2246,6 +2270,14 @@ const PT_DICTIONARY: TranslationDictionary = {
       'Servidor desconectado. As requisições agora voltam a ser processadas pelo Search Link.',
     disconnectNetworkError:
       'Não foi possível conectar ao Search Link para desconectar seu servidor.',
+    quickServerTitle: 'Rápido e executável',
+    quickServerFilesAria: 'Arquivos do servidor Rápido e executável',
+    downloadQuickServerZipAria: 'Baixar servidor Rápido e executável em ZIP',
+    downloadQuickServerZipTitle: 'Baixar ZIP',
+    copyQuickServerFileAria: 'Copiar código deste arquivo',
+    swipeHintLabel: 'Deslize',
+    swipeToQuickServerAria: 'Deslize para ver o código de Rápido e executável',
+    backToConnectServerAria: 'Voltar para Conecte seu servidor',
   },
   advancedSettings: {
     title: 'Configurações avançadas',
