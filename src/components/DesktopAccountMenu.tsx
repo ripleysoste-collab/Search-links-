@@ -12,6 +12,7 @@ import { DesktopStoreView } from './DesktopStoreView';
 import { ConnectServerView } from './ConnectServerView';
 import { QuickServerCodeViewer } from './QuickServerCodeViewer';
 import { ServerTestView } from './ServerTestView';
+import { ServerSecretHelpView } from './ServerSecretHelpView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -146,6 +147,7 @@ export function DesktopAccountMenu({
     loadAgencyConnectionState(user.id),
   );
   const [isTestingServer, setIsTestingServer] = useState(false);
+  const [isHelpingSecret, setIsHelpingSecret] = useState(false);
 
   const info = getUserDisplayInfo(
     user,
@@ -191,6 +193,9 @@ export function DesktopAccountMenu({
     if (!open || view !== 'connect-server' || !serverConnState.autoSyncEnabled) {
       setIsTestingServer(false);
     }
+    if (!open || view !== 'connect-server') {
+      setIsHelpingSecret(false);
+    }
   }, [open, view, serverConnState.autoSyncEnabled]);
 
   useEffect(() => {
@@ -204,6 +209,7 @@ export function DesktopAccountMenu({
       setSigningOut(false);
       setSignOutError(null);
       setIsTestingServer(false);
+      setIsHelpingSecret(false);
     }
   }, [open]);
 
@@ -269,6 +275,8 @@ export function DesktopAccountMenu({
   const isConnectSplitView = view === 'connect-server' && !isServerConnected;
   const isDesktopServerTestActive =
     view === 'connect-server' && isServerConnected && isTestingServer;
+  const isDesktopSecretHelpActive =
+    view === 'connect-server' && isHelpingSecret && !isDesktopServerTestActive;
   const topTitle =
     view === 'google-account'
       ? t.menu.googleAccount
@@ -424,36 +432,40 @@ export function DesktopAccountMenu({
             ) : (
               <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-200/75 shrink-0">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  {isExpandedPanelView && !isDesktopServerTestActive && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmSignOut(false);
-                        setSignOutError(null);
-                        setView(
+                  {isExpandedPanelView &&
+                    !isDesktopServerTestActive &&
+                    !isDesktopSecretHelpActive && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmSignOut(false);
+                          setSignOutError(null);
+                          setView(
+                            view === 'store'
+                              ? 'organization'
+                              : view === 'advanced-settings'
+                                ? 'google-account'
+                                : 'menu',
+                          );
+                        }}
+                        aria-label={
                           view === 'store'
-                            ? 'organization'
+                            ? t.menu.backToOrgAria
                             : view === 'advanced-settings'
-                              ? 'google-account'
-                              : 'menu',
-                        );
-                      }}
-                      aria-label={
-                        view === 'store'
-                          ? t.menu.backToOrgAria
-                          : view === 'advanced-settings'
-                            ? t.menu.backToGoogleAccountAria
-                            : t.menu.backToMenuAria
-                      }
-                      className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
-                    >
-                      <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-                    </button>
-                  )}
+                              ? t.menu.backToGoogleAccountAria
+                              : t.menu.backToMenuAria
+                        }
+                        className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
+                      >
+                        <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    )}
                   <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
                     {isDesktopServerTestActive
                       ? t.connectServer.testServerTitle
-                      : topTitle}
+                      : isDesktopSecretHelpActive
+                        ? t.connectServer.secretHelpTitle
+                        : topTitle}
                   </span>
                 </div>
 
@@ -462,6 +474,8 @@ export function DesktopAccountMenu({
                   onClick={() => {
                     if (isDesktopServerTestActive) {
                       setIsTestingServer(false);
+                    } else if (isDesktopSecretHelpActive) {
+                      setIsHelpingSecret(false);
                     } else {
                       onClose();
                     }
@@ -469,7 +483,9 @@ export function DesktopAccountMenu({
                   aria-label={
                     isDesktopServerTestActive
                       ? t.connectServer.testCloseAria
-                      : t.menu.closeMenuAria
+                      : isDesktopSecretHelpActive
+                        ? t.connectServer.secretHelpCloseAria
+                        : t.menu.closeMenuAria
                   }
                   className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
                 >
@@ -731,16 +747,27 @@ export function DesktopAccountMenu({
                       </div>
                     )}
                     <div className="min-h-0 min-w-0 flex flex-col bg-white">
-                      <ConnectServerView
-                        userId={user.id}
-                        services={services}
-                        variant="desktop"
-                        onOpenServerTest={
-                          isServerConnected
-                            ? () => setIsTestingServer(true)
-                            : undefined
-                        }
-                      />
+                      {isDesktopSecretHelpActive ? (
+                        <ServerSecretHelpView
+                          secretKey={serverConnState.secretKey}
+                          variant="desktop"
+                        />
+                      ) : (
+                        <ConnectServerView
+                          userId={user.id}
+                          services={services}
+                          variant="desktop"
+                          onOpenServerTest={
+                            isServerConnected
+                              ? () => {
+                                  setIsHelpingSecret(false);
+                                  setIsTestingServer(true);
+                                }
+                              : undefined
+                          }
+                          onOpenSecretHelp={() => setIsHelpingSecret(true)}
+                        />
+                      )}
                     </div>
                   </motion.div>
                 )

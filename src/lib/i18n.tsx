@@ -419,12 +419,32 @@ export interface TranslationDictionary {
     chooseServiceMenuAria: string;
     allServicesSelected: string;
     syncAllOption: string;
+    newServicesSelected: string;
+    syncNewServicesOption: string;
     noServicesHint: string;
     secretKeyLabel: string;
     secretKeyAria: string;
     showSecretAria: string;
     hideSecretAria: string;
     copySecretAria: string;
+    secretHelpTrigger: string;
+    secretHelpTitle: string;
+    secretHelpCloseAria: string;
+    secretHelpWhyTitle: string;
+    secretHelpWhyBody: string;
+    secretHelpVarRuleTitle: string;
+    secretHelpVarRuleBody: string;
+    secretHelpVarNameLabel: string;
+    secretHelpVarValueLabel: string;
+    secretHelpCopyVarAria: string;
+    secretHelpProvidersTitle: string;
+    secretHelpProviders: Array<{
+      id: string;
+      name: string;
+      steps: string[];
+    }>;
+    secretHelpFinalStepTitle: string;
+    secretHelpFinalStepBody: string;
     syncAction: string;
     syncingAction: string;
     validationUrlRequired: string;
@@ -433,6 +453,7 @@ export interface TranslationDictionary {
     noServicesToSync: string;
     authRequired: string;
     syncSuccess: (services: number, products: number, durationMs: number) => string;
+    syncNewServicesSuccess: (durationMs: number) => string;
     syncNetworkError: string;
     syncLiabilityConfirmText: string;
     disconnectAction: string;
@@ -1023,21 +1044,91 @@ const ES_DICTIONARY: TranslationDictionary = {
     chooseServiceMenuAria: 'Seleccionar servicio para sincronizar',
     allServicesSelected: 'Todos tus servicios',
     syncAllOption: 'Sincronizar todos',
+    newServicesSelected: 'Nuevos servicios',
+    syncNewServicesOption: 'Nuevos servicios',
     noServicesHint: 'Todavía no tienes servicios creados',
     secretKeyLabel: 'Clave secreta',
     secretKeyAria: 'Clave secreta del servidor',
     showSecretAria: 'Ver clave secreta',
     hideSecretAria: 'Ocultar clave secreta',
     copySecretAria: 'Copiar clave secreta',
+    secretHelpTrigger: '¿No sabes qué hacer? Ayuda',
+    secretHelpTitle: 'Cómo conectar con tu clave secreta',
+    secretHelpCloseAria: 'Cerrar guía de clave secreta',
+    secretHelpWhyTitle: '¿Para qué sirve esta clave secreta?',
+    secretHelpWhyBody:
+      'Es la contraseña privada entre tu cuenta de Search Link y tu servidor propio. Cada vez que Search Link envía tus productos, firma el envío con esta clave para que tu servidor confirme que los datos son auténticos y bloquee peticiones de desconocidos.',
+    secretHelpVarRuleTitle: 'Qué debes configurar en tu servidor',
+    secretHelpVarRuleBody:
+      'En casi cualquier plataforma de servidores el proceso es el mismo: crea una variable de entorno con el nombre exacto de abajo y pega tu clave secreta como valor.',
+    secretHelpVarNameLabel: 'Nombre de la variable',
+    secretHelpVarValueLabel: 'Valor (tu clave secreta)',
+    secretHelpCopyVarAria: 'Copiar nombre de variable SEARCHLINK_WEBHOOK_SECRET',
+    secretHelpProvidersTitle: 'Guía rápida según tu proveedor',
+    secretHelpProviders: [
+      {
+        id: 'render',
+        name: 'Render',
+        steps: [
+          'Abre tu Web Service en Render (puedes subir el código de Rápido y ejecutable).',
+          'En Build Command deja npm install o vacío, y en Start Command escribe npm start.',
+          'Entra a Environment → Environment Variables → Add Environment Variable.',
+          'En Key pon SEARCHLINK_WEBHOOK_SECRET y en Value pega tu clave secreta.',
+          'Guarda los cambios y espera a que Render termine el deploy en verde.',
+        ],
+      },
+      {
+        id: 'cloudflare',
+        name: 'Cloudflare',
+        steps: [
+          'Abre tu proyecto en Cloudflare Workers o Pages desde el panel principal.',
+          'Ve a Settings → Variables and Secrets → Add.',
+          'Elige el tipo Secret, pon como nombre SEARCHLINK_WEBHOOK_SECRET y pega tu clave secreta.',
+          'Guarda y vuelve a desplegar tu Worker para que tome el secreto activo.',
+        ],
+      },
+      {
+        id: 'railway',
+        name: 'Railway / Fly.io',
+        steps: [
+          'Selecciona tu servicio dentro de tu proyecto y abre la pestaña Variables.',
+          'Agrega una variable nueva llamada SEARCHLINK_WEBHOOK_SECRET.',
+          'Pega tu clave secreta como valor y guarda; el servicio se reiniciará automático.',
+        ],
+      },
+      {
+        id: 'vercel',
+        name: 'Vercel',
+        steps: [
+          'Entra a tu proyecto en Vercel y abre Settings → Environment Variables.',
+          'En Name escribe SEARCHLINK_WEBHOOK_SECRET y en Value pega tu clave secreta.',
+          'Guarda la variable y ejecuta un Redeploy para aplicarla en producción.',
+        ],
+      },
+      {
+        id: 'vps',
+        name: 'VPS / Servidor propio',
+        steps: [
+          'En la carpeta del servidor, crea o edita el archivo .env junto a server.mjs.',
+          'Agrega la línea SEARCHLINK_WEBHOOK_SECRET=tu_clave_secreta y guarda el archivo.',
+          'Ejecuta npm start (o reinicia PM2/Docker) para cargar la variable en memoria.',
+        ],
+      },
+    ],
+    secretHelpFinalStepTitle: 'Último paso: pegar la URL y sincronizar',
+    secretHelpFinalStepBody:
+      'Cuando tu servidor esté encendido con esa variable guardada, copia su enlace webhook (por ejemplo https://tu-servidor.onrender.com/webhook), vuelve aquí, pégalo en el campo de URL, escoge qué servicios enviar y toca Sincronizar.',
     syncAction: 'Sincronizar',
     syncingAction: 'Sincronizando…',
     validationUrlRequired: 'Pega primero la URL de tu servidor.',
     validationUrlInvalid: 'Ingresa una URL válida con http:// o https://.',
-    validationServiceRequired: 'Escoge un servicio o "Sincronizar todos".',
+    validationServiceRequired: 'Escoge un servicio, "Sincronizar todos" o "Nuevos servicios".',
     noServicesToSync: 'Todavía no tienes servicios para sincronizar.',
     authRequired: 'Inicia sesión nuevamente para sincronizar.',
     syncSuccess: (srv, prod, ms) =>
       `Sincronizado: ${srv} ${srv === 1 ? 'servicio' : 'servicios'} (${prod} ${prod === 1 ? 'producto' : 'productos'}) en ${ms} ms.`,
+    syncNewServicesSuccess: (ms) =>
+      `Conectado en modo Nuevos servicios en ${ms} ms. Cada nuevo servicio que crees se enviará automáticamente.`,
     syncNetworkError: 'No pudimos conectar con Search Link para enviar la sincronización.',
     syncLiabilityConfirmText:
       'Al aceptar, confirmas que toda la responsabilidad por disponibilidad, caídas, seguridad y clientes atendidos recae únicamente sobre tu servidor bajo cualquier circunstancia.',
@@ -1648,21 +1739,91 @@ const EN_DICTIONARY: TranslationDictionary = {
     chooseServiceMenuAria: 'Select service to sync',
     allServicesSelected: 'All your services',
     syncAllOption: 'Sync all',
+    newServicesSelected: 'New services',
+    syncNewServicesOption: 'New services',
     noServicesHint: 'You do not have any services yet',
     secretKeyLabel: 'Secret key',
     secretKeyAria: 'Server secret key',
     showSecretAria: 'Show secret key',
     hideSecretAria: 'Hide secret key',
     copySecretAria: 'Copy secret key',
+    secretHelpTrigger: "Don't know what to do? Help",
+    secretHelpTitle: 'How to connect with your secret key',
+    secretHelpCloseAria: 'Close secret key guide',
+    secretHelpWhyTitle: 'What is this secret key for?',
+    secretHelpWhyBody:
+      'It is a private password shared only between Search Link and your server. Every time Search Link sends catalog updates, it signs the request with this key so your server can verify it came from your account and block strangers.',
+    secretHelpVarRuleTitle: 'What to set on your server',
+    secretHelpVarRuleBody:
+      'On almost every server host the setup is identical: create one environment variable with the exact name below and paste your secret key as its value.',
+    secretHelpVarNameLabel: 'Variable name',
+    secretHelpVarValueLabel: 'Value (your secret key)',
+    secretHelpCopyVarAria: 'Copy variable name SEARCHLINK_WEBHOOK_SECRET',
+    secretHelpProvidersTitle: 'Quick setup by hosting provider',
+    secretHelpProviders: [
+      {
+        id: 'render',
+        name: 'Render',
+        steps: [
+          'Open your Web Service in Render (you can upload the Quick & Runnable code).',
+          'Leave Build Command empty or npm install, and set Start Command to npm start.',
+          'Go to Environment → Environment Variables → Add Environment Variable.',
+          'Set Key to SEARCHLINK_WEBHOOK_SECRET and paste your secret key as Value.',
+          'Save changes and wait until Render finishes deploying.',
+        ],
+      },
+      {
+        id: 'cloudflare',
+        name: 'Cloudflare',
+        steps: [
+          'Open your project in Cloudflare Workers or Pages from your dashboard.',
+          'Go to Settings → Variables and Secrets → Add.',
+          'Choose Secret type, name it SEARCHLINK_WEBHOOK_SECRET, and paste your secret key.',
+          'Save and redeploy your Worker so the active secret takes effect.',
+        ],
+      },
+      {
+        id: 'railway',
+        name: 'Railway / Fly.io',
+        steps: [
+          'Select your service inside the project and open the Variables tab.',
+          'Create a new variable named SEARCHLINK_WEBHOOK_SECRET.',
+          'Paste your secret key as the value and save; the server restarts automatically.',
+        ],
+      },
+      {
+        id: 'vercel',
+        name: 'Vercel',
+        steps: [
+          'Open your Vercel project and go to Settings → Environment Variables.',
+          'Enter SEARCHLINK_WEBHOOK_SECRET as Name and paste your secret key in Value.',
+          'Save the variable and trigger a Redeploy for production.',
+        ],
+      },
+      {
+        id: 'vps',
+        name: 'VPS / Self-hosted',
+        steps: [
+          'Inside your server folder, create or edit the .env file next to server.mjs.',
+          'Add SEARCHLINK_WEBHOOK_SECRET=your_secret_key and save the file.',
+          'Run npm start (or restart PM2/Docker) so the server loads the variable.',
+        ],
+      },
+    ],
+    secretHelpFinalStepTitle: 'Final step: paste your URL and sync',
+    secretHelpFinalStepBody:
+      'Once your server is live with that variable saved, copy its webhook URL (for example https://your-server.onrender.com/webhook), return here, paste it in the URL box, choose which services to sync, and tap Sync.',
     syncAction: 'Sync',
     syncingAction: 'Syncing…',
     validationUrlRequired: 'Paste your server URL first.',
     validationUrlInvalid: 'Enter a valid URL starting with http:// or https://.',
-    validationServiceRequired: 'Choose a service or "Sync all".',
+    validationServiceRequired: 'Choose a service, "Sync all", or "New services".',
     noServicesToSync: 'You do not have any services to sync yet.',
     authRequired: 'Sign in again to sync.',
     syncSuccess: (srv, prod, ms) =>
       `Synced: ${srv} ${srv === 1 ? 'service' : 'services'} (${prod} ${prod === 1 ? 'product' : 'products'}) in ${ms} ms.`,
+    syncNewServicesSuccess: (ms) =>
+      `Connected in New services mode in ${ms} ms. Any new service you create will sync automatically.`,
     syncNetworkError: 'Could not reach Search Link to run the sync.',
     syncLiabilityConfirmText:
       'By accepting, you confirm that full responsibility for availability, downtime, security, and served clients rests solely with your server under any circumstances.',
@@ -2275,21 +2436,91 @@ const PT_DICTIONARY: TranslationDictionary = {
     chooseServiceMenuAria: 'Selecionar serviço para sincronizar',
     allServicesSelected: 'Todos os seus serviços',
     syncAllOption: 'Sincronizar todos',
+    newServicesSelected: 'Novos serviços',
+    syncNewServicesOption: 'Novos serviços',
     noServicesHint: 'Você ainda não tem serviços criados',
     secretKeyLabel: 'Chave secreta',
     secretKeyAria: 'Chave secreta do servidor',
     showSecretAria: 'Ver chave secreta',
     hideSecretAria: 'Ocultar chave secreta',
     copySecretAria: 'Copiar chave secreta',
+    secretHelpTrigger: 'Não sabe o que fazer? Ajuda',
+    secretHelpTitle: 'Como conectar com sua chave secreta',
+    secretHelpCloseAria: 'Fechar guia da chave secreta',
+    secretHelpWhyTitle: 'Para que serve esta chave secreta?',
+    secretHelpWhyBody:
+      'É a senha privada compartilhada apenas entre o Search Link e o seu servidor. Sempre que o Search Link envia atualizações, ele assina a requisição com essa chave para que o servidor confirme que veio da sua conta e bloqueie desconhecidos.',
+    secretHelpVarRuleTitle: 'O que você precisa configurar no servidor',
+    secretHelpVarRuleBody:
+      'Em quase todos os provedores o processo é igual: crie uma variável de ambiente com o nome exato abaixo e cole a sua chave secreta como valor.',
+    secretHelpVarNameLabel: 'Nome da variável',
+    secretHelpVarValueLabel: 'Valor (sua chave secreta)',
+    secretHelpCopyVarAria: 'Copiar nome da variável SEARCHLINK_WEBHOOK_SECRET',
+    secretHelpProvidersTitle: 'Guia rápido por provedor',
+    secretHelpProviders: [
+      {
+        id: 'render',
+        name: 'Render',
+        steps: [
+          'Abra seu Web Service no Render (você pode usar o código de Rápido e executável).',
+          'Deixe Build Command vazio ou npm install, e em Start Command coloque npm start.',
+          'Acesse Environment → Environment Variables → Add Environment Variable.',
+          'Em Key coloque SEARCHLINK_WEBHOOK_SECRET e em Value cole a sua chave secreta.',
+          'Salve as alterações e aguarde o deploy finalizar no Render.',
+        ],
+      },
+      {
+        id: 'cloudflare',
+        name: 'Cloudflare',
+        steps: [
+          'Abra seu projeto no Cloudflare Workers ou Pages pelo painel.',
+          'Acesse Settings → Variables and Secrets → Add.',
+          'Escolha o tipo Secret, nomeie como SEARCHLINK_WEBHOOK_SECRET e cole sua chave secreta.',
+          'Salve e faça um novo deploy do Worker para ativar o segredo.',
+        ],
+      },
+      {
+        id: 'railway',
+        name: 'Railway / Fly.io',
+        steps: [
+          'Selecione seu serviço no projeto e abra a aba Variables.',
+          'Adicione uma nova variável chamada SEARCHLINK_WEBHOOK_SECRET.',
+          'Cole a chave secreta como valor e salve; o serviço reinicia automaticamente.',
+        ],
+      },
+      {
+        id: 'vercel',
+        name: 'Vercel',
+        steps: [
+          'Abra seu projeto na Vercel e vá em Settings → Environment Variables.',
+          'Em Name digite SEARCHLINK_WEBHOOK_SECRET e em Value cole a sua chave secreta.',
+          'Salve a variável e faça um Redeploy para aplicar em produção.',
+        ],
+      },
+      {
+        id: 'vps',
+        name: 'VPS / Servidor próprio',
+        steps: [
+          'Na pasta do servidor, crie ou edite o arquivo .env ao lado de server.mjs.',
+          'Adicione a linha SEARCHLINK_WEBHOOK_SECRET=sua_chave_secreta e salve.',
+          'Execute npm start (ou reinicie o PM2/Docker) para carregar a variável.',
+        ],
+      },
+    ],
+    secretHelpFinalStepTitle: 'Último passo: colar a URL e sincronizar',
+    secretHelpFinalStepBody:
+      'Quando o servidor estiver no ar com essa variável salva, copie a URL do webhook (por exemplo https://seu-servidor.onrender.com/webhook), volte aqui, cole no campo URL, escolha quais serviços enviar e toque em Sincronizar.',
     syncAction: 'Sincronizar',
     syncingAction: 'Sincronizando…',
     validationUrlRequired: 'Cole primeiro a URL do seu servidor.',
     validationUrlInvalid: 'Informe uma URL válida com http:// ou https://.',
-    validationServiceRequired: 'Escolha um serviço ou "Sincronizar todos".',
+    validationServiceRequired: 'Escolha um serviço, "Sincronizar todos" ou "Novos serviços".',
     noServicesToSync: 'Você ainda não tem serviços para sincronizar.',
     authRequired: 'Entre novamente para sincronizar.',
     syncSuccess: (srv, prod, ms) =>
       `Sincronizado: ${srv} ${srv === 1 ? 'serviço' : 'serviços'} (${prod} ${prod === 1 ? 'produto' : 'produtos'}) em ${ms} ms.`,
+    syncNewServicesSuccess: (ms) =>
+      `Conectado no modo Novos serviços em ${ms} ms. Cada novo serviço criado será enviado automaticamente.`,
     syncNetworkError: 'Não foi possível conectar ao Search Link para sincronizar.',
     syncLiabilityConfirmText:
       'Ao aceitar, você confirma que toda a responsabilidade por disponibilidade, quedas, segurança e clientes atendidos recai exclusivamente sobre o seu servidor em qualquer circunstância.',

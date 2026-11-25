@@ -19,6 +19,7 @@ interface ConnectServerViewProps {
   variant: 'desktop' | 'mobile';
   onOpenQuickServer?: () => void;
   onOpenServerTest?: () => void;
+  onOpenSecretHelp?: () => void;
 }
 
 export function ConnectServerView({
@@ -27,6 +28,7 @@ export function ConnectServerView({
   variant,
   onOpenQuickServer,
   onOpenServerTest,
+  onOpenSecretHelp,
 }: ConnectServerViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
@@ -124,23 +126,33 @@ export function ConnectServerView({
   };
 
   const selectedService = useMemo(() => {
-    if (!connState.selectedScope || connState.selectedScope === 'all') return null;
+    if (
+      !connState.selectedScope ||
+      connState.selectedScope === 'all' ||
+      connState.selectedScope === 'new'
+    ) {
+      return null;
+    }
     return services.find((srv) => srv.id === connState.selectedScope) ?? null;
   }, [connState.selectedScope, services]);
 
   const effectiveScope =
     connState.selectedScope === 'all'
       ? 'all'
-      : selectedService
-        ? selectedService.id
-        : null;
+      : connState.selectedScope === 'new'
+        ? 'new'
+        : selectedService
+          ? selectedService.id
+          : null;
 
   const selectedServiceLabel =
     effectiveScope === 'all'
       ? t.connectServer.allServicesSelected
-      : selectedService
-        ? selectedService.name
-        : '';
+      : effectiveScope === 'new'
+        ? t.connectServer.newServicesSelected
+        : selectedService
+          ? selectedService.name
+          : '';
 
   const handleCopySecret = async () => {
     if (!connState.secretKey) return;
@@ -174,7 +186,7 @@ export function ConnectServerView({
       setFormError(t.connectServer.validationServiceRequired);
       return null;
     }
-    if (services.length === 0) {
+    if (effectiveScope !== 'new' && services.length === 0) {
       setFormError(t.connectServer.noServicesToSync);
       return null;
     }
@@ -219,11 +231,13 @@ export function ConnectServerView({
 
       setPendingSyncConfirm(false);
       setSyncSuccessMessage(
-        t.connectServer.syncSuccess(
-          result.syncedServices ?? 1,
-          result.syncedProducts ?? 0,
-          result.durationMs ?? 1,
-        ),
+        valid.scope === 'new'
+          ? t.connectServer.syncNewServicesSuccess(result.durationMs ?? 1)
+          : t.connectServer.syncSuccess(
+              result.syncedServices ?? 1,
+              result.syncedProducts ?? 0,
+              result.durationMs ?? 1,
+            ),
       );
     } catch {
       setPendingSyncConfirm(false);
@@ -489,6 +503,35 @@ export function ConnectServerView({
                       )}
                     </button>
                   </li>
+
+                  <li>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        updateConnectionDraft({ selectedScope: 'new' });
+                        setServiceMenuOpen(false);
+                        if (formError) setFormError(null);
+                        if (syncSuccessMessage) setSyncSuccessMessage(null);
+                        if (pendingSyncConfirm) setPendingSyncConfirm(false);
+                      }}
+                      className={`w-full px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${
+                        effectiveScope === 'new'
+                          ? 'bg-slate-50 text-slate-950'
+                          : 'text-slate-900 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="text-xs font-semibold">
+                        {t.connectServer.syncNewServicesOption}
+                      </span>
+                      {effectiveScope === 'new' && (
+                        <Check
+                          className="w-3.5 h-3.5 text-slate-900 shrink-0"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </button>
+                  </li>
                 </ul>
               </motion.div>
             )}
@@ -555,6 +598,20 @@ export function ConnectServerView({
               )}
             </button>
           </div>
+
+          {onOpenSecretHelp && (
+            <div className="mt-1.5">
+              <button
+                type="button"
+                onClick={onOpenSecretHelp}
+                className={`text-[11.5px] font-medium text-emerald-600 hover:text-emerald-700 hover:underline transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline ${
+                  variant === 'mobile' ? 'min-h-[36px] py-1 px-0.5' : 'py-0.5'
+                }`}
+              >
+                {t.connectServer.secretHelpTrigger}
+              </button>
+            </div>
+          )}
         </div>
 
         {formError && (

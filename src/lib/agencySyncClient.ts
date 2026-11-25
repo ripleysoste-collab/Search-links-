@@ -16,6 +16,8 @@ export interface AgencyConnectionState {
   selectedScope: string | null;
   secretKey: string;
   autoSyncEnabled: boolean;
+  connectedAt: string | null;
+  trackedNewServiceIds: string[];
   lastSyncedAt: string | null;
   lastTriggerEvent: AgencySyncTriggerEvent | null;
 }
@@ -42,6 +44,8 @@ export function loadAgencyConnectionState(userId: string): AgencyConnectionState
     selectedScope: null,
     secretKey: generateAgencySecretKey(),
     autoSyncEnabled: false,
+    connectedAt: null,
+    trackedNewServiceIds: [],
     lastSyncedAt: null,
     lastTriggerEvent: null,
   };
@@ -62,12 +66,21 @@ export function loadAgencyConnectionState(userId: string): AgencyConnectionState
         ? parsed.secretKey
         : fallback.secretKey;
 
+    const trackedNewServiceIds = Array.isArray(parsed.trackedNewServiceIds)
+      ? parsed.trackedNewServiceIds.filter(
+          (id): id is string => typeof id === 'string' && id.trim().length > 0,
+        )
+      : [];
+
     return {
       serverUrl: typeof parsed.serverUrl === 'string' ? parsed.serverUrl : '',
       selectedScope:
         typeof parsed.selectedScope === 'string' ? parsed.selectedScope : null,
       secretKey,
       autoSyncEnabled: Boolean(parsed.autoSyncEnabled),
+      connectedAt:
+        typeof parsed.connectedAt === 'string' ? parsed.connectedAt : null,
+      trackedNewServiceIds,
       lastSyncedAt:
         typeof parsed.lastSyncedAt === 'string' ? parsed.lastSyncedAt : null,
       lastTriggerEvent:
@@ -132,12 +145,20 @@ export async function dispatchAgencyServerSync(input: {
     };
   }
 
-  const targetServices =
-    input.serviceScope === 'all'
-      ? input.services
-      : input.services.filter((srv) => srv.id === input.serviceScope);
+  const isNewScope = input.serviceScope === 'new';
+  const isManualNewHandshake = isNewScope && input.eventType === 'manual';
 
-  if (targetServices.length === 0) {
+  const targetServices = isManualNewHandshake
+    ? []
+    : isNewScope
+      ? input.changedServiceId
+        ? input.services.filter((srv) => srv.id === input.changedServiceId)
+        : []
+      : input.serviceScope === 'all'
+        ? input.services
+        : input.services.filter((srv) => srv.id === input.serviceScope);
+
+  if (!isManualNewHandshake && targetServices.length === 0) {
     return {
       ok: false,
       error: 'No hay servicios disponibles para sincronizar.',
@@ -193,6 +214,16 @@ export async function dispatchAgencyServerSync(input: {
 
   const syncedAt = data.syncedAt || new Date().toISOString();
   const prevState = loadAgencyConnectionState(input.userId);
+  const nextTrackedIds =
+    isNewScope &&
+    input.eventType === 'service.created' &&
+    input.changedServiceId &&
+    !prevState.trackedNewServiceIds.includes(input.changedServiceId)
+      ? [...prevState.trackedNewServiceIds, input.changedServiceId]
+      : input.eventType === 'manual'
+        ? []
+        : prevState.trackedNewServiceIds;
+
   saveAgencyConnectionState(
     input.userId,
     {
@@ -201,6 +232,11 @@ export async function dispatchAgencyServerSync(input: {
       selectedScope: input.serviceScope,
       secretKey: input.secretKey,
       autoSyncEnabled: true,
+      connectedAt:
+        input.eventType === 'manual'
+          ? syncedAt
+          : prevState.connectedAt || syncedAt,
+      trackedNewServiceIds: nextTrackedIds,
       lastSyncedAt: syncedAt,
       lastTriggerEvent: input.eventType,
     },
@@ -260,6 +296,8 @@ export async function dispatchAgencyServerDisconnect(
       selectedScope: null,
       secretKey: generateAgencySecretKey(),
       autoSyncEnabled: false,
+      connectedAt: null,
+      trackedNewServiceIds: [],
       lastSyncedAt: null,
       lastTriggerEvent: null,
     },
@@ -347,12 +385,40 @@ export async function triggerAgencyAutoSyncIfMatched(input: {
   }
 
   // Rule:
-  // - If user selected 'all' ("Sincronizar todos"), sync whenever ANY service is created OR edited.
-  // - If user selected a specific serviceId, sync ONLY when THAT exact service is edited.
-  const shouldSync =
-    input.eventType === 'service.created'
-      ? config.selectedScope === 'all'
-      : config.selectedScope === 'all' || config.selectedScope === input.serviceId;
+  // - 'all': sync whenever ANY service is created OR edited.
+  // - 'new': sync ONLY services created after connecting (new creations + edits to those new services; existing older services stay untouched).
+  // - specific serviceId: sync ONLY when THAT exact service is edited.
+  let shouldSync = false;
+  if (config.selectedScope === 'all') {
+    shouldSync = true;
+  } else if (config.selectedScope === 'new') {
+    if (input.eventType === 'service.created') {
+      shouldSync = true;
+      if (!config.trackedNewServiceIds.includes(input.serviceId)) {
+        saveAgencyConnectionState(
+          input.userId,
+          {
+            ...config,
+            trackedNewServiceIds: [...config.trackedNewServiceIds, input.serviceId],
+          },
+          true,
+        );
+      }
+    } else {
+      const targetSrv = input.services.find((srv) => srv.id === input.serviceId);
+      const createdAfterConnect = Boolean(
+        targetSrv &&
+          config.connectedAt &&
+          Number.isFinite(Date.parse(targetSrv.createdAt)) &&
+          Number.isFinite(Date.parse(config.connectedAt)) &&
+          Date.parse(targetSrv.createdAt) >= Date.parse(config.connectedAt) - 5_000,
+      );
+      shouldSync =
+        config.trackedNewServiceIds.includes(input.serviceId) || createdAfterConnect;
+    }
+  } else if (input.eventType === 'service.updated') {
+    shouldSync = config.selectedScope === input.serviceId;
+  }
 
   if (!shouldSync) return;
 
@@ -398,6 +464,9 @@ export async function hydrateAgencyConnectionFromCloud(
       selectedScope: config.service_scope || null,
       secretKey: config.secret_key || localState.secretKey,
       autoSyncEnabled: Boolean(config.auto_sync_enabled),
+      connectedAt:
+        localState.connectedAt || config.created_at || config.last_synced_at || null,
+      trackedNewServiceIds: localState.trackedNewServiceIds,
       lastSyncedAt: config.last_synced_at ?? null,
       lastTriggerEvent: mapServerEventToTrigger(config.last_event),
     };

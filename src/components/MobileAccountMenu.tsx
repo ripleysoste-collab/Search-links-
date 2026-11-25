@@ -22,6 +22,7 @@ import { MobileStoreView } from './MobileStoreView';
 import { ConnectServerView } from './ConnectServerView';
 import { QuickServerCodeViewer } from './QuickServerCodeViewer';
 import { ServerTestView } from './ServerTestView';
+import { ServerSecretHelpView } from './ServerSecretHelpView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
@@ -184,6 +185,7 @@ export function MobileAccountMenu({
   const [quickServerFileId, setQuickServerFileId] = useState('server');
   const [quickServerCopied, setQuickServerCopied] = useState(false);
   const [mobileTestOpen, setMobileTestOpen] = useState(false);
+  const [mobileSecretHelpOpen, setMobileSecretHelpOpen] = useState(false);
   const swipeTouchRef = useRef<{
     startX: number;
     startY: number;
@@ -260,6 +262,7 @@ export function MobileAccountMenu({
       setConnectServerPage(0);
       setQuickServerCopied(false);
       setMobileTestOpen(false);
+      setMobileSecretHelpOpen(false);
       return;
     }
     setServerConnState(loadAgencyConnectionState(user.id));
@@ -1049,6 +1052,7 @@ export function MobileAccountMenu({
                         ? () => setMobileTestOpen(true)
                         : undefined
                     }
+                    onOpenSecretHelp={() => setMobileSecretHelpOpen(true)}
                   />
                 </div>
 
@@ -1104,6 +1108,42 @@ export function MobileAccountMenu({
               serverUrl={serverConnState.serverUrl}
               variant="mobile"
               onClose={() => setMobileTestOpen(false)}
+            />
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* 3b-ter. Mobile full-screen Secret Key Help Manual dialog */}
+      <AnimatePresence>
+        {connectServerModalOpen && mobileSecretHelpOpen && (
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.connectServer.secretHelpTitle}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-[55] lg:hidden bg-white flex flex-col"
+          >
+            <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
+              <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                {t.connectServer.secretHelpTitle}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setMobileSecretHelpOpen(false)}
+                aria-label={t.connectServer.secretHelpCloseAria}
+                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4.5 h-4.5" aria-hidden="true" />
+              </button>
+            </header>
+
+            <ServerSecretHelpView
+              secretKey={serverConnState.secretKey}
+              variant="mobile"
             />
           </motion.section>
         )}

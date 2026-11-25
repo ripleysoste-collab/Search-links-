@@ -183,6 +183,9 @@ export async function executeAgencyServerSync(
     };
   }
 
+  const isNewScope = serviceScope === 'new';
+  const isManualNewHandshake = isNewScope && input.eventType === 'manual';
+
   let orgName = 'Sin nombre';
   let orgLogoUrl: string | null = null;
   let resolvedServices: NormalizedSyncService[] = [];
@@ -218,53 +221,69 @@ export async function executeAgencyServerSync(
         }
       }
 
-      let query = userClient
-        .from('servicios')
-        .select(
-          'id, public_slug, nombre, created_at, servicio_productos(id, position, nombre, categoria, descripcion, image_url)',
-        )
-        .eq('user_id', authUser.userId)
-        .order('created_at', { ascending: false });
+      if (!isManualNewHandshake) {
+        const targetNewServiceId = isNewScope ? (input.changedServiceId || '').trim() : '';
+        if (!isNewScope || targetNewServiceId) {
+          let query = userClient
+            .from('servicios')
+            .select(
+              'id, public_slug, nombre, created_at, servicio_productos(id, position, nombre, categoria, descripcion, image_url)',
+            )
+            .eq('user_id', authUser.userId)
+            .order('created_at', { ascending: false });
 
-      if (serviceScope !== 'all') {
-        query = query.eq('id', serviceScope);
-      }
+          if (isNewScope) {
+            query = query.eq('id', targetNewServiceId);
+          } else if (serviceScope !== 'all') {
+            query = query.eq('id', serviceScope);
+          }
 
-      const { data: srvRows, error: srvError } = await query;
-      if (!srvError && Array.isArray(srvRows) && srvRows.length > 0) {
-        resolvedServices = srvRows.map((row) => {
-          const rawProducts = Array.isArray(row.servicio_productos)
-            ? [...row.servicio_productos].sort(
-                (a, b) => Number(a.position ?? 0) - Number(b.position ?? 0),
-              )
-            : [];
+          const { data: srvRows, error: srvError } = await query;
+          if (!srvError && Array.isArray(srvRows) && srvRows.length > 0) {
+            resolvedServices = srvRows.map((row) => {
+              const rawProducts = Array.isArray(row.servicio_productos)
+                ? [...row.servicio_productos].sort(
+                    (a, b) => Number(a.position ?? 0) - Number(b.position ?? 0),
+                  )
+                : [];
 
-          return {
-            id: String(row.id),
-            slug: String(row.public_slug || row.id),
-            nombre: String(row.nombre || 'Servicio'),
-            creado_en: String(row.created_at || new Date().toISOString()),
-            productos: rawProducts.map((p) => ({
-              id: String(p.id),
-              nombre: String(p.nombre || 'Producto'),
-              categoria: String(p.categoria || 'General'),
-              descripcion: String(p.descripcion || ''),
-              imagen_url: String(p.image_url || ''),
-              url: String(p.image_url || ''),
-            })),
-          };
-        });
+              return {
+                id: String(row.id),
+                slug: String(row.public_slug || row.id),
+                nombre: String(row.nombre || 'Servicio'),
+                creado_en: String(row.created_at || new Date().toISOString()),
+                productos: rawProducts.map((p) => ({
+                  id: String(p.id),
+                  nombre: String(p.nombre || 'Producto'),
+                  categoria: String(p.categoria || 'General'),
+                  descripcion: String(p.descripcion || ''),
+                  imagen_url: String(p.image_url || ''),
+                  url: String(p.image_url || ''),
+                })),
+              };
+            });
+          }
+        }
       }
     } catch {
       // Fall back cleanly to validated client snapshot if Supabase is unavailable
     }
   }
 
-  if (resolvedServices.length === 0 && Array.isArray(input.servicesFallback)) {
+  if (
+    !isManualNewHandshake &&
+    resolvedServices.length === 0 &&
+    Array.isArray(input.servicesFallback)
+  ) {
+    const targetNewServiceId = isNewScope ? (input.changedServiceId || '').trim() : '';
     const filtered =
       serviceScope === 'all'
         ? input.servicesFallback
-        : input.servicesFallback.filter((s) => s && s.id === serviceScope);
+        : isNewScope
+          ? targetNewServiceId
+            ? input.servicesFallback.filter((s) => s && s.id === targetNewServiceId)
+            : []
+          : input.servicesFallback.filter((s) => s && s.id === serviceScope);
 
     resolvedServices = filtered.map((srv) => ({
       id: String(srv.id),
@@ -284,7 +303,7 @@ export async function executeAgencyServerSync(
     }));
   }
 
-  if (resolvedServices.length === 0) {
+  if (!isManualNewHandshake && resolvedServices.length === 0) {
     return {
       ok: false,
       status: 400,
@@ -308,7 +327,12 @@ export async function executeAgencyServerSync(
     event: webhookEventName,
     version: '1.0',
     synced_at: syncedAt,
-    scope: serviceScope === 'all' ? 'all' : 'single',
+    scope:
+      serviceScope === 'all'
+        ? 'all'
+        : serviceScope === 'new'
+          ? 'new'
+          : 'single',
     ...(input.changedServiceId ? { changed_service_id: input.changedServiceId } : {}),
     organizacion: {
       nombre: orgName,
@@ -465,7 +489,7 @@ export async function triggerServerAgencyAutoSyncOnServiceCreated(input: {
 
     if (error || !data) return;
     if (!data.auto_sync_enabled) return;
-    if (data.service_scope !== 'all') return;
+    if (data.service_scope !== 'all' && data.service_scope !== 'new') return;
     if (typeof data.server_url !== 'string' || typeof data.secret_key !== 'string') {
       return;
     }
@@ -474,7 +498,7 @@ export async function triggerServerAgencyAutoSyncOnServiceCreated(input: {
       { authorization: `Bearer ${input.authUser.accessToken}` },
       {
         serverUrl: data.server_url,
-        serviceScope: 'all',
+        serviceScope: data.service_scope,
         secretKey: data.secret_key,
         eventType: 'service.created',
         changedServiceId: input.serviceId,
