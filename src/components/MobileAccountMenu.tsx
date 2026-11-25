@@ -1141,10 +1141,7 @@ export function MobileAccountMenu({
               </button>
             </header>
 
-            <ServerSecretHelpView
-              secretKey={serverConnState.secretKey}
-              variant="mobile"
-            />
+            <ServerSecretHelpView variant="mobile" />
           </motion.section>
         )}
       </AnimatePresence>

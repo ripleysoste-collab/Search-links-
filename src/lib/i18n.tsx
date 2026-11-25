@@ -435,8 +435,9 @@ export interface TranslationDictionary {
     secretHelpVarRuleTitle: string;
     secretHelpVarRuleBody: string;
     secretHelpVarNameLabel: string;
-    secretHelpVarValueLabel: string;
-    secretHelpCopyVarAria: string;
+    secretHelpExampleValueLabel: string;
+    secretHelpExampleValue: string;
+    secretHelpExampleHint: string;
     secretHelpProvidersTitle: string;
     secretHelpProviders: Array<{
       id: string;
@@ -1060,11 +1061,13 @@ const ES_DICTIONARY: TranslationDictionary = {
       'Es la contraseña privada entre tu cuenta de Search Link y tu servidor propio. Cada vez que Search Link envía tus productos, firma el envío con esta clave para que tu servidor confirme que los datos son auténticos y bloquee peticiones de desconocidos.',
     secretHelpVarRuleTitle: 'Qué debes configurar en tu servidor',
     secretHelpVarRuleBody:
-      'En casi cualquier plataforma de servidores el proceso es el mismo: crea una variable de entorno con el nombre exacto de abajo y pega tu clave secreta como valor.',
-    secretHelpVarNameLabel: 'Nombre de la variable',
-    secretHelpVarValueLabel: 'Valor (tu clave secreta)',
-    secretHelpCopyVarAria: 'Copiar nombre de variable SEARCHLINK_WEBHOOK_SECRET',
-    secretHelpProvidersTitle: 'Guía rápida según tu proveedor',
+      'En casi cualquier plataforma de servidores el proceso es el mismo: entra a las variables de entorno de tu proyecto, crea la variable con el nombre exacto de abajo y pega como valor la clave secreta que copiaste en Conecta tu servidor.',
+    secretHelpVarNameLabel: 'Nombre de la variable:',
+    secretHelpExampleValueLabel: 'Ejemplo de clave secreta:',
+    secretHelpExampleValue: 'sl_whsec_ejemplo9f4a2c8b1d07e6a3c5b2f8e1a9d4c7b0',
+    secretHelpExampleHint:
+      '(Solo es un ejemplo de formato; tú debes pegar tu propia clave secreta).',
+    secretHelpProvidersTitle: 'Cómo hacerlo en los servidores más populares',
     secretHelpProviders: [
       {
         id: 'render',
@@ -1755,11 +1758,13 @@ const EN_DICTIONARY: TranslationDictionary = {
       'It is a private password shared only between Search Link and your server. Every time Search Link sends catalog updates, it signs the request with this key so your server can verify it came from your account and block strangers.',
     secretHelpVarRuleTitle: 'What to set on your server',
     secretHelpVarRuleBody:
-      'On almost every server host the setup is identical: create one environment variable with the exact name below and paste your secret key as its value.',
-    secretHelpVarNameLabel: 'Variable name',
-    secretHelpVarValueLabel: 'Value (your secret key)',
-    secretHelpCopyVarAria: 'Copy variable name SEARCHLINK_WEBHOOK_SECRET',
-    secretHelpProvidersTitle: 'Quick setup by hosting provider',
+      'On almost every server host the setup is identical: open your project environment variables, create the variable with the exact name below, and paste the secret key you copied from Connect your server as its value.',
+    secretHelpVarNameLabel: 'Variable name:',
+    secretHelpExampleValueLabel: 'Example secret key:',
+    secretHelpExampleValue: 'sl_whsec_example9f4a2c8b1d07e6a3c5b2f8e1a9d4c7b0',
+    secretHelpExampleHint:
+      '(This is just a format example; paste your own secret key there.)',
+    secretHelpProvidersTitle: 'How to set it on popular servers',
     secretHelpProviders: [
       {
         id: 'render',
@@ -2452,11 +2457,13 @@ const PT_DICTIONARY: TranslationDictionary = {
       'É a senha privada compartilhada apenas entre o Search Link e o seu servidor. Sempre que o Search Link envia atualizações, ele assina a requisição com essa chave para que o servidor confirme que veio da sua conta e bloqueie desconhecidos.',
     secretHelpVarRuleTitle: 'O que você precisa configurar no servidor',
     secretHelpVarRuleBody:
-      'Em quase todos os provedores o processo é igual: crie uma variável de ambiente com o nome exato abaixo e cole a sua chave secreta como valor.',
-    secretHelpVarNameLabel: 'Nome da variável',
-    secretHelpVarValueLabel: 'Valor (sua chave secreta)',
-    secretHelpCopyVarAria: 'Copiar nome da variável SEARCHLINK_WEBHOOK_SECRET',
-    secretHelpProvidersTitle: 'Guia rápido por provedor',
+      'Em quase todos os provedores o processo é igual: abra as variáveis de ambiente do projeto, crie a variável com o nome exato abaixo e cole como valor a chave secreta copiada em Conecte seu servidor.',
+    secretHelpVarNameLabel: 'Nome da variável:',
+    secretHelpExampleValueLabel: 'Exemplo de chave secreta:',
+    secretHelpExampleValue: 'sl_whsec_exemplo9f4a2c8b1d07e6a3c5b2f8e1a9d4c7b0',
+    secretHelpExampleHint:
+      '(Isto é apenas um exemplo de formato; cole a sua própria chave secreta).',
+    secretHelpProvidersTitle: 'Como configurar nos servidores mais usados',
     secretHelpProviders: [
       {
         id: 'render',

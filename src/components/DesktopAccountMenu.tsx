@@ -748,10 +748,7 @@ export function DesktopAccountMenu({
                     )}
                     <div className="min-h-0 min-w-0 flex flex-col bg-white">
                       {isDesktopSecretHelpActive ? (
-                        <ServerSecretHelpView
-                          secretKey={serverConnState.secretKey}
-                          variant="desktop"
-                        />
+                        <ServerSecretHelpView variant="desktop" />
                       ) : (
                         <ConnectServerView
                           userId={user.id}
