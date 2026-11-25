@@ -23,7 +23,112 @@ export interface AgencyConnectionState {
 }
 
 const STORAGE_PREFIX = 'searchlink_connect_server_draft_v1_';
+const UPDATES_STORAGE_PREFIX = 'searchlink_server_updates_v1_';
+const MAX_STORED_UPDATES = 100;
 export const AGENCY_SYNC_UPDATED_EVENT = 'searchlink:agency-sync-updated';
+export const AGENCY_UPDATES_UPDATED_EVENT = 'searchlink:agency-updates-updated';
+
+export interface AgencyServerUpdateRecord {
+  id: string;
+  syncedAt: string;
+  eventType: AgencySyncTriggerEvent;
+  webhookEvent: string;
+  serviceScope: string;
+  serviceNames: string[];
+  syncedServices: number;
+  syncedProducts: number;
+  durationMs: number;
+  remoteStatus: number;
+  serverUrl: string;
+  payloadJson: string;
+}
+
+export function loadAgencyServerUpdates(userId: string): AgencyServerUpdateRecord[] {
+  if (typeof window === 'undefined' || !userId) return [];
+  try {
+    const raw = window.localStorage.getItem(`${UPDATES_STORAGE_PREFIX}${userId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (item): item is AgencyServerUpdateRecord =>
+          Boolean(
+            item &&
+              typeof item === 'object' &&
+              typeof item.id === 'string' &&
+              typeof item.syncedAt === 'string' &&
+              typeof item.payloadJson === 'string',
+          ),
+      )
+      .map((item) => ({
+        id: item.id,
+        syncedAt: item.syncedAt,
+        eventType:
+          item.eventType === 'service.created' || item.eventType === 'service.updated'
+            ? item.eventType
+            : 'manual',
+        webhookEvent:
+          typeof item.webhookEvent === 'string'
+            ? item.webhookEvent
+            : 'searchlink.catalog.sync',
+        serviceScope:
+          typeof item.serviceScope === 'string' ? item.serviceScope : 'all',
+        serviceNames: Array.isArray(item.serviceNames)
+          ? item.serviceNames.filter((n): n is string => typeof n === 'string')
+          : [],
+        syncedServices:
+          typeof item.syncedServices === 'number' ? item.syncedServices : 0,
+        syncedProducts:
+          typeof item.syncedProducts === 'number' ? item.syncedProducts : 0,
+        durationMs: typeof item.durationMs === 'number' ? item.durationMs : 0,
+        remoteStatus:
+          typeof item.remoteStatus === 'number' ? item.remoteStatus : 200,
+        serverUrl: typeof item.serverUrl === 'string' ? item.serverUrl : '',
+        payloadJson: item.payloadJson,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+export function saveAgencyServerUpdateRecord(
+  userId: string,
+  record: AgencyServerUpdateRecord,
+): AgencyServerUpdateRecord[] {
+  if (typeof window === 'undefined' || !userId) return [];
+  const existing = loadAgencyServerUpdates(userId);
+  const deduped = existing.filter(
+    (entry) =>
+      entry.id !== record.id &&
+      !(
+        entry.syncedAt === record.syncedAt &&
+        entry.webhookEvent === record.webhookEvent &&
+        entry.serviceScope === record.serviceScope
+      ),
+  );
+  let next = [record, ...deduped].slice(0, MAX_STORED_UPDATES);
+
+  while (next.length > 0) {
+    try {
+      window.localStorage.setItem(
+        `${UPDATES_STORAGE_PREFIX}${userId}`,
+        JSON.stringify(next),
+      );
+      break;
+    } catch {
+      if (next.length === 1) break;
+      next = next.slice(0, Math.max(1, Math.floor(next.length * 0.7)));
+    }
+  }
+
+  window.dispatchEvent(
+    new CustomEvent(AGENCY_UPDATES_UPDATED_EVENT, {
+      detail: { userId, updates: next },
+    }),
+  );
+  return next;
+}
 
 export function generateAgencySecretKey(): string {
   const bytes = new Uint8Array(18);
@@ -198,10 +303,12 @@ export async function dispatchAgencyServerSync(input: {
 
   const data = (await res.json().catch(() => null)) as {
     ok?: boolean;
+    remoteStatus?: number;
     syncedServices?: number;
     syncedProducts?: number;
     durationMs?: number;
     syncedAt?: string;
+    sentPayload?: unknown;
     error?: string;
   } | null;
 
@@ -242,6 +349,90 @@ export async function dispatchAgencyServerSync(input: {
     },
     true,
   );
+
+  const fallbackPayload = {
+    event:
+      input.eventType === 'service.created'
+        ? 'searchlink.service.created'
+        : input.eventType === 'service.updated'
+          ? 'searchlink.service.updated'
+          : 'searchlink.catalog.sync',
+    version: '1.0',
+    synced_at: syncedAt,
+    scope:
+      input.serviceScope === 'all'
+        ? 'all'
+        : input.serviceScope === 'new'
+          ? 'new'
+          : 'single',
+    ...(input.changedServiceId ? { changed_service_id: input.changedServiceId } : {}),
+    total_servicios: targetServices.length,
+    total_productos: targetServices.reduce(
+      (sum, srv) => sum + (srv.products?.length ?? 0),
+      0,
+    ),
+    servicios: servicesFallback.map((srv) => ({
+      id: srv.id,
+      slug: srv.slug,
+      nombre: srv.name,
+      creado_en: srv.createdAt,
+      total_productos: srv.products.length,
+      productos: srv.products.map((p) => ({
+        id: p.id,
+        nombre: p.nombre,
+        categoria: p.categoria,
+        descripcion: p.descripcion,
+        imagen_url: p.url,
+        url: p.url,
+      })),
+    })),
+  };
+
+  const payloadObj =
+    data.sentPayload && typeof data.sentPayload === 'object'
+      ? (data.sentPayload as Record<string, unknown>)
+      : (fallbackPayload as Record<string, unknown>);
+
+  const payloadServices = Array.isArray(payloadObj.servicios)
+    ? payloadObj.servicios
+    : [];
+  const extractedServiceNames = payloadServices
+    .map((s) =>
+      s && typeof s === 'object' && typeof (s as { nombre?: unknown }).nombre === 'string'
+        ? (s as { nombre: string }).nombre.trim()
+        : '',
+    )
+    .filter(Boolean);
+
+  const serviceNames =
+    extractedServiceNames.length > 0
+      ? extractedServiceNames
+      : targetServices.map((s) => s.name).filter(Boolean);
+
+  let payloadJson = '';
+  try {
+    payloadJson = JSON.stringify(payloadObj, null, 2);
+  } catch {
+    payloadJson = JSON.stringify(fallbackPayload, null, 2);
+  }
+
+  saveAgencyServerUpdateRecord(input.userId, {
+    id: `upd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    syncedAt,
+    eventType: input.eventType,
+    webhookEvent:
+      typeof payloadObj.event === 'string'
+        ? payloadObj.event
+        : fallbackPayload.event,
+    serviceScope: input.serviceScope,
+    serviceNames,
+    syncedServices: data.syncedServices ?? targetServices.length,
+    syncedProducts: data.syncedProducts ?? 0,
+    durationMs: data.durationMs ?? 1,
+    remoteStatus: data.remoteStatus ?? 200,
+    serverUrl: input.serverUrl.trim(),
+    payloadJson,
+  });
 
   return {
     ok: true,
@@ -307,6 +498,73 @@ export async function dispatchAgencyServerDisconnect(
   return {
     ok: true,
     disconnectedAt: data.disconnectedAt || new Date().toISOString(),
+  };
+}
+
+export interface ExecuteAgencyRotateSecretResult {
+  ok: boolean;
+  newSecretKey?: string;
+  wasConnected?: boolean;
+  error?: string;
+}
+
+export async function dispatchAgencySecretRotate(
+  userId: string,
+): Promise<ExecuteAgencyRotateSecretResult> {
+  const prevState = loadAgencyConnectionState(userId);
+  const wasConnected = prevState.autoSyncEnabled;
+  const accessToken = await getSupabaseAccessToken();
+
+  if (wasConnected && !accessToken) {
+    return {
+      ok: false,
+      error: 'Inicia sesión nuevamente para rotar tu clave secreta y desconectar tu servidor.',
+    };
+  }
+
+  if (accessToken) {
+    const res = await fetch(resolveApiUrl('/api/agency/disconnect'), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const data = (await res.json().catch(() => null)) as {
+      ok?: boolean;
+      error?: string;
+    } | null;
+
+    if ((!res.ok || !data?.ok) && wasConnected) {
+      return {
+        ok: false,
+        error:
+          data?.error ||
+          'No se pudo desconectar tu servidor al rotar la clave secreta.',
+      };
+    }
+  }
+
+  const newSecretKey = generateAgencySecretKey();
+  saveAgencyConnectionState(
+    userId,
+    {
+      serverUrl: '',
+      selectedScope: null,
+      secretKey: newSecretKey,
+      autoSyncEnabled: false,
+      connectedAt: null,
+      trackedNewServiceIds: [],
+      lastSyncedAt: null,
+      lastTriggerEvent: null,
+    },
+    true,
+  );
+
+  return {
+    ok: true,
+    newSecretKey,
+    wasConnected,
   };
 }
 

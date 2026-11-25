@@ -23,6 +23,8 @@ import { ConnectServerView } from './ConnectServerView';
 import { QuickServerCodeViewer } from './QuickServerCodeViewer';
 import { ServerTestView } from './ServerTestView';
 import { ServerSecretHelpView } from './ServerSecretHelpView';
+import { ServerUpdatesView } from './ServerUpdatesView';
+import { ServerSecretKeyView } from './ServerSecretKeyView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
@@ -186,6 +188,8 @@ export function MobileAccountMenu({
   const [quickServerCopied, setQuickServerCopied] = useState(false);
   const [mobileTestOpen, setMobileTestOpen] = useState(false);
   const [mobileSecretHelpOpen, setMobileSecretHelpOpen] = useState(false);
+  const [mobileUpdatesOpen, setMobileUpdatesOpen] = useState(false);
+  const [mobileSecretKeyOpen, setMobileSecretKeyOpen] = useState(false);
   const swipeTouchRef = useRef<{
     startX: number;
     startY: number;
@@ -263,6 +267,8 @@ export function MobileAccountMenu({
       setQuickServerCopied(false);
       setMobileTestOpen(false);
       setMobileSecretHelpOpen(false);
+      setMobileUpdatesOpen(false);
+      setMobileSecretKeyOpen(false);
       return;
     }
     setServerConnState(loadAgencyConnectionState(user.id));
@@ -1053,6 +1059,8 @@ export function MobileAccountMenu({
                         : undefined
                     }
                     onOpenSecretHelp={() => setMobileSecretHelpOpen(true)}
+                    onOpenServerUpdates={() => setMobileUpdatesOpen(true)}
+                    onOpenSecretKey={() => setMobileSecretKeyOpen(true)}
                   />
                 </div>
 
@@ -1142,6 +1150,72 @@ export function MobileAccountMenu({
             </header>
 
             <ServerSecretHelpView variant="mobile" />
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* 3b-quater. Mobile full-screen Tus actualizaciones dialog */}
+      <AnimatePresence>
+        {connectServerModalOpen && mobileUpdatesOpen && (
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.connectServer.updatesTitle}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-[55] lg:hidden bg-white flex flex-col"
+          >
+            <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
+              <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                {t.connectServer.updatesTitle}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setMobileUpdatesOpen(false)}
+                aria-label={t.connectServer.updatesCloseAria}
+                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4.5 h-4.5" aria-hidden="true" />
+              </button>
+            </header>
+
+            <ServerUpdatesView userId={user.id} variant="mobile" />
+          </motion.section>
+        )}
+      </AnimatePresence>
+
+      {/* 3b-quinquies. Mobile full-screen Tu clave secreta dialog */}
+      <AnimatePresence>
+        {connectServerModalOpen && mobileSecretKeyOpen && (
+          <motion.section
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.connectServer.secretKeyViewTitle}
+            initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+            transition={{ duration: shouldReduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="fixed inset-0 z-[55] lg:hidden bg-white flex flex-col"
+          >
+            <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
+              <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                {t.connectServer.secretKeyViewTitle}
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setMobileSecretKeyOpen(false)}
+                aria-label={t.connectServer.secretKeyCloseAria}
+                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-4.5 h-4.5" aria-hidden="true" />
+              </button>
+            </header>
+
+            <ServerSecretKeyView userId={user.id} variant="mobile" />
           </motion.section>
         )}
       </AnimatePresence>

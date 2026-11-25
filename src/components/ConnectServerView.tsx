@@ -20,6 +20,8 @@ interface ConnectServerViewProps {
   onOpenQuickServer?: () => void;
   onOpenServerTest?: () => void;
   onOpenSecretHelp?: () => void;
+  onOpenServerUpdates?: () => void;
+  onOpenSecretKey?: () => void;
 }
 
 export function ConnectServerView({
@@ -29,6 +31,8 @@ export function ConnectServerView({
   onOpenQuickServer,
   onOpenServerTest,
   onOpenSecretHelp,
+  onOpenServerUpdates,
+  onOpenSecretKey,
 }: ConnectServerViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
@@ -792,24 +796,54 @@ export function ConnectServerView({
         </AnimatePresence>
 
         {!isConnected ? (
-          <button
-            type="submit"
-            disabled={isSyncing}
-            className={`w-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 ${
-              variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
-            }`}
-          >
-            {isSyncing && (
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          <div className="space-y-2">
+            <button
+              type="submit"
+              disabled={isSyncing}
+              className={`w-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 ${
+                variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
+              }`}
+            >
+              {isSyncing && (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              )}
+              <span>
+                {isSyncing
+                  ? t.connectServer.syncingAction
+                  : t.connectServer.syncAction}
+              </span>
+            </button>
+
+            {(onOpenServerUpdates || onOpenSecretKey) && (
+              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
+                {onOpenServerUpdates && (
+                  <button
+                    type="button"
+                    onClick={onOpenServerUpdates}
+                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                    }`}
+                  >
+                    {t.connectServer.updatesMenuAction}
+                  </button>
+                )}
+
+                {onOpenSecretKey && (
+                  <button
+                    type="button"
+                    onClick={onOpenSecretKey}
+                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                    }`}
+                  >
+                    {t.connectServer.secretKeyMenuAction}
+                  </button>
+                )}
+              </div>
             )}
-            <span>
-              {isSyncing
-                ? t.connectServer.syncingAction
-                : t.connectServer.syncAction}
-            </span>
-          </button>
+          </div>
         ) : (
-          <div className="space-y-2.5">
+          <div className="space-y-2">
             <button
               type="button"
               disabled={isDisconnecting}
@@ -828,16 +862,44 @@ export function ConnectServerView({
               </span>
             </button>
 
-            {onOpenServerTest && (
-              <button
-                type="button"
-                onClick={onOpenServerTest}
-                className={`w-full text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline ${
-                  variant === 'mobile' ? 'min-h-[44px] py-2' : 'py-1.5'
-                }`}
-              >
-                {t.connectServer.testRequestAction}
-              </button>
+            {(onOpenServerUpdates || onOpenSecretKey || onOpenServerTest) && (
+              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
+                {onOpenServerUpdates && (
+                  <button
+                    type="button"
+                    onClick={onOpenServerUpdates}
+                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                    }`}
+                  >
+                    {t.connectServer.updatesMenuAction}
+                  </button>
+                )}
+
+                {onOpenSecretKey && (
+                  <button
+                    type="button"
+                    onClick={onOpenSecretKey}
+                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                    }`}
+                  >
+                    {t.connectServer.secretKeyMenuAction}
+                  </button>
+                )}
+
+                {onOpenServerTest && (
+                  <button
+                    type="button"
+                    onClick={onOpenServerTest}
+                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                    }`}
+                  >
+                    {t.connectServer.testRequestAction}
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}

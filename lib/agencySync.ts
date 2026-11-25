@@ -44,6 +44,38 @@ export interface AgencySyncRequestInput {
   servicesFallback?: AgencySyncFallbackService[];
 }
 
+export interface AgencyWebhookPayload {
+  event:
+    | 'searchlink.catalog.sync'
+    | 'searchlink.service.created'
+    | 'searchlink.service.updated';
+  version: string;
+  synced_at: string;
+  scope: 'all' | 'new' | 'single';
+  changed_service_id?: string;
+  organizacion: {
+    nombre: string;
+    logo_url: string | null;
+  };
+  total_servicios: number;
+  total_productos: number;
+  servicios: Array<{
+    id: string;
+    slug: string;
+    nombre: string;
+    creado_en: string;
+    total_productos: number;
+    productos: Array<{
+      id: string;
+      nombre: string;
+      categoria: string;
+      descripcion: string;
+      imagen_url: string;
+      url: string;
+    }>;
+  }>;
+}
+
 export interface AgencySyncResponse {
   ok: true;
   remoteStatus: number;
@@ -51,6 +83,7 @@ export interface AgencySyncResponse {
   syncedServices: number;
   syncedProducts: number;
   syncedAt: string;
+  sentPayload?: AgencyWebhookPayload;
   deduplicated?: boolean;
 }
 
@@ -89,25 +122,42 @@ function getBearerToken(headers: IncomingHttpHeaders): string {
 }
 
 const DEDUPE_WINDOW_MS = 30_000;
-const recentSyncDedupeMap = new Map<string, number>();
+const recentSyncDedupeMap = new Map<
+  string,
+  { expiresAt: number; response: AgencySyncResponse }
+>();
+const inFlightSyncDedupeMap = new Map<string, Promise<AgencySyncResult>>();
 
-function isDuplicateRecentSync(dedupeKey?: string): boolean {
+function getRecentDeduplicatedSync(
+  dedupeKey?: string,
+): AgencySyncResponse | null {
   const clean = (dedupeKey || '').trim();
-  if (!clean) return false;
+  if (!clean) return null;
   const now = Date.now();
-  for (const [key, exp] of recentSyncDedupeMap.entries()) {
-    if (exp <= now) recentSyncDedupeMap.delete(key);
+  for (const [key, entry] of recentSyncDedupeMap.entries()) {
+    if (entry.expiresAt <= now) recentSyncDedupeMap.delete(key);
   }
-  const existingExp = recentSyncDedupeMap.get(clean);
-  if (existingExp && existingExp > now) {
-    return true;
+  const existing = recentSyncDedupeMap.get(clean);
+  if (existing && existing.expiresAt > now) {
+    return existing.response;
   }
+  return null;
+}
+
+function storeRecentSyncResult(
+  dedupeKey: string | undefined,
+  response: AgencySyncResponse,
+): void {
+  const clean = (dedupeKey || '').trim();
+  if (!clean) return;
   if (recentSyncDedupeMap.size >= 2000) {
     const oldest = recentSyncDedupeMap.keys().next().value;
     if (oldest) recentSyncDedupeMap.delete(oldest);
   }
-  recentSyncDedupeMap.set(clean, now + DEDUPE_WINDOW_MS);
-  return false;
+  recentSyncDedupeMap.set(clean, {
+    expiresAt: Date.now() + DEDUPE_WINDOW_MS,
+    response,
+  });
 }
 
 export async function executeAgencyServerSync(
@@ -128,17 +178,30 @@ export async function executeAgencyServerSync(
   const scopedDedupeKey = input.dedupeKey?.trim()
     ? `${authUser.userId}:${input.dedupeKey.trim()}`
     : undefined;
-  if (isDuplicateRecentSync(scopedDedupeKey)) {
+
+  const cachedDedupe = getRecentDeduplicatedSync(scopedDedupeKey);
+  if (cachedDedupe) {
     return {
-      ok: true,
-      remoteStatus: 200,
-      durationMs: 1,
-      syncedServices: 1,
-      syncedProducts: 0,
-      syncedAt: new Date().toISOString(),
+      ...cachedDedupe,
       deduplicated: true,
     };
   }
+
+  if (scopedDedupeKey) {
+    const existingFlight = inFlightSyncDedupeMap.get(scopedDedupeKey);
+    if (existingFlight) {
+      const flightResult = await existingFlight;
+      if (flightResult.ok) {
+        return {
+          ...flightResult,
+          deduplicated: true,
+        };
+      }
+      return flightResult;
+    }
+  }
+
+  const runSync = async (): Promise<AgencySyncResult> => {
 
   const rawServerUrl = typeof input.serverUrl === 'string' ? input.serverUrl.trim() : '';
   if (!rawServerUrl) {
@@ -316,14 +379,14 @@ export async function executeAgencyServerSync(
     (sum, srv) => sum + srv.productos.length,
     0,
   );
-  const webhookEventName =
+  const webhookEventName: AgencyWebhookPayload['event'] =
     input.eventType === 'service.created'
       ? 'searchlink.service.created'
       : input.eventType === 'service.updated'
         ? 'searchlink.service.updated'
         : 'searchlink.catalog.sync';
 
-  const payload = {
+  const payload: AgencyWebhookPayload = {
     event: webhookEventName,
     version: '1.0',
     synced_at: syncedAt,
@@ -438,14 +501,17 @@ export async function executeAgencyServerSync(
       }
     }
 
-    return {
+    const successResult: AgencySyncResponse = {
       ok: true,
       remoteStatus: response.status,
       durationMs,
       syncedServices: resolvedServices.length,
       syncedProducts: totalProducts,
       syncedAt,
+      sentPayload: payload,
     };
+    storeRecentSyncResult(scopedDedupeKey, successResult);
+    return successResult;
   } catch (err) {
     const durationMs = Math.max(1, Date.now() - startedAt);
     const detail =
@@ -457,6 +523,17 @@ export async function executeAgencyServerSync(
       error: `No pudimos entregar los datos a tu servidor (${detail}).`,
     };
   }
+  };
+
+  if (!scopedDedupeKey) {
+    return runSync();
+  }
+
+  const flightPromise = runSync().finally(() => {
+    inFlightSyncDedupeMap.delete(scopedDedupeKey);
+  });
+  inFlightSyncDedupeMap.set(scopedDedupeKey, flightPromise);
+  return flightPromise;
 }
 
 export async function triggerServerAgencyAutoSyncOnServiceCreated(input: {

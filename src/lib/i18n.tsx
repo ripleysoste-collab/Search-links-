@@ -483,6 +483,28 @@ export interface TranslationDictionary {
     testImagesCountLabel: string;
     testRetryAction: string;
     testCloseAria: string;
+    updatesMenuAction: string;
+    updatesTitle: string;
+    updatesCloseAria: string;
+    updatesBackToListAria: string;
+    updatesEmptyText: string;
+    updatesCopyPayloadAria: string;
+    updatesEditorAria: string;
+    updatesTitleManualAll: string;
+    updatesTitleManualSingle: (name?: string) => string;
+    updatesTitleNewHandshake: string;
+    updatesTitleServiceCreated: (name?: string) => string;
+    updatesTitleServiceUpdated: (name?: string) => string;
+    updatesOpenItemAria: (title: string, date: string) => string;
+    secretKeyMenuAction: string;
+    secretKeyViewTitle: string;
+    secretKeyCloseAria: string;
+    rotateKeyAction: string;
+    rotatingKeyAction: string;
+    rotateConfirmPrompt: string;
+    rotateConfirmInputAria: string;
+    rotateSuccess: string;
+    rotateNetworkError: string;
   };
   advancedSettings: {
     title: string;
@@ -1166,6 +1188,34 @@ const ES_DICTIONARY: TranslationDictionary = {
     testImagesCountLabel: 'Imágenes',
     testRetryAction: 'Volver a evaluar',
     testCloseAria: 'Cerrar prueba de servidor',
+    updatesMenuAction: 'Tus actualizaciones',
+    updatesTitle: 'Tus actualizaciones',
+    updatesCloseAria: 'Cerrar tus actualizaciones',
+    updatesBackToListAria: 'Volver a tus actualizaciones',
+    updatesEmptyText: 'No tienes ninguna actualización',
+    updatesCopyPayloadAria: 'Copiar texto enviado',
+    updatesEditorAria: 'Editor visual de actualización enviada',
+    updatesTitleManualAll: 'Sincronización de todos los servicios',
+    updatesTitleManualSingle: (name) =>
+      name ? `Sincronización: ${name}` : 'Sincronización de servicio',
+    updatesTitleNewHandshake: 'Conexión en Nuevos servicios',
+    updatesTitleServiceCreated: (name) =>
+      name ? `Nuevo servicio: ${name}` : 'Nuevo servicio enviado',
+    updatesTitleServiceUpdated: (name) =>
+      name ? `Actualización: ${name}` : 'Servicio actualizado',
+    updatesOpenItemAria: (title, date) => `Ver actualización ${title} del ${date}`,
+    secretKeyMenuAction: 'Tu clave secreta',
+    secretKeyViewTitle: 'Tu clave secreta',
+    secretKeyCloseAria: 'Cerrar tu clave secreta',
+    rotateKeyAction: 'Rotar clave',
+    rotatingKeyAction: 'Rotando clave…',
+    rotateConfirmPrompt:
+      'Al rotar tu clave secreta, la clave actual dejará de funcionar de inmediato y aceptas que tu servidor se desconectará automáticamente para que puedas reconectarlo con la nueva clave secreta. Para confirmar, escribe:',
+    rotateConfirmInputAria: 'Escribe estoy de acuerdo para rotar tu clave secreta',
+    rotateSuccess:
+      'Clave secreta rotada. Cópiala, actualízala en tu servidor y vuelve a conectar cuando estés listo.',
+    rotateNetworkError:
+      'No pudimos completar la rotación de tu clave secreta. Intenta de nuevo.',
   },
   advancedSettings: {
     title: 'Ajustes avanzados',
@@ -1863,6 +1913,34 @@ const EN_DICTIONARY: TranslationDictionary = {
     testImagesCountLabel: 'Images',
     testRetryAction: 'Run again',
     testCloseAria: 'Close server test',
+    updatesMenuAction: 'Your updates',
+    updatesTitle: 'Your updates',
+    updatesCloseAria: 'Close your updates',
+    updatesBackToListAria: 'Back to your updates',
+    updatesEmptyText: 'You do not have any updates',
+    updatesCopyPayloadAria: 'Copy sent payload',
+    updatesEditorAria: 'Visual viewer for sent update',
+    updatesTitleManualAll: 'Sync of all services',
+    updatesTitleManualSingle: (name) =>
+      name ? `Sync: ${name}` : 'Service sync',
+    updatesTitleNewHandshake: 'Connected in New services mode',
+    updatesTitleServiceCreated: (name) =>
+      name ? `New service: ${name}` : 'New service sent',
+    updatesTitleServiceUpdated: (name) =>
+      name ? `Update: ${name}` : 'Service updated',
+    updatesOpenItemAria: (title, date) => `View update ${title} from ${date}`,
+    secretKeyMenuAction: 'Your secret key',
+    secretKeyViewTitle: 'Your secret key',
+    secretKeyCloseAria: 'Close your secret key',
+    rotateKeyAction: 'Rotate key',
+    rotatingKeyAction: 'Rotating key…',
+    rotateConfirmPrompt:
+      'Rotating your secret key immediately invalidates the current key, and you agree that your server will automatically disconnect so you can reconnect it using the new secret key. To confirm, type:',
+    rotateConfirmInputAria: 'Type I agree to rotate your secret key',
+    rotateSuccess:
+      'Secret key rotated. Copy it, update your server environment variable, and reconnect when ready.',
+    rotateNetworkError:
+      'Could not complete secret key rotation. Please try again.',
   },
   advancedSettings: {
     title: 'Advanced settings',
@@ -2562,6 +2640,34 @@ const PT_DICTIONARY: TranslationDictionary = {
     testImagesCountLabel: 'Imagens',
     testRetryAction: 'Avaliar novamente',
     testCloseAria: 'Fechar teste de servidor',
+    updatesMenuAction: 'Suas atualizações',
+    updatesTitle: 'Suas atualizações',
+    updatesCloseAria: 'Fechar suas atualizações',
+    updatesBackToListAria: 'Voltar para suas atualizações',
+    updatesEmptyText: 'Você não tem nenhuma atualização',
+    updatesCopyPayloadAria: 'Copiar texto enviado',
+    updatesEditorAria: 'Editor visual da atualização enviada',
+    updatesTitleManualAll: 'Sincronização de todos os serviços',
+    updatesTitleManualSingle: (name) =>
+      name ? `Sincronização: ${name}` : 'Sincronização de serviço',
+    updatesTitleNewHandshake: 'Conexão em Novos serviços',
+    updatesTitleServiceCreated: (name) =>
+      name ? `Novo serviço: ${name}` : 'Novo serviço enviado',
+    updatesTitleServiceUpdated: (name) =>
+      name ? `Atualização: ${name}` : 'Serviço atualizado',
+    updatesOpenItemAria: (title, date) => `Ver atualização ${title} de ${date}`,
+    secretKeyMenuAction: 'Sua chave secreta',
+    secretKeyViewTitle: 'Sua chave secreta',
+    secretKeyCloseAria: 'Fechar sua chave secreta',
+    rotateKeyAction: 'Rotacionar chave',
+    rotatingKeyAction: 'Rotacionando chave…',
+    rotateConfirmPrompt:
+      'Ao rotacionar sua chave secreta, a chave atual deixará de funcionar imediatamente e você aceita que seu servidor será desconectado automaticamente para que você possa reconectá-lo com a nova chave secreta. Para confirmar, digite:',
+    rotateConfirmInputAria: 'Digite estou de acordo para rotacionar sua chave secreta',
+    rotateSuccess:
+      'Chave secreta rotacionada. Copie-a, atualize no seu servidor e reconecte quando estiver pronto.',
+    rotateNetworkError:
+      'Não foi possível concluir a rotação da sua chave secreta. Tente novamente.',
   },
   advancedSettings: {
     title: 'Configurações avançadas',

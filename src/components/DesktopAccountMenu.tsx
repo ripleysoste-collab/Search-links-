@@ -13,6 +13,12 @@ import { ConnectServerView } from './ConnectServerView';
 import { QuickServerCodeViewer } from './QuickServerCodeViewer';
 import { ServerTestView } from './ServerTestView';
 import { ServerSecretHelpView } from './ServerSecretHelpView';
+import {
+  ServerUpdatesView,
+  formatAgencyUpdateDate,
+  formatAgencyUpdateTitle,
+} from './ServerUpdatesView';
+import { ServerSecretKeyView } from './ServerSecretKeyView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -20,6 +26,7 @@ import {
   hydrateAgencyConnectionFromCloud,
   loadAgencyConnectionState,
   type AgencyConnectionState,
+  type AgencyServerUpdateRecord,
 } from '../lib/agencySyncClient';
 import {
   buildSchemaInputFromService,
@@ -148,6 +155,11 @@ export function DesktopAccountMenu({
   );
   const [isTestingServer, setIsTestingServer] = useState(false);
   const [isHelpingSecret, setIsHelpingSecret] = useState(false);
+  const [isViewingServerUpdates, setIsViewingServerUpdates] = useState(false);
+  const [isViewingSecretKey, setIsViewingSecretKey] = useState(false);
+  const [selectedDesktopUpdate, setSelectedDesktopUpdate] =
+    useState<AgencyServerUpdateRecord | null>(null);
+  const [desktopUpdateCopied, setDesktopUpdateCopied] = useState(false);
 
   const info = getUserDisplayInfo(
     user,
@@ -195,6 +207,10 @@ export function DesktopAccountMenu({
     }
     if (!open || view !== 'connect-server') {
       setIsHelpingSecret(false);
+      setIsViewingServerUpdates(false);
+      setIsViewingSecretKey(false);
+      setSelectedDesktopUpdate(null);
+      setDesktopUpdateCopied(false);
     }
   }, [open, view, serverConnState.autoSyncEnabled]);
 
@@ -210,6 +226,10 @@ export function DesktopAccountMenu({
       setSignOutError(null);
       setIsTestingServer(false);
       setIsHelpingSecret(false);
+      setIsViewingServerUpdates(false);
+      setIsViewingSecretKey(false);
+      setSelectedDesktopUpdate(null);
+      setDesktopUpdateCopied(false);
     }
   }, [open]);
 
@@ -263,6 +283,17 @@ export function DesktopAccountMenu({
     }
   };
 
+  const handleCopyDesktopUpdate = async () => {
+    if (!selectedDesktopUpdate?.payloadJson) return;
+    try {
+      await navigator.clipboard.writeText(selectedDesktopUpdate.payloadJson);
+      setDesktopUpdateCopied(true);
+      window.setTimeout(() => setDesktopUpdateCopied(false), 1600);
+    } catch {
+      setDesktopUpdateCopied(false);
+    }
+  };
+
   const isExpandedPanelView =
     view === 'google-account' ||
     view === 'advanced-settings' ||
@@ -272,11 +303,28 @@ export function DesktopAccountMenu({
     view === 'schema' ||
     view === 'language';
   const isServerConnected = serverConnState.autoSyncEnabled;
-  const isConnectSplitView = view === 'connect-server' && !isServerConnected;
   const isDesktopServerTestActive =
     view === 'connect-server' && isServerConnected && isTestingServer;
+  const isDesktopServerUpdatesActive =
+    view === 'connect-server' &&
+    isViewingServerUpdates &&
+    !isDesktopServerTestActive;
+  const isDesktopSecretKeyActive =
+    view === 'connect-server' &&
+    isViewingSecretKey &&
+    !isDesktopServerTestActive &&
+    !isDesktopServerUpdatesActive;
   const isDesktopSecretHelpActive =
-    view === 'connect-server' && isHelpingSecret && !isDesktopServerTestActive;
+    view === 'connect-server' &&
+    isHelpingSecret &&
+    !isDesktopServerTestActive &&
+    !isDesktopServerUpdatesActive &&
+    !isDesktopSecretKeyActive;
+  const isConnectSplitView =
+    view === 'connect-server' &&
+    !isServerConnected &&
+    !isDesktopServerUpdatesActive &&
+    !isDesktopSecretKeyActive;
   const topTitle =
     view === 'google-account'
       ? t.menu.googleAccount
@@ -434,10 +482,17 @@ export function DesktopAccountMenu({
                 <div className="flex items-center gap-2.5 min-w-0">
                   {isExpandedPanelView &&
                     !isDesktopServerTestActive &&
-                    !isDesktopSecretHelpActive && (
+                    !isDesktopSecretHelpActive &&
+                    !isDesktopSecretKeyActive &&
+                    (!isDesktopServerUpdatesActive || Boolean(selectedDesktopUpdate)) && (
                       <button
                         type="button"
                         onClick={() => {
+                          if (isDesktopServerUpdatesActive && selectedDesktopUpdate) {
+                            setSelectedDesktopUpdate(null);
+                            setDesktopUpdateCopied(false);
+                            return;
+                          }
                           setConfirmSignOut(false);
                           setSignOutError(null);
                           setView(
@@ -449,48 +504,96 @@ export function DesktopAccountMenu({
                           );
                         }}
                         aria-label={
-                          view === 'store'
-                            ? t.menu.backToOrgAria
-                            : view === 'advanced-settings'
-                              ? t.menu.backToGoogleAccountAria
-                              : t.menu.backToMenuAria
+                          isDesktopServerUpdatesActive && selectedDesktopUpdate
+                            ? t.connectServer.updatesBackToListAria
+                            : view === 'store'
+                              ? t.menu.backToOrgAria
+                              : view === 'advanced-settings'
+                                ? t.menu.backToGoogleAccountAria
+                                : t.menu.backToMenuAria
                         }
                         className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
                       >
                         <ArrowLeft className="w-4 h-4" aria-hidden="true" />
                       </button>
                     )}
-                  <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
-                    {isDesktopServerTestActive
-                      ? t.connectServer.testServerTitle
-                      : isDesktopSecretHelpActive
-                        ? t.connectServer.secretHelpTitle
-                        : topTitle}
-                  </span>
+                  {isDesktopServerUpdatesActive && selectedDesktopUpdate ? (
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
+                        {formatAgencyUpdateTitle(selectedDesktopUpdate, t)}
+                      </span>
+                      <span className="text-xs text-slate-400 truncate">
+                        · {formatAgencyUpdateDate(selectedDesktopUpdate.syncedAt, locale)}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
+                      {isDesktopServerTestActive
+                        ? t.connectServer.testServerTitle
+                        : isDesktopServerUpdatesActive
+                          ? t.connectServer.updatesTitle
+                          : isDesktopSecretKeyActive
+                            ? t.connectServer.secretKeyViewTitle
+                            : isDesktopSecretHelpActive
+                              ? t.connectServer.secretHelpTitle
+                              : topTitle}
+                    </span>
+                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (isDesktopServerTestActive) {
-                      setIsTestingServer(false);
-                    } else if (isDesktopSecretHelpActive) {
-                      setIsHelpingSecret(false);
-                    } else {
-                      onClose();
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {isDesktopServerUpdatesActive && selectedDesktopUpdate && (
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyDesktopUpdate()}
+                      aria-label={t.connectServer.updatesCopyPayloadAria}
+                      title={desktopUpdateCopied ? t.common.copied : t.common.copy}
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
+                    >
+                      {desktopUpdateCopied ? (
+                        <Check
+                          className="w-4 h-4 text-emerald-600 stroke-[2.5]"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <Copy className="w-4 h-4" aria-hidden="true" />
+                      )}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isDesktopServerTestActive) {
+                        setIsTestingServer(false);
+                      } else if (isDesktopServerUpdatesActive) {
+                        setSelectedDesktopUpdate(null);
+                        setDesktopUpdateCopied(false);
+                        setIsViewingServerUpdates(false);
+                      } else if (isDesktopSecretKeyActive) {
+                        setIsViewingSecretKey(false);
+                      } else if (isDesktopSecretHelpActive) {
+                        setIsHelpingSecret(false);
+                      } else {
+                        onClose();
+                      }
+                    }}
+                    aria-label={
+                      isDesktopServerTestActive
+                        ? t.connectServer.testCloseAria
+                        : isDesktopServerUpdatesActive
+                          ? t.connectServer.updatesCloseAria
+                          : isDesktopSecretKeyActive
+                            ? t.connectServer.secretKeyCloseAria
+                            : isDesktopSecretHelpActive
+                              ? t.connectServer.secretHelpCloseAria
+                              : t.menu.closeMenuAria
                     }
-                  }}
-                  aria-label={
-                    isDesktopServerTestActive
-                      ? t.connectServer.testCloseAria
-                      : isDesktopSecretHelpActive
-                        ? t.connectServer.secretHelpCloseAria
-                        : t.menu.closeMenuAria
-                  }
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
-                >
-                  <X className="w-4 h-4" aria-hidden="true" />
-                </button>
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
+                  >
+                    <X className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </div>
               </div>
             )}
 
@@ -725,6 +828,36 @@ export function DesktopAccountMenu({
                       onClose={() => setIsTestingServer(false)}
                     />
                   </motion.div>
+                ) : isDesktopServerUpdatesActive ? (
+                  <motion.div
+                    key="desktop-server-updates-view"
+                    initial={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    className="flex-1 min-h-0 bg-white flex flex-col"
+                  >
+                    <ServerUpdatesView
+                      userId={user.id}
+                      variant="desktop"
+                      selectedUpdate={selectedDesktopUpdate}
+                      onSelectUpdate={(upd) => {
+                        setDesktopUpdateCopied(false);
+                        setSelectedDesktopUpdate(upd);
+                      }}
+                    />
+                  </motion.div>
+                ) : isDesktopSecretKeyActive ? (
+                  <motion.div
+                    key="desktop-server-secret-key-view"
+                    initial={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                    className="flex-1 min-h-0 bg-white flex flex-col"
+                  >
+                    <ServerSecretKeyView userId={user.id} variant="desktop" />
+                  </motion.div>
                 ) : (
                   <motion.div
                     key="desktop-connect-server-view"
@@ -758,11 +891,30 @@ export function DesktopAccountMenu({
                             isServerConnected
                               ? () => {
                                   setIsHelpingSecret(false);
+                                  setIsViewingServerUpdates(false);
+                                  setIsViewingSecretKey(false);
                                   setIsTestingServer(true);
                                 }
                               : undefined
                           }
-                          onOpenSecretHelp={() => setIsHelpingSecret(true)}
+                          onOpenSecretHelp={() => {
+                            setIsViewingServerUpdates(false);
+                            setIsViewingSecretKey(false);
+                            setIsHelpingSecret(true);
+                          }}
+                          onOpenServerUpdates={() => {
+                            setIsHelpingSecret(false);
+                            setIsTestingServer(false);
+                            setIsViewingSecretKey(false);
+                            setSelectedDesktopUpdate(null);
+                            setIsViewingServerUpdates(true);
+                          }}
+                          onOpenSecretKey={() => {
+                            setIsHelpingSecret(false);
+                            setIsTestingServer(false);
+                            setIsViewingServerUpdates(false);
+                            setIsViewingSecretKey(true);
+                          }}
                         />
                       )}
                     </div>
