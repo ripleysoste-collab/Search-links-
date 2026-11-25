@@ -18,6 +18,7 @@ interface ConnectServerViewProps {
   services: OrganizationServiceItem[];
   variant: 'desktop' | 'mobile';
   onOpenQuickServer?: () => void;
+  onOpenServerTest?: () => void;
 }
 
 export function ConnectServerView({
@@ -25,6 +26,7 @@ export function ConnectServerView({
   services,
   variant,
   onOpenQuickServer,
+  onOpenServerTest,
 }: ConnectServerViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
@@ -750,23 +752,37 @@ export function ConnectServerView({
             </span>
           </button>
         ) : (
-          <button
-            type="button"
-            disabled={isDisconnecting}
-            onClick={handleOpenDisconnectBox}
-            className={`w-full rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600/40 ${
-              variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
-            }`}
-          >
-            {isDisconnecting && (
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          <div className="space-y-2.5">
+            <button
+              type="button"
+              disabled={isDisconnecting}
+              onClick={handleOpenDisconnectBox}
+              className={`w-full rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600/40 ${
+                variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
+              }`}
+            >
+              {isDisconnecting && (
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              )}
+              <span>
+                {isDisconnecting
+                  ? t.connectServer.disconnectingAction
+                  : t.connectServer.disconnectAction}
+              </span>
+            </button>
+
+            {onOpenServerTest && (
+              <button
+                type="button"
+                onClick={onOpenServerTest}
+                className={`w-full text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer focus-visible:outline-none focus-visible:underline ${
+                  variant === 'mobile' ? 'min-h-[44px] py-2' : 'py-1.5'
+                }`}
+              >
+                {t.connectServer.testRequestAction}
+              </button>
             )}
-            <span>
-              {isDisconnecting
-                ? t.connectServer.disconnectingAction
-                : t.connectServer.disconnectAction}
-            </span>
-          </button>
+          </div>
         )}
       </div>
     </form>

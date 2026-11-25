@@ -272,6 +272,60 @@ export async function dispatchAgencyServerDisconnect(
   };
 }
 
+export interface AgencyServerTestItem {
+  id: string;
+  nombre: string;
+  categoria: string;
+  imagen_url: string;
+  servicio_nombre?: string;
+  servicio_slug?: string;
+}
+
+export interface ExecuteAgencyTestCallResult {
+  ok: boolean;
+  remoteStatus?: number;
+  statusText?: string;
+  durationMs?: number;
+  endpointUrl?: string;
+  totalProducts?: number;
+  items?: AgencyServerTestItem[];
+  error?: string;
+}
+
+export async function dispatchAgencyServerTest(
+  serverUrl?: string,
+): Promise<ExecuteAgencyTestCallResult> {
+  const accessToken = await getSupabaseAccessToken();
+  if (!accessToken) {
+    return {
+      ok: false,
+      error: 'Inicia sesión nuevamente para evaluar tu servidor.',
+    };
+  }
+
+  const res = await fetch(resolveApiUrl('/api/agency/test'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      serverUrl: (serverUrl || '').trim(),
+    }),
+  });
+
+  const data = (await res.json().catch(() => null)) as ExecuteAgencyTestCallResult | null;
+  if (!data) {
+    return {
+      ok: false,
+      remoteStatus: res.status,
+      error: 'No pudimos conectar con Search Link para evaluar tu servidor.',
+    };
+  }
+
+  return data;
+}
+
 export async function triggerAgencyAutoSyncIfMatched(input: {
   userId: string;
   eventType: 'service.created' | 'service.updated';

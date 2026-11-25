@@ -576,3 +576,328 @@ export async function executeAgencyServerDisconnect(
   };
 }
 
+export interface AgencyServerTestItem {
+  id: string;
+  nombre: string;
+  categoria: string;
+  imagen_url: string;
+  servicio_nombre?: string;
+  servicio_slug?: string;
+}
+
+export type AgencyServerTestResult =
+  | {
+      ok: true;
+      remoteStatus: number;
+      statusText: string;
+      durationMs: number;
+      endpointUrl: string;
+      totalProducts: number;
+      items: AgencyServerTestItem[];
+    }
+  | {
+      ok: false;
+      status: number;
+      remoteStatus?: number;
+      statusText?: string;
+      durationMs?: number;
+      error: string;
+    };
+
+function buildCatalogTestCandidateUrls(parsedUrl: URL): string[] {
+  const candidates: string[] = [];
+  const rawPath = parsedUrl.pathname || '/';
+
+  const pushUnique = (href: string) => {
+    if (!candidates.includes(href)) {
+      candidates.push(href);
+    }
+  };
+
+  if (/\/api\/catalog\/?$/i.test(rawPath)) {
+    pushUnique(parsedUrl.href);
+  } else if (/\/webhook\/?$/i.test(rawPath)) {
+    const stripped = rawPath.replace(/\/webhook\/?$/i, '') || '';
+    pushUnique(`${parsedUrl.origin}${stripped}/api/catalog`);
+    pushUnique(`${parsedUrl.origin}/api/catalog`);
+  } else {
+    const baseDir = rawPath === '/' ? '' : rawPath.replace(/\/+$/, '');
+    if (baseDir) {
+      pushUnique(`${parsedUrl.origin}${baseDir}/api/catalog`);
+    }
+    pushUnique(`${parsedUrl.origin}/api/catalog`);
+  }
+
+  pushUnique(parsedUrl.href);
+  return candidates;
+}
+
+function appendCatalogPagination(
+  baseHref: string,
+  limit: number,
+  offset: number,
+): string {
+  const target = new URL(baseHref);
+  target.searchParams.set('limit', String(limit));
+  target.searchParams.set('offset', String(offset));
+  return target.href;
+}
+
+function extractItemsFromExternalCatalog(payload: unknown): {
+  items: AgencyServerTestItem[];
+  reportedTotal: number | null;
+} {
+  const obj =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : null;
+
+  const rawList = Array.isArray(payload)
+    ? payload
+    : obj && Array.isArray(obj.productos)
+      ? obj.productos
+      : obj && Array.isArray(obj.products)
+        ? obj.products
+        : obj && Array.isArray(obj.items)
+          ? obj.items
+          : obj && Array.isArray(obj.data)
+            ? obj.data
+            : [];
+
+  const pag =
+    obj?.paginacion && typeof obj.paginacion === 'object'
+      ? (obj.paginacion as Record<string, unknown>)
+      : null;
+  const reportedTotal =
+    pag && typeof pag.total === 'number' && Number.isFinite(pag.total)
+      ? Math.max(0, Math.trunc(pag.total))
+      : null;
+
+  const items: AgencyServerTestItem[] = [];
+  for (let idx = 0; idx < rawList.length; idx += 1) {
+    const entry = rawList[idx];
+    if (!entry || typeof entry !== 'object') continue;
+    const rec = entry as Record<string, unknown>;
+    const rawImg =
+      typeof rec.imagen_url === 'string' && rec.imagen_url.trim()
+        ? rec.imagen_url.trim()
+        : typeof rec.url === 'string' && rec.url.trim()
+          ? rec.url.trim()
+          : '';
+    const safeImg = /^https?:\/\//i.test(rawImg) ? rawImg : '';
+
+    items.push({
+      id: typeof rec.id === 'string' && rec.id.trim() ? rec.id.trim() : `item_${idx + 1}`,
+      nombre:
+        typeof rec.nombre === 'string' && rec.nombre.trim()
+          ? rec.nombre.trim()
+          : typeof rec.name === 'string' && rec.name.trim()
+            ? rec.name.trim()
+            : `Producto ${idx + 1}`,
+      categoria:
+        typeof rec.categoria === 'string' && rec.categoria.trim()
+          ? rec.categoria.trim()
+          : typeof rec.category === 'string' && rec.category.trim()
+            ? rec.category.trim()
+            : 'General',
+      imagen_url: safeImg,
+      servicio_nombre:
+        typeof rec.servicio_nombre === 'string' && rec.servicio_nombre.trim()
+          ? rec.servicio_nombre.trim()
+          : undefined,
+      servicio_slug:
+        typeof rec.servicio_slug === 'string' && rec.servicio_slug.trim()
+          ? rec.servicio_slug.trim()
+          : undefined,
+    });
+  }
+
+  return { items, reportedTotal };
+}
+
+export async function executeAgencyServerTest(
+  headers: IncomingHttpHeaders,
+  input?: { serverUrl?: string },
+): Promise<AgencyServerTestResult> {
+  const authUser = await verifySupabaseBearerUser(headers);
+  const bearerToken = getBearerToken(headers);
+
+  if (!authUser || !bearerToken) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Inicia sesión con Google para evaluar tu servidor.',
+    };
+  }
+
+  let resolvedServerUrl =
+    typeof input?.serverUrl === 'string' ? input.serverUrl.trim() : '';
+
+  const { url: supabaseUrl, key: supabaseKey } = getSupabaseServerConfig();
+  if (supabaseUrl && supabaseKey) {
+    try {
+      const userClient = createClient(supabaseUrl, supabaseKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${bearerToken}`,
+          },
+        },
+      });
+      const { data } = await userClient
+        .from('servidores_externos')
+        .select('server_url')
+        .eq('user_id', authUser.userId)
+        .maybeSingle();
+
+      if (data && typeof data.server_url === 'string' && data.server_url.trim()) {
+        resolvedServerUrl = data.server_url.trim();
+      }
+    } catch {
+      // Fall back cleanly to client-provided URL if table isn't initialized yet
+    }
+  }
+
+  if (!resolvedServerUrl) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'No hay una URL de servidor conectada para evaluar.',
+    };
+  }
+
+  let parsedSafeUrl: URL;
+  try {
+    parsedSafeUrl = await assertSafePublicUrl(resolvedServerUrl);
+  } catch (err) {
+    if (err instanceof PolicyBlockedDomainError) {
+      return { ok: false, status: 400, error: err.message };
+    }
+    return {
+      ok: false,
+      status: 400,
+      error: err instanceof Error ? err.message : 'La URL del servidor no es válida.',
+    };
+  }
+
+  const candidates = buildCatalogTestCandidateUrls(parsedSafeUrl);
+  const overallStartedAt = Date.now();
+  let lastRemoteStatus: number | undefined;
+  let lastStatusText: string | undefined;
+
+  for (const candidateUrl of candidates) {
+    const pageLimit = 100;
+    const firstUrl = appendCatalogPagination(candidateUrl, pageLimit, 0);
+
+    try {
+      const { response } = await safeFetch(firstUrl, {
+        method: 'GET',
+        timeoutMs: 15_000,
+        maxRedirects: 2,
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'SearchLink-Agency-Test/1.0',
+        },
+      });
+
+      lastRemoteStatus = response.status;
+      lastStatusText = response.statusText || '';
+
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 405) {
+          continue;
+        }
+        return {
+          ok: false,
+          status: 502,
+          remoteStatus: response.status,
+          statusText: response.statusText || undefined,
+          durationMs: Math.max(1, Date.now() - overallStartedAt),
+          error: `Tu servidor respondió con HTTP ${response.status}.`,
+        };
+      }
+
+      const firstJson = await response.json().catch(() => null);
+      if (!firstJson || typeof firstJson !== 'object') {
+        return {
+          ok: false,
+          status: 502,
+          remoteStatus: response.status,
+          statusText: response.statusText || 'OK',
+          durationMs: Math.max(1, Date.now() - overallStartedAt),
+          error: 'Tu servidor respondió 200 OK, pero el contenido no es JSON válido.',
+        };
+      }
+
+      const firstParsed = extractItemsFromExternalCatalog(firstJson);
+      const allItems: AgencyServerTestItem[] = [...firstParsed.items];
+      const targetTotal = firstParsed.reportedTotal ?? allItems.length;
+
+      let offset = pageLimit;
+      let pageCount = 1;
+      const MAX_PAGES = 10;
+
+      while (
+        allItems.length < targetTotal &&
+        firstParsed.items.length === pageLimit &&
+        pageCount < MAX_PAGES
+      ) {
+        const nextUrl = appendCatalogPagination(candidateUrl, pageLimit, offset);
+        const { response: pageRes } = await safeFetch(nextUrl, {
+          method: 'GET',
+          timeoutMs: 12_000,
+          maxRedirects: 2,
+          headers: {
+            Accept: 'application/json',
+            'User-Agent': 'SearchLink-Agency-Test/1.0',
+          },
+        });
+        if (!pageRes.ok) break;
+        const pageJson = await pageRes.json().catch(() => null);
+        if (!pageJson) break;
+        const pageParsed = extractItemsFromExternalCatalog(pageJson);
+        if (pageParsed.items.length === 0) break;
+        allItems.push(...pageParsed.items);
+        if (pageParsed.items.length < pageLimit) break;
+        offset += pageLimit;
+        pageCount += 1;
+      }
+
+      const seenIds = new Set<string>();
+      const uniqueItems = allItems.filter((item) => {
+        const dedupeKey = `${item.id}:${item.imagen_url}`;
+        if (seenIds.has(dedupeKey)) return false;
+        seenIds.add(dedupeKey);
+        return true;
+      });
+
+      return {
+        ok: true,
+        remoteStatus: response.status,
+        statusText: response.statusText || 'OK',
+        durationMs: Math.max(1, Date.now() - overallStartedAt),
+        endpointUrl: candidateUrl,
+        totalProducts: uniqueItems.length,
+        items: uniqueItems,
+      };
+    } catch {
+      // Try next candidate or report failure below
+    }
+  }
+
+  return {
+    ok: false,
+    status: 502,
+    remoteStatus: lastRemoteStatus,
+    statusText: lastStatusText,
+    durationMs: Math.max(1, Date.now() - overallStartedAt),
+    error: lastRemoteStatus
+      ? `Tu servidor respondió con código HTTP ${lastRemoteStatus}. Verifica que tenga activo GET /api/catalog.`
+      : 'No pudimos recibir respuesta JSON de tu servidor. Verifica que esté encendido y accesible.',
+  };
+}
+
+

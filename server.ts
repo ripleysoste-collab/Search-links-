@@ -82,6 +82,7 @@ import {
 import {
   executeAgencyServerDisconnect,
   executeAgencyServerSync,
+  executeAgencyServerTest,
   type AgencySyncEventType,
   type AgencySyncFallbackService,
 } from './lib/agencySync.ts';
@@ -991,6 +992,18 @@ async function startServer() {
   app.post('/api/agency/disconnect', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     const result = await executeAgencyServerDisconnect(req.headers);
+    if (!result.ok) {
+      return res.status(result.status).json(result);
+    }
+    return res.json(result);
+  });
+
+  app.post('/api/agency/test', express.json({ limit: '64kb' }), async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const body = (req.body || {}) as { serverUrl?: unknown };
+    const result = await executeAgencyServerTest(req.headers, {
+      serverUrl: typeof body.serverUrl === 'string' ? body.serverUrl : undefined,
+    });
     if (!result.ok) {
       return res.status(result.status).json(result);
     }

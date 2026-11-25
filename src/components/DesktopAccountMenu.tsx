@@ -11,6 +11,7 @@ import {
 import { DesktopStoreView } from './DesktopStoreView';
 import { ConnectServerView } from './ConnectServerView';
 import { QuickServerCodeViewer } from './QuickServerCodeViewer';
+import { ServerTestView } from './ServerTestView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -144,6 +145,7 @@ export function DesktopAccountMenu({
   const [serverConnState, setServerConnState] = useState<AgencyConnectionState>(() =>
     loadAgencyConnectionState(user.id),
   );
+  const [isTestingServer, setIsTestingServer] = useState(false);
 
   const info = getUserDisplayInfo(
     user,
@@ -186,6 +188,12 @@ export function DesktopAccountMenu({
   }, [open, view, user.id]);
 
   useEffect(() => {
+    if (!open || view !== 'connect-server' || !serverConnState.autoSyncEnabled) {
+      setIsTestingServer(false);
+    }
+  }, [open, view, serverConnState.autoSyncEnabled]);
+
+  useEffect(() => {
     if (!open) {
       setView('menu');
       setDocsExpanded(false);
@@ -195,6 +203,7 @@ export function DesktopAccountMenu({
       setConfirmSignOut(false);
       setSigningOut(false);
       setSignOutError(null);
+      setIsTestingServer(false);
     }
   }, [open]);
 
@@ -258,6 +267,8 @@ export function DesktopAccountMenu({
     view === 'language';
   const isServerConnected = serverConnState.autoSyncEnabled;
   const isConnectSplitView = view === 'connect-server' && !isServerConnected;
+  const isDesktopServerTestActive =
+    view === 'connect-server' && isServerConnected && isTestingServer;
   const topTitle =
     view === 'google-account'
       ? t.menu.googleAccount
@@ -413,7 +424,7 @@ export function DesktopAccountMenu({
             ) : (
               <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-slate-200/75 shrink-0">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  {isExpandedPanelView && (
+                  {isExpandedPanelView && !isDesktopServerTestActive && (
                     <button
                       type="button"
                       onClick={() => {
@@ -440,14 +451,26 @@ export function DesktopAccountMenu({
                     </button>
                   )}
                   <span className="text-sm font-semibold tracking-tight text-slate-950 truncate">
-                    {topTitle}
+                    {isDesktopServerTestActive
+                      ? t.connectServer.testServerTitle
+                      : topTitle}
                   </span>
                 </div>
 
                 <button
                   type="button"
-                  onClick={onClose}
-                  aria-label={t.menu.closeMenuAria}
+                  onClick={() => {
+                    if (isDesktopServerTestActive) {
+                      setIsTestingServer(false);
+                    } else {
+                      onClose();
+                    }
+                  }}
+                  aria-label={
+                    isDesktopServerTestActive
+                      ? t.connectServer.testCloseAria
+                      : t.menu.closeMenuAria
+                  }
                   className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
                 >
                   <X className="w-4 h-4" aria-hidden="true" />
@@ -671,34 +694,56 @@ export function DesktopAccountMenu({
                   />
                 </motion.div>
               ) : view === 'connect-server' ? (
-                <motion.div
-                  key="desktop-connect-server-view"
-                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
-                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-                  className={`flex-1 min-h-0 bg-white ${
-                    isConnectSplitView
-                      ? 'grid grid-cols-2 divide-x divide-slate-200/80'
-                      : 'flex flex-col'
-                  }`}
-                >
-                  {isConnectSplitView && (
+                isDesktopServerTestActive ? (
+                  <motion.div
+                    key="desktop-server-test-view"
+                    initial={shouldReduceMotion ? undefined : { opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={shouldReduceMotion ? undefined : { opacity: 0, scale: 0.98 }}
+                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                    className="flex-1 min-h-0 bg-white flex flex-col"
+                  >
+                    <ServerTestView
+                      serverUrl={serverConnState.serverUrl}
+                      variant="desktop"
+                      onClose={() => setIsTestingServer(false)}
+                    />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="desktop-connect-server-view"
+                    initial={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
+                    transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                    className={`flex-1 min-h-0 bg-white ${
+                      isConnectSplitView
+                        ? 'grid grid-cols-2 divide-x divide-slate-200/80'
+                        : 'flex flex-col'
+                    }`}
+                  >
+                    {isConnectSplitView && (
+                      <div className="min-h-0 min-w-0 flex flex-col bg-white">
+                        <QuickServerCodeViewer
+                          secretKey={serverConnState.secretKey}
+                          variant="desktop"
+                        />
+                      </div>
+                    )}
                     <div className="min-h-0 min-w-0 flex flex-col bg-white">
-                      <QuickServerCodeViewer
-                        secretKey={serverConnState.secretKey}
+                      <ConnectServerView
+                        userId={user.id}
+                        services={services}
                         variant="desktop"
+                        onOpenServerTest={
+                          isServerConnected
+                            ? () => setIsTestingServer(true)
+                            : undefined
+                        }
                       />
                     </div>
-                  )}
-                  <div className="min-h-0 min-w-0 flex flex-col bg-white">
-                    <ConnectServerView
-                      userId={user.id}
-                      services={services}
-                      variant="desktop"
-                    />
-                  </div>
-                </motion.div>
+                  </motion.div>
+                )
               ) : view === 'store' && selectedStoreService ? (
                 <motion.div
                   key="desktop-store-view"

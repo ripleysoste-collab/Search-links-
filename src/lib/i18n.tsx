@@ -451,6 +451,16 @@ export interface TranslationDictionary {
     swipeHintLabel: string;
     swipeToQuickServerAria: string;
     backToConnectServerAria: string;
+    testRequestAction: string;
+    testServerTitle: string;
+    testConsentPrompt: string;
+    testRunningLabel: string;
+    testEmptyCatalogNote: string;
+    testStatusLabel: string;
+    testLatencyLabel: string;
+    testImagesCountLabel: string;
+    testRetryAction: string;
+    testCloseAria: string;
   };
   advancedSettings: {
     title: string;
@@ -1050,6 +1060,18 @@ const ES_DICTIONARY: TranslationDictionary = {
     swipeHintLabel: 'Desliza',
     swipeToQuickServerAria: 'Desliza para ver el código de Rápido y ejecutable',
     backToConnectServerAria: 'Volver a Conecta tu servidor',
+    testRequestAction: 'Hacer petición de prueba',
+    testServerTitle: 'Prueba de servidor',
+    testConsentPrompt:
+      '¿Aceptas que hagamos la evaluación en una petición hacia tu servidor para traer todas las imágenes registradas?',
+    testRunningLabel: 'Evaluando respuesta de tu servidor…',
+    testEmptyCatalogNote:
+      'Tu servidor respondió correctamente, pero todavía no tiene productos ni imágenes almacenadas.',
+    testStatusLabel: 'Estado',
+    testLatencyLabel: 'Latencia',
+    testImagesCountLabel: 'Imágenes',
+    testRetryAction: 'Volver a evaluar',
+    testCloseAria: 'Cerrar prueba de servidor',
   },
   advancedSettings: {
     title: 'Ajustes avanzados',
@@ -1663,6 +1685,18 @@ const EN_DICTIONARY: TranslationDictionary = {
     swipeHintLabel: 'Swipe',
     swipeToQuickServerAria: 'Swipe to view Quick & Runnable server code',
     backToConnectServerAria: 'Back to Connect your server',
+    testRequestAction: 'Run test request',
+    testServerTitle: 'Server test',
+    testConsentPrompt:
+      'Do you agree for us to send an evaluation request to your server to fetch all registered images?',
+    testRunningLabel: 'Testing your server response…',
+    testEmptyCatalogNote:
+      'Your server responded properly, though it does not have any products or images stored yet.',
+    testStatusLabel: 'Status',
+    testLatencyLabel: 'Latency',
+    testImagesCountLabel: 'Images',
+    testRetryAction: 'Run again',
+    testCloseAria: 'Close server test',
   },
   advancedSettings: {
     title: 'Advanced settings',
@@ -2278,6 +2312,18 @@ const PT_DICTIONARY: TranslationDictionary = {
     swipeHintLabel: 'Deslize',
     swipeToQuickServerAria: 'Deslize para ver o código de Rápido e executável',
     backToConnectServerAria: 'Voltar para Conecte seu servidor',
+    testRequestAction: 'Fazer requisição de teste',
+    testServerTitle: 'Teste de servidor',
+    testConsentPrompt:
+      'Você aceita que façamos a avaliação enviando uma requisição ao seu servidor para trazer todas as imagens registradas?',
+    testRunningLabel: 'Avaliando a resposta do seu servidor…',
+    testEmptyCatalogNote:
+      'Seu servidor respondeu corretamente, mas ainda não possui produtos nem imagens armazenadas.',
+    testStatusLabel: 'Status',
+    testLatencyLabel: 'Latência',
+    testImagesCountLabel: 'Imagens',
+    testRetryAction: 'Avaliar novamente',
+    testCloseAria: 'Fechar teste de servidor',
   },
   advancedSettings: {
     title: 'Configurações avançadas',
