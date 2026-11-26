@@ -90,6 +90,7 @@ import {
 import {
   hydrateAgencyConnectionFromCloud,
   triggerAgencyAutoSyncIfMatched,
+  triggerAgencyAutoSyncOnBulkToggle,
 } from './lib/agencySyncClient';
 
 const MAX_FREE_UPLOAD_IMAGES = 20;
@@ -1727,6 +1728,10 @@ export default function App() {
       } catch {
         // Ignore storage errors
       }
+      void triggerAgencyAutoSyncOnBulkToggle({
+        userId: authUserRef.current.id,
+        services: updated,
+      });
     }
     return { pausedServicesCount: res.pausedServicesCount };
   };
@@ -1748,6 +1753,10 @@ export default function App() {
       } catch {
         // Ignore storage errors
       }
+      void triggerAgencyAutoSyncOnBulkToggle({
+        userId: authUserRef.current.id,
+        services: updated,
+      });
     }
     return { unfrozenServicesCount: res.unfrozenServicesCount };
   };

@@ -8,6 +8,7 @@ import type { OrganizationServiceItem } from '../components/DesktopOrganizationV
 
 export type AgencySyncTriggerEvent =
   | 'manual'
+  | 'resync'
   | 'service.created'
   | 'service.updated';
 
@@ -65,7 +66,9 @@ export function loadAgencyServerUpdates(userId: string): AgencyServerUpdateRecor
         id: item.id,
         syncedAt: item.syncedAt,
         eventType:
-          item.eventType === 'service.created' || item.eventType === 'service.updated'
+          item.eventType === 'service.created' ||
+          item.eventType === 'service.updated' ||
+          item.eventType === 'resync'
             ? item.eventType
             : 'manual',
         webhookEvent:
@@ -190,6 +193,7 @@ export function loadAgencyConnectionState(userId: string): AgencyConnectionState
         typeof parsed.lastSyncedAt === 'string' ? parsed.lastSyncedAt : null,
       lastTriggerEvent:
         parsed.lastTriggerEvent === 'manual' ||
+        parsed.lastTriggerEvent === 'resync' ||
         parsed.lastTriggerEvent === 'service.created' ||
         parsed.lastTriggerEvent === 'service.updated'
           ? parsed.lastTriggerEvent
@@ -250,20 +254,39 @@ export async function dispatchAgencyServerSync(input: {
     };
   }
 
+  const prevStateBeforeSync = loadAgencyConnectionState(input.userId);
   const isNewScope = input.serviceScope === 'new';
   const isManualNewHandshake = isNewScope && input.eventType === 'manual';
+  const isResyncNewScope = isNewScope && input.eventType === 'resync';
 
   const targetServices = isManualNewHandshake
     ? []
     : isNewScope
-      ? input.changedServiceId
-        ? input.services.filter((srv) => srv.id === input.changedServiceId)
-        : []
+      ? isResyncNewScope
+        ? input.services.filter((srv) => {
+            if (prevStateBeforeSync.trackedNewServiceIds.includes(srv.id)) {
+              return true;
+            }
+            if (
+              prevStateBeforeSync.connectedAt &&
+              Number.isFinite(Date.parse(srv.createdAt)) &&
+              Number.isFinite(Date.parse(prevStateBeforeSync.connectedAt))
+            ) {
+              return (
+                Date.parse(srv.createdAt) >=
+                Date.parse(prevStateBeforeSync.connectedAt) - 5_000
+              );
+            }
+            return false;
+          })
+        : input.changedServiceId
+          ? input.services.filter((srv) => srv.id === input.changedServiceId)
+          : []
       : input.serviceScope === 'all'
         ? input.services
         : input.services.filter((srv) => srv.id === input.serviceScope);
 
-  if (!isManualNewHandshake && targetServices.length === 0) {
+  if (!isManualNewHandshake && !isResyncNewScope && targetServices.length === 0) {
     return {
       ok: false,
       error: 'No hay servicios disponibles para sincronizar.',
@@ -274,6 +297,7 @@ export async function dispatchAgencyServerSync(input: {
     id: srv.id,
     slug: srv.slug,
     name: srv.name,
+    isActive: srv.isActive !== false,
     createdAt: srv.createdAt,
     products: (srv.products || []).map((p) => ({
       id: p.id,
@@ -375,6 +399,7 @@ export async function dispatchAgencyServerSync(input: {
       id: srv.id,
       slug: srv.slug,
       nombre: srv.name,
+      activo: srv.isActive !== false,
       creado_en: srv.createdAt,
       total_productos: srv.products.length,
       productos: srv.products.map((p) => ({
@@ -590,6 +615,7 @@ export interface ExecuteAgencyTestCallResult {
 
 export async function dispatchAgencyServerTest(
   serverUrl?: string,
+  catalogApiKey?: string,
 ): Promise<ExecuteAgencyTestCallResult> {
   const accessToken = await getSupabaseAccessToken();
   if (!accessToken) {
@@ -599,6 +625,8 @@ export async function dispatchAgencyServerTest(
     };
   }
 
+  const trimmedKey = typeof catalogApiKey === 'string' ? catalogApiKey.trim() : '';
+
   const res = await fetch(resolveApiUrl('/api/agency/test'), {
     method: 'POST',
     headers: {
@@ -607,6 +635,7 @@ export async function dispatchAgencyServerTest(
     },
     body: JSON.stringify({
       serverUrl: (serverUrl || '').trim(),
+      ...(trimmedKey ? { catalogApiKey: trimmedKey } : {}),
     }),
   });
 
@@ -693,6 +722,48 @@ export async function triggerAgencyAutoSyncIfMatched(input: {
         input.eventType === 'service.created'
           ? `service.created:${input.serviceId}`
           : undefined,
+    });
+  } catch {
+    // Silent background auto-sync: never interrupt the foreground workflow
+  }
+}
+
+export async function triggerAgencyAutoSyncOnBulkToggle(input: {
+  userId: string;
+  services: OrganizationServiceItem[];
+}): Promise<void> {
+  if (!input.userId || input.services.length === 0) return;
+  const config = loadAgencyConnectionState(input.userId);
+  if (!config.autoSyncEnabled) return;
+
+  const trimmedUrl = config.serverUrl.trim();
+  if (!trimmedUrl || !config.selectedScope || !config.secretKey) return;
+
+  try {
+    const parsed = new URL(trimmedUrl);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+  } catch {
+    return;
+  }
+
+  const isSingleScope =
+    config.selectedScope !== 'all' && config.selectedScope !== 'new';
+  if (
+    isSingleScope &&
+    !input.services.some((srv) => srv.id === config.selectedScope)
+  ) {
+    return;
+  }
+
+  try {
+    await dispatchAgencyServerSync({
+      userId: input.userId,
+      serverUrl: trimmedUrl,
+      serviceScope: config.selectedScope,
+      secretKey: config.secretKey,
+      services: input.services,
+      eventType: isSingleScope ? 'service.updated' : 'resync',
+      ...(isSingleScope ? { changedServiceId: config.selectedScope } : {}),
     });
   } catch {
     // Silent background auto-sync: never interrupt the foreground workflow

@@ -49,6 +49,7 @@ export function ConnectServerView({
   const [serviceMenuOpen, setServiceMenuOpen] = useState(false);
   const [pendingSyncConfirm, setPendingSyncConfirm] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isResyncing, setIsResyncing] = useState(false);
   const [disconnectBoxOpen, setDisconnectBoxOpen] = useState(false);
   const [disconnectInput, setDisconnectInput] = useState('');
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -60,6 +61,7 @@ export function ConnectServerView({
   useEffect(() => {
     setConnState(loadAgencyConnectionState(userId));
     setPendingSyncConfirm(false);
+    setIsResyncing(false);
     setDisconnectBoxOpen(false);
     setDisconnectInput('');
     setFormError(null);
@@ -248,6 +250,45 @@ export function ConnectServerView({
       setFormError(t.connectServer.syncNetworkError);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleResyncConnected = async () => {
+    if (!isConnected || isResyncing || isDisconnecting) return;
+    const valid = validateSyncForm();
+    if (!valid) return;
+
+    setFormError(null);
+    setIsResyncing(true);
+
+    try {
+      const result = await dispatchAgencyServerSync({
+        userId,
+        serverUrl: valid.trimmedUrl,
+        serviceScope: valid.scope,
+        secretKey: connState.secretKey,
+        services,
+        eventType: 'resync',
+      });
+
+      if (!result.ok) {
+        setFormError(result.error || t.connectServer.syncNetworkError);
+        return;
+      }
+
+      setSyncSuccessMessage(
+        valid.scope === 'new' && (result.syncedServices ?? 0) === 0
+          ? t.connectServer.syncNewServicesSuccess(result.durationMs ?? 1)
+          : t.connectServer.syncSuccess(
+              result.syncedServices ?? 1,
+              result.syncedProducts ?? 0,
+              result.durationMs ?? 1,
+            ),
+      );
+    } catch {
+      setFormError(t.connectServer.syncNetworkError);
+    } finally {
+      setIsResyncing(false);
     }
   };
 
@@ -846,7 +887,7 @@ export function ConnectServerView({
           <div className="space-y-2">
             <button
               type="button"
-              disabled={isDisconnecting}
+              disabled={isDisconnecting || isResyncing}
               onClick={handleOpenDisconnectBox}
               className={`w-full rounded-2xl bg-rose-600 hover:bg-rose-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-600/40 ${
                 variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
@@ -862,45 +903,61 @@ export function ConnectServerView({
               </span>
             </button>
 
-            {(onOpenServerUpdates || onOpenSecretKey || onOpenServerTest) && (
-              <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
-                {onOpenServerUpdates && (
-                  <button
-                    type="button"
-                    onClick={onOpenServerUpdates}
-                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
-                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
-                    }`}
-                  >
-                    {t.connectServer.updatesMenuAction}
-                  </button>
-                )}
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
+              {onOpenServerUpdates && (
+                <button
+                  type="button"
+                  onClick={onOpenServerUpdates}
+                  className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                    variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                  }`}
+                >
+                  {t.connectServer.updatesMenuAction}
+                </button>
+              )}
 
-                {onOpenSecretKey && (
-                  <button
-                    type="button"
-                    onClick={onOpenSecretKey}
-                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
-                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
-                    }`}
-                  >
-                    {t.connectServer.secretKeyMenuAction}
-                  </button>
-                )}
+              {onOpenSecretKey && (
+                <button
+                  type="button"
+                  onClick={onOpenSecretKey}
+                  className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                    variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                  }`}
+                >
+                  {t.connectServer.secretKeyMenuAction}
+                </button>
+              )}
 
-                {onOpenServerTest && (
-                  <button
-                    type="button"
-                    onClick={onOpenServerTest}
-                    className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
-                      variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
-                    }`}
-                  >
-                    {t.connectServer.testRequestAction}
-                  </button>
+              {onOpenServerTest && (
+                <button
+                  type="button"
+                  onClick={onOpenServerTest}
+                  className={`text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                    variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                  }`}
+                >
+                  {t.connectServer.testRequestAction}
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={isResyncing || isDisconnecting}
+                onClick={() => void handleResyncConnected()}
+                className={`inline-flex items-center justify-center gap-1.5 text-center text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-wait whitespace-nowrap focus-visible:outline-none focus-visible:underline ${
+                  variant === 'mobile' ? 'min-h-[44px] py-2 px-1' : 'py-1.5 px-1'
+                }`}
+              >
+                {isResyncing && (
+                  <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
                 )}
-              </div>
-            )}
+                <span>
+                  {isResyncing
+                    ? t.connectServer.resyncingAction
+                    : t.connectServer.resyncAction}
+                </span>
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -54,6 +54,8 @@ export default async function handler(
   const body = await readJsonBody(req);
   const result = await executeAgencyServerTest(req.headers, {
     serverUrl: typeof body.serverUrl === 'string' ? body.serverUrl : undefined,
+    catalogApiKey:
+      typeof body.catalogApiKey === 'string' ? body.catalogApiKey : undefined,
   });
 
   if (!result.ok) {

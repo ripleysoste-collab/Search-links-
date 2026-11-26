@@ -80,8 +80,8 @@ CREATE POLICY "servidores_externos_delete_own"
   TO authenticated
   USING ((select auth.uid()) = user_id);
 
--- RPC segura para que /api/v1/* verifique si la cuenta propietaria de una API Key
--- ya tiene un servidor externo conectado (devuelve únicamente true/false, sin exponer URLs ni claves).
+-- RPC segura para que /api/v1/* verifique si la API Key consultada corresponde
+-- a un servicio conectado a un servidor externo según el alcance elegido (all, new o id específico).
 CREATE OR REPLACE FUNCTION public.check_external_server_by_key_hash(p_key_hash text)
 RETURNS boolean
 LANGUAGE sql
@@ -98,6 +98,11 @@ AS $$
     WHERE k.key_hash = p_key_hash
       AND k.is_active = true
       AND se.auto_sync_enabled = true
+      AND (
+        se.service_scope = 'all'
+        OR (se.service_scope = 'new' AND s.created_at >= se.created_at)
+        OR (se.service_scope NOT IN ('all', 'new') AND s.id::text = se.service_scope)
+      )
   );
 $$;
 

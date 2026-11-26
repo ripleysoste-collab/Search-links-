@@ -134,22 +134,30 @@ export async function purgeAllUserR2Images(
     };
   }
 
-  const [{ data: orgRow }, { data: serviceRows }, { data: productRows }] =
-    await Promise.all([
-      userClient
-        .from('organizacion')
-        .select('id, logo_url, logo_r2_key')
-        .eq('user_id', authUser.userId)
-        .maybeSingle(),
-      userClient
-        .from('servicios')
-        .select('id, public_slug, item_count')
-        .eq('user_id', authUser.userId),
-      userClient
-        .from('servicio_productos')
-        .select('id, servicio_id, r2_key, image_url')
-        .eq('user_id', authUser.userId),
-    ]);
+  const [
+    { data: orgRow },
+    { data: serviceRows },
+    { data: productRows },
+    { data: keyRows },
+  ] = await Promise.all([
+    userClient
+      .from('organizacion')
+      .select('id, logo_url, logo_r2_key')
+      .eq('user_id', authUser.userId)
+      .maybeSingle(),
+    userClient
+      .from('servicios')
+      .select('id, public_slug, item_count')
+      .eq('user_id', authUser.userId),
+    userClient
+      .from('servicio_productos')
+      .select('id, servicio_id, r2_key, image_url')
+      .eq('user_id', authUser.userId),
+    userClient
+      .from('servicio_api_keys')
+      .select('key_hash')
+      .eq('user_id', authUser.userId),
+  ]);
 
   const r2Keys: string[] = [];
   const logoKey = extractSafeMediaKey(orgRow?.logo_r2_key, orgRow?.logo_url);
@@ -159,6 +167,9 @@ export async function purgeAllUserR2Images(
 
   const servicesList = Array.isArray(serviceRows) ? serviceRows : [];
   const productsList = Array.isArray(productRows) ? productRows : [];
+  const keyHashes = (Array.isArray(keyRows) ? keyRows : [])
+    .map((k) => (typeof k?.key_hash === 'string' ? k.key_hash.trim() : ''))
+    .filter(Boolean);
 
   let catalogKeysCount = 0;
   for (const prod of productsList) {
@@ -185,6 +196,44 @@ export async function purgeAllUserR2Images(
 
   const deletedR2Count = await deleteImagesFromR2(r2Keys);
 
+  if (servicesList.length > 0 || productsList.length > 0) {
+    const { error: keysDelErr } = await userClient
+      .from('servicio_api_keys')
+      .delete()
+      .eq('user_id', authUser.userId);
+    if (keysDelErr) {
+      return {
+        ok: false,
+        status: 500,
+        error: 'No se pudieron limpiar las API Keys asociadas.',
+      };
+    }
+
+    const { error: prodDelErr } = await userClient
+      .from('servicio_productos')
+      .delete()
+      .eq('user_id', authUser.userId);
+    if (prodDelErr) {
+      return {
+        ok: false,
+        status: 500,
+        error: 'No se pudieron limpiar los productos publicados.',
+      };
+    }
+
+    const { error: srvDelErr } = await userClient
+      .from('servicios')
+      .delete()
+      .eq('user_id', authUser.userId);
+    if (srvDelErr) {
+      return {
+        ok: false,
+        status: 500,
+        error: 'No se pudieron eliminar los servicios publicados.',
+      };
+    }
+  }
+
   const hasPlus =
     hasImageBankPlusAccess(authUser.email, authUser.appMetadata) ||
     isAdminTestEmail(authUser.email);
@@ -197,21 +246,6 @@ export async function purgeAllUserR2Images(
         p_has_plus: false,
       })
       .then(() => undefined, () => undefined);
-  }
-
-  if (servicesList.length > 0 || productsList.length > 0) {
-    await userClient
-      .from('servicio_api_keys')
-      .delete()
-      .eq('user_id', authUser.userId);
-    await userClient
-      .from('servicio_productos')
-      .delete()
-      .eq('user_id', authUser.userId);
-    await userClient
-      .from('servicios')
-      .delete()
-      .eq('user_id', authUser.userId);
   }
 
   let clearedLogo = false;
@@ -229,6 +263,9 @@ export async function purgeAllUserR2Images(
     }
   }
 
+  if (keyHashes.length > 0) {
+    markExternalServerActiveForKeyHashes(keyHashes, false);
+  }
   invalidateCoreCatalogCache();
   invalidateUserImageQuotaCache(authUser.userId);
 
@@ -260,7 +297,7 @@ export async function pauseAllUserApis(
 
   const { data: serviceRows, error: servicesFetchErr } = await userClient
     .from('servicios')
-    .select('id, public_slug')
+    .select('id, public_slug, is_active')
     .eq('user_id', authUser.userId);
 
   if (servicesFetchErr) {
@@ -272,6 +309,7 @@ export async function pauseAllUserApis(
   }
 
   const servicesList = Array.isArray(serviceRows) ? serviceRows : [];
+  const activeCount = servicesList.filter((s) => s?.is_active !== false).length;
 
   const [keysRes, srvRes] = await Promise.all([
     userClient
@@ -284,7 +322,7 @@ export async function pauseAllUserApis(
       .eq('user_id', authUser.userId),
   ]);
 
-  if (keysRes.error && srvRes.error) {
+  if (keysRes.error || srvRes.error) {
     return {
       ok: false,
       status: 500,
@@ -296,7 +334,7 @@ export async function pauseAllUserApis(
 
   return {
     ok: true,
-    pausedServicesCount: servicesList.length,
+    pausedServicesCount: activeCount,
   };
 }
 
@@ -315,12 +353,20 @@ export async function unfreezeAllUserApis(
     };
   }
 
-  const { data: serviceRows, error: servicesFetchErr } = await userClient
-    .from('servicios')
-    .select('id, is_active')
-    .eq('user_id', authUser.userId);
+  const [{ data: serviceRows, error: servicesFetchErr }, { data: keyRows, error: keysFetchErr }] =
+    await Promise.all([
+      userClient
+        .from('servicios')
+        .select('id, is_active')
+        .eq('user_id', authUser.userId),
+      userClient
+        .from('servicio_api_keys')
+        .select('id, servicio_id, is_active, created_at')
+        .eq('user_id', authUser.userId)
+        .order('created_at', { ascending: false }),
+    ]);
 
-  if (servicesFetchErr) {
+  if (servicesFetchErr || keysFetchErr) {
     return {
       ok: false,
       status: 500,
@@ -331,18 +377,53 @@ export async function unfreezeAllUserApis(
   const servicesList = Array.isArray(serviceRows) ? serviceRows : [];
   const pausedCount = servicesList.filter((s) => s?.is_active === false).length;
 
+  // Never resurrect previously rotated/revoked API keys:
+  // only activate the single most recent key for services that currently have zero active keys.
+  const serviceKeyState = new Map<
+    string,
+    { hasActive: boolean; newestKeyId: string }
+  >();
+  for (const row of Array.isArray(keyRows) ? keyRows : []) {
+    const keyId = typeof row?.id === 'string' ? row.id : '';
+    const srvId = typeof row?.servicio_id === 'string' ? row.servicio_id : '';
+    if (!keyId || !srvId) continue;
+
+    const existing = serviceKeyState.get(srvId);
+    if (!existing) {
+      serviceKeyState.set(srvId, {
+        hasActive: row.is_active === true,
+        newestKeyId: keyId,
+      });
+    } else if (row.is_active === true) {
+      existing.hasActive = true;
+    }
+  }
+
+  const keyIdsToActivate: string[] = [];
+  for (const entry of serviceKeyState.values()) {
+    if (!entry.hasActive && entry.newestKeyId) {
+      keyIdsToActivate.push(entry.newestKeyId);
+    }
+  }
+
+  const keysUpdatePromise =
+    keyIdsToActivate.length > 0
+      ? userClient
+          .from('servicio_api_keys')
+          .update({ is_active: true })
+          .eq('user_id', authUser.userId)
+          .in('id', keyIdsToActivate)
+      : Promise.resolve({ error: null });
+
   const [keysRes, srvRes] = await Promise.all([
-    userClient
-      .from('servicio_api_keys')
-      .update({ is_active: true })
-      .eq('user_id', authUser.userId),
+    keysUpdatePromise,
     userClient
       .from('servicios')
       .update({ is_active: true })
       .eq('user_id', authUser.userId),
   ]);
 
-  if (keysRes.error && srvRes.error) {
+  if (keysRes.error || srvRes.error) {
     return {
       ok: false,
       status: 500,
@@ -354,7 +435,7 @@ export async function unfreezeAllUserApis(
 
   return {
     ok: true,
-    unfrozenServicesCount: pausedCount > 0 ? pausedCount : servicesList.length,
+    unfrozenServicesCount: pausedCount,
   };
 }
 
@@ -480,18 +561,7 @@ export async function permanentlyDeleteUserAccount(
   // 1. Delete all R2 media owned by this user
   const deletedR2Count = await deleteImagesFromR2(r2Keys);
 
-  // 2. Record fallback ledger in RAM (mirrors SQL ledger logic)
-  recordInMemoryDeletedAccountLedger({
-    email: authUser.email,
-    hasPlus,
-    activeImages: activeImagesCount,
-    apiMonth,
-    apiRequests: totalApiRequests,
-    chatDay,
-    chatUsed: chatLimitStatus.used,
-  });
-
-  // 3. Execute atomic SQL archival & complete account deletion RPC
+  // 2. Execute atomic SQL archival & complete account deletion RPC
   let authDeleted = false;
   let rpcAvailable = true;
 
@@ -551,6 +621,17 @@ export async function permanentlyDeleteUserAccount(
       .eq('user_id', authUser.userId)
       .then(() => undefined, () => undefined);
   }
+
+  // 3. Record fallback ledger in RAM after deletion succeeded (mirrors SQL ledger logic)
+  recordInMemoryDeletedAccountLedger({
+    email: authUser.email,
+    hasPlus,
+    activeImages: activeImagesCount,
+    apiMonth,
+    apiRequests: totalApiRequests,
+    chatDay,
+    chatUsed: chatLimitStatus.used,
+  });
 
   // Optional Service Role deletion guarantee if SQL didn't delete auth.users directly
   if (!authDeleted) {

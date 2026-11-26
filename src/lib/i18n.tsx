@@ -505,6 +505,14 @@ export interface TranslationDictionary {
     rotateConfirmInputAria: string;
     rotateSuccess: string;
     rotateNetworkError: string;
+    resyncAction: string;
+    resyncingAction: string;
+    updatesTitleResync: string;
+    testCatalogKeyLabel: string;
+    testCatalogKeyPlaceholder: string;
+    testCatalogKeyAria: string;
+    testShowCatalogKeyAria: string;
+    testHideCatalogKeyAria: string;
   };
   advancedSettings: {
     title: string;
@@ -523,6 +531,7 @@ export interface TranslationDictionary {
     pauseAllApisConfirmText: string;
     r2PurgeSuccess: (deletedCount: number) => string;
     r2EmptyError: string;
+    noActiveApisError: string;
     pauseApisSuccess: (servicesCount: number) => string;
     thingsYouCanDoTitle: string;
     unfreezeApisSubtitle: string;
@@ -1216,6 +1225,14 @@ const ES_DICTIONARY: TranslationDictionary = {
       'Clave secreta rotada. Cópiala, actualízala en tu servidor y vuelve a conectar cuando estés listo.',
     rotateNetworkError:
       'No pudimos completar la rotación de tu clave secreta. Intenta de nuevo.',
+    resyncAction: 'Reenviar sincronización',
+    resyncingAction: 'Reenviando…',
+    updatesTitleResync: 'Reenvío de sincronización',
+    testCatalogKeyLabel: 'CATALOG_API_KEY (opcional)',
+    testCatalogKeyPlaceholder: 'Solo si protegiste GET /api/catalog',
+    testCatalogKeyAria: 'Clave opcional CATALOG_API_KEY para probar tu servidor',
+    testShowCatalogKeyAria: 'Mostrar CATALOG_API_KEY',
+    testHideCatalogKeyAria: 'Ocultar CATALOG_API_KEY',
   },
   advancedSettings: {
     title: 'Ajustes avanzados',
@@ -1241,6 +1258,7 @@ const ES_DICTIONARY: TranslationDictionary = {
         ? `Se eliminaron ${count} ${count === 1 ? 'imagen' : 'imágenes'} de R2 y se limpiaron tus catálogos publicados.`
         : 'Tus catálogos e imágenes en R2 quedaron completamente limpios.',
     r2EmptyError: 'No tienes imágenes en R2.',
+    noActiveApisError: 'No tienes APIs activas para pausar.',
     pauseApisSuccess: (count) =>
       count > 0
         ? `Se pausaron ${count} ${count === 1 ? 'servicio' : 'servicios'} y todas sus API Keys activas dejaron de responder.`
@@ -1941,6 +1959,14 @@ const EN_DICTIONARY: TranslationDictionary = {
       'Secret key rotated. Copy it, update your server environment variable, and reconnect when ready.',
     rotateNetworkError:
       'Could not complete secret key rotation. Please try again.',
+    resyncAction: 'Re-send sync',
+    resyncingAction: 'Re-sending…',
+    updatesTitleResync: 'Catalog sync re-sent',
+    testCatalogKeyLabel: 'CATALOG_API_KEY (optional)',
+    testCatalogKeyPlaceholder: 'Only if you protected GET /api/catalog',
+    testCatalogKeyAria: 'Optional CATALOG_API_KEY to test your server',
+    testShowCatalogKeyAria: 'Show CATALOG_API_KEY',
+    testHideCatalogKeyAria: 'Hide CATALOG_API_KEY',
   },
   advancedSettings: {
     title: 'Advanced settings',
@@ -1966,6 +1992,7 @@ const EN_DICTIONARY: TranslationDictionary = {
         ? `Deleted ${count} ${count === 1 ? 'image' : 'images'} from R2 and cleared your published catalogs.`
         : 'Your R2 media and published catalogs have been cleared.',
     r2EmptyError: 'You have no images in R2.',
+    noActiveApisError: 'You have no active APIs to pause.',
     pauseApisSuccess: (count) =>
       count > 0
         ? `Paused ${count} ${count === 1 ? 'service' : 'services'} and disabled all active API keys.`
@@ -2668,6 +2695,14 @@ const PT_DICTIONARY: TranslationDictionary = {
       'Chave secreta rotacionada. Copie-a, atualize no seu servidor e reconecte quando estiver pronto.',
     rotateNetworkError:
       'Não foi possível concluir a rotação da sua chave secreta. Tente novamente.',
+    resyncAction: 'Reenviar sincronização',
+    resyncingAction: 'Reenviando…',
+    updatesTitleResync: 'Reenvio de sincronização',
+    testCatalogKeyLabel: 'CATALOG_API_KEY (opcional)',
+    testCatalogKeyPlaceholder: 'Apenas se você protegeu GET /api/catalog',
+    testCatalogKeyAria: 'Chave opcional CATALOG_API_KEY para testar seu servidor',
+    testShowCatalogKeyAria: 'Mostrar CATALOG_API_KEY',
+    testHideCatalogKeyAria: 'Ocultar CATALOG_API_KEY',
   },
   advancedSettings: {
     title: 'Configurações avançadas',
@@ -2693,6 +2728,7 @@ const PT_DICTIONARY: TranslationDictionary = {
         ? `${count} ${count === 1 ? 'imagem foi removida' : 'imagens foram removidas'} do R2 e seus catálogos publicados foram limpos.`
         : 'Suas mídias no R2 e catálogos publicados foram limpos.',
     r2EmptyError: 'Você não tem imagens no R2.',
+    noActiveApisError: 'Você não tem APIs ativas para pausar.',
     pauseApisSuccess: (count) =>
       count > 0
         ? `${count} ${count === 1 ? 'serviço foi pausado' : 'serviços foram pausados'} e todas as API Keys ativas foram desativadas.`

@@ -129,8 +129,15 @@ const server = http.createServer(async (req, res) => {
     }
     const result = searchCatalog({
       slug: url.searchParams.get('slug') || url.searchParams.get('service') || '',
-      query: url.searchParams.get('q') || '',
-      categoria: url.searchParams.get('categoria') || '',
+      query:
+        url.searchParams.get('q') ||
+        url.searchParams.get('search') ||
+        url.searchParams.get('buscar') ||
+        '',
+      categoria:
+        url.searchParams.get('categoria') ||
+        url.searchParams.get('category') ||
+        '',
       limit: Number(url.searchParams.get('limit') || 25),
       offset: Number(url.searchParams.get('offset') || 0),
     });
@@ -156,12 +163,41 @@ let state = {
   lastSyncedAt: null,
 };
 
+const SEARCH_STOPWORDS = new Set([
+  'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas',
+  'de', 'del', 'al', 'a', 'en', 'con', 'por', 'para', 'y', 'o', 'u',
+  'the', 'an', 'of', 'in', 'on', 'with', 'for', 'and', 'or', 'to',
+  'o', 'os', 'as', 'um', 'uma', 'uns', 'umas', 'do', 'da', 'dos', 'das', 'em', 'com', 'e', 'ou',
+]);
+
 function normalizeText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\\u0300-\\u036f]/g, '')
     .toLowerCase()
+    .replace(/[^a-z0-9\\s]/g, ' ')
+    .replace(/\\s+/g, ' ')
     .trim();
+}
+
+function tokenizeQuery(rawQuery) {
+  const normalized = normalizeText(rawQuery);
+  if (!normalized) return [];
+  const rawTokens = normalized.split(' ').filter(Boolean);
+  const meaningful = rawTokens.filter((token) => !SEARCH_STOPWORDS.has(token));
+  return meaningful.length > 0 ? meaningful : rawTokens;
+}
+
+function tokenMatchesText(haystack, token) {
+  if (!haystack || !token) return false;
+  if (haystack.includes(token)) return true;
+  if (token.length >= 5 && token.endsWith('es') && haystack.includes(token.slice(0, -2))) {
+    return true;
+  }
+  if (token.length >= 4 && token.endsWith('s') && haystack.includes(token.slice(0, -1))) {
+    return true;
+  }
+  return false;
 }
 
 export async function loadStore() {
@@ -230,16 +266,24 @@ export async function applyWebhookSync(payload) {
 
 export function searchCatalog({ slug, query, categoria, limit, offset }) {
   const cleanSlug = String(slug || '').trim().toLowerCase();
-  const selected = cleanSlug
+  const matchedBySlug = cleanSlug
     ? state.servicios.filter(
         (srv) =>
           String(srv.slug || '').toLowerCase() === cleanSlug ||
           String(srv.id || '').toLowerCase() === cleanSlug,
       )
-    : state.servicios;
+    : [];
+
+  if (cleanSlug && matchedBySlug.length === 0) {
+    return { ok: false, error: 'Service not found in external server.' };
+  }
+
+  const selected = (cleanSlug ? matchedBySlug : state.servicios).filter(
+    (srv) => srv.activo !== false,
+  );
 
   if (cleanSlug && selected.length === 0) {
-    return { ok: false, error: 'Service not found in external server.' };
+    return { ok: false, error: 'Service is paused or unavailable.' };
   }
 
   const allProducts = selected.flatMap((srv) =>
@@ -251,18 +295,60 @@ export function searchCatalog({ slug, query, categoria, limit, offset }) {
   );
 
   const normQuery = normalizeText(query);
+  const queryTokens = tokenizeQuery(query);
   const normCategory = normalizeText(categoria);
 
-  const filtered = allProducts.filter((item) => {
-    if (normCategory && normalizeText(item.categoria) !== normCategory) {
-      return false;
+  const scored = [];
+  for (let idx = 0; idx < allProducts.length; idx += 1) {
+    const item = allProducts[idx];
+    const normItemCategory = normalizeText(item.categoria);
+    if (normCategory && !normItemCategory.includes(normCategory)) {
+      continue;
     }
-    if (!normQuery) return true;
-    const haystack = normalizeText(
-      \`\${item.nombre || ''} \${item.categoria || ''} \${item.descripcion || ''}\`,
-    );
-    return haystack.includes(normQuery);
-  });
+
+    if (queryTokens.length === 0) {
+      scored.push({ item, score: 0, index: idx });
+      continue;
+    }
+
+    const normName = normalizeText(item.nombre);
+    const normDesc = normalizeText(item.descripcion);
+    const normService = normalizeText(item.servicio_nombre);
+    const combined = \`\${normName} \${normItemCategory} \${normDesc} \${normService}\`.trim();
+
+    let allMatched = true;
+    let score = 0;
+
+    if (normQuery && normName.includes(normQuery)) {
+      score += 100;
+    } else if (normQuery && combined.includes(normQuery)) {
+      score += 40;
+    }
+
+    for (const token of queryTokens) {
+      if (!tokenMatchesText(combined, token)) {
+        allMatched = false;
+        break;
+      }
+      if (tokenMatchesText(normName, token)) {
+        score += 20;
+      } else if (tokenMatchesText(normItemCategory, token)) {
+        score += 10;
+      } else {
+        score += 5;
+      }
+    }
+
+    if (allMatched) {
+      scored.push({ item, score, index: idx });
+    }
+  }
+
+  if (queryTokens.length > 0) {
+    scored.sort((a, b) => b.score - a.score || a.index - b.index);
+  }
+
+  const filtered = scored.map((entry) => entry.item);
 
   const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
   const safeOffset = Math.max(Number(offset) || 0, 0);
@@ -300,15 +386,17 @@ export function buildCatalogSchema(baseUrl) {
       catalog: \`\${baseUrl}/api/catalog\`,
     },
     query_params: ['slug', 'q', 'categoria', 'limit', 'offset'],
-    servicios: state.servicios.map((srv) => ({
-      id: srv.id,
-      slug: srv.slug,
-      nombre: srv.nombre,
-      total_productos: Array.isArray(srv.productos) ? srv.productos.length : 0,
-      categorias: Array.from(
-        new Set((srv.productos || []).map((p) => p.categoria).filter(Boolean)),
-      ),
-    })),
+    servicios: state.servicios
+      .filter((srv) => srv.activo !== false)
+      .map((srv) => ({
+        id: srv.id,
+        slug: srv.slug,
+        nombre: srv.nombre,
+        total_productos: Array.isArray(srv.productos) ? srv.productos.length : 0,
+        categorias: Array.from(
+          new Set((srv.productos || []).map((p) => p.categoria).filter(Boolean)),
+        ),
+      })),
   };
 }
 `;

@@ -28,11 +28,16 @@ export interface AgencySyncFallbackService {
   id: string;
   slug?: string;
   name: string;
+  isActive?: boolean;
   createdAt?: string;
   products?: AgencySyncFallbackProduct[];
 }
 
-export type AgencySyncEventType = 'manual' | 'service.created' | 'service.updated';
+export type AgencySyncEventType =
+  | 'manual'
+  | 'resync'
+  | 'service.created'
+  | 'service.updated';
 
 export interface AgencySyncRequestInput {
   serverUrl: string;
@@ -63,6 +68,7 @@ export interface AgencyWebhookPayload {
     id: string;
     slug: string;
     nombre: string;
+    activo: boolean;
     creado_en: string;
     total_productos: number;
     productos: Array<{
@@ -101,6 +107,7 @@ interface NormalizedSyncService {
   id: string;
   slug: string;
   nombre: string;
+  activo: boolean;
   creado_en: string;
   productos: Array<{
     id: string;
@@ -248,6 +255,7 @@ export async function executeAgencyServerSync(
 
   const isNewScope = serviceScope === 'new';
   const isManualNewHandshake = isNewScope && input.eventType === 'manual';
+  const isResyncNewScope = isNewScope && input.eventType === 'resync';
 
   let orgName = 'Sin nombre';
   let orgLogoUrl: string | null = null;
@@ -285,17 +293,37 @@ export async function executeAgencyServerSync(
       }
 
       if (!isManualNewHandshake) {
-        const targetNewServiceId = isNewScope ? (input.changedServiceId || '').trim() : '';
-        if (!isNewScope || targetNewServiceId) {
+        const targetNewServiceId =
+          isNewScope && !isResyncNewScope ? (input.changedServiceId || '').trim() : '';
+
+        let resyncBaselineIso: string | null = null;
+        if (isResyncNewScope) {
+          const { data: serverRow } = await userClient
+            .from('servidores_externos')
+            .select('created_at')
+            .eq('user_id', authUser.userId)
+            .maybeSingle();
+          if (
+            serverRow &&
+            typeof serverRow.created_at === 'string' &&
+            serverRow.created_at.trim()
+          ) {
+            resyncBaselineIso = serverRow.created_at.trim();
+          }
+        }
+
+        if (!isNewScope || targetNewServiceId || (isResyncNewScope && resyncBaselineIso)) {
           let query = userClient
             .from('servicios')
             .select(
-              'id, public_slug, nombre, created_at, servicio_productos(id, position, nombre, categoria, descripcion, image_url)',
+              'id, public_slug, nombre, is_active, created_at, servicio_productos(id, position, nombre, categoria, descripcion, image_url)',
             )
             .eq('user_id', authUser.userId)
             .order('created_at', { ascending: false });
 
-          if (isNewScope) {
+          if (isResyncNewScope && resyncBaselineIso) {
+            query = query.gte('created_at', resyncBaselineIso);
+          } else if (isNewScope) {
             query = query.eq('id', targetNewServiceId);
           } else if (serviceScope !== 'all') {
             query = query.eq('id', serviceScope);
@@ -314,6 +342,7 @@ export async function executeAgencyServerSync(
                 id: String(row.id),
                 slug: String(row.public_slug || row.id),
                 nombre: String(row.nombre || 'Servicio'),
+                activo: row.is_active !== false,
                 creado_en: String(row.created_at || new Date().toISOString()),
                 productos: rawProducts.map((p) => ({
                   id: String(p.id),
@@ -338,9 +367,10 @@ export async function executeAgencyServerSync(
     resolvedServices.length === 0 &&
     Array.isArray(input.servicesFallback)
   ) {
-    const targetNewServiceId = isNewScope ? (input.changedServiceId || '').trim() : '';
+    const targetNewServiceId =
+      isNewScope && !isResyncNewScope ? (input.changedServiceId || '').trim() : '';
     const filtered =
-      serviceScope === 'all'
+      serviceScope === 'all' || isResyncNewScope
         ? input.servicesFallback
         : isNewScope
           ? targetNewServiceId
@@ -352,6 +382,7 @@ export async function executeAgencyServerSync(
       id: String(srv.id),
       slug: String(srv.slug || srv.id),
       nombre: String(srv.name || 'Servicio'),
+      activo: srv.isActive !== false,
       creado_en: String(srv.createdAt || new Date().toISOString()),
       productos: Array.isArray(srv.products)
         ? srv.products.map((p, idx) => ({
@@ -366,7 +397,7 @@ export async function executeAgencyServerSync(
     }));
   }
 
-  if (!isManualNewHandshake && resolvedServices.length === 0) {
+  if (!isManualNewHandshake && !isResyncNewScope && resolvedServices.length === 0) {
     return {
       ok: false,
       status: 400,
@@ -407,6 +438,7 @@ export async function executeAgencyServerSync(
       id: srv.id,
       slug: srv.slug,
       nombre: srv.nombre,
+      activo: srv.activo,
       creado_en: srv.creado_en,
       total_productos: srv.productos.length,
       productos: srv.productos,
@@ -448,53 +480,114 @@ export async function executeAgencyServerSync(
     }
 
     if (userClient) {
+      let connectionBaselineIso = syncedAt;
       try {
-        await userClient.from('servidores_externos').upsert(
-          {
-            user_id: authUser.userId,
-            user_email: authUser.email || null,
-            server_url: parsedSafeUrl.href,
-            service_scope: serviceScope,
-            secret_key: secretKey,
-            auto_sync_enabled: true,
-            last_synced_at: syncedAt,
-            last_event: webhookEventName,
-            last_remote_status: response.status,
-            last_duration_ms: durationMs,
-          },
-          { onConflict: 'user_id' },
-        );
+        const { data: upsertedRow } = await userClient
+          .from('servidores_externos')
+          .upsert(
+            {
+              user_id: authUser.userId,
+              user_email: authUser.email || null,
+              server_url: parsedSafeUrl.href,
+              service_scope: serviceScope,
+              secret_key: secretKey,
+              auto_sync_enabled: true,
+              last_synced_at: syncedAt,
+              last_event: webhookEventName,
+              last_remote_status: response.status,
+              last_duration_ms: durationMs,
+              ...(input.eventType === 'manual' ? { created_at: syncedAt } : {}),
+            },
+            { onConflict: 'user_id' },
+          )
+          .select('created_at')
+          .maybeSingle();
+        if (
+          upsertedRow &&
+          typeof upsertedRow.created_at === 'string' &&
+          upsertedRow.created_at.trim()
+        ) {
+          connectionBaselineIso = upsertedRow.created_at.trim();
+        }
       } catch {
         // Non-fatal if servidores_externos SQL migration has not been run yet
       }
 
       try {
-        const [{ data: keyRows }, { data: slugRows }] = await Promise.all([
+        const [{ data: keyRows }, { data: srvRows }] = await Promise.all([
           userClient
             .from('servicio_api_keys')
-            .select('key_hash')
+            .select('key_hash, servicio_id')
             .eq('user_id', authUser.userId)
             .eq('is_active', true),
           userClient
             .from('servicios')
-            .select('public_slug')
+            .select('id, public_slug, created_at')
             .eq('user_id', authUser.userId),
         ]);
 
-        if (Array.isArray(keyRows)) {
-          const hashes = keyRows
-            .map((r) => (typeof r.key_hash === 'string' ? r.key_hash : ''))
-            .filter(Boolean);
-          if (hashes.length > 0) {
-            markExternalServerActiveForKeyHashes(hashes, true);
-          }
-        }
-        if (Array.isArray(slugRows)) {
-          for (const row of slugRows) {
-            if (typeof row.public_slug === 'string' && row.public_slug.trim()) {
-              invalidateCoreCatalogCache({ slug: row.public_slug });
+        const connectionBaselineMs = Date.parse(connectionBaselineIso);
+        const coveredServiceIds = new Set<string>();
+        const coveredSlugs: string[] = [];
+
+        if (Array.isArray(srvRows)) {
+          for (const row of srvRows) {
+            const srvId = typeof row.id === 'string' ? row.id : '';
+            if (!srvId) continue;
+
+            let isCovered = false;
+            if (serviceScope === 'all') {
+              isCovered = true;
+            } else if (serviceScope === 'new') {
+              if (input.eventType === 'service.created' && input.changedServiceId === srvId) {
+                isCovered = true;
+              } else if (input.eventType !== 'manual') {
+                const srvCreatedMs =
+                  typeof row.created_at === 'string' ? Date.parse(row.created_at) : NaN;
+                if (
+                  Number.isFinite(connectionBaselineMs) &&
+                  Number.isFinite(srvCreatedMs) &&
+                  srvCreatedMs >= connectionBaselineMs
+                ) {
+                  isCovered = true;
+                }
+              }
+            } else {
+              isCovered = srvId === serviceScope;
+            }
+
+            if (isCovered) {
+              coveredServiceIds.add(srvId);
+              if (typeof row.public_slug === 'string' && row.public_slug.trim()) {
+                coveredSlugs.push(row.public_slug.trim());
+              }
             }
           }
+        }
+
+        if (Array.isArray(keyRows)) {
+          const coveredHashes: string[] = [];
+          const uncoveredHashes: string[] = [];
+          for (const row of keyRows) {
+            const hash = typeof row.key_hash === 'string' ? row.key_hash.trim() : '';
+            const srvId = typeof row.servicio_id === 'string' ? row.servicio_id : '';
+            if (!hash) continue;
+            if (coveredServiceIds.has(srvId)) {
+              coveredHashes.push(hash);
+            } else {
+              uncoveredHashes.push(hash);
+            }
+          }
+          if (coveredHashes.length > 0) {
+            markExternalServerActiveForKeyHashes(coveredHashes, true);
+          }
+          if (uncoveredHashes.length > 0) {
+            markExternalServerActiveForKeyHashes(uncoveredHashes, false);
+          }
+        }
+
+        for (const slug of coveredSlugs) {
+          invalidateCoreCatalogCache({ slug });
         }
       } catch {
         // Non-fatal cache invalidation guard
@@ -818,7 +911,7 @@ function extractItemsFromExternalCatalog(payload: unknown): {
 
 export async function executeAgencyServerTest(
   headers: IncomingHttpHeaders,
-  input?: { serverUrl?: string },
+  input?: { serverUrl?: string; catalogApiKey?: string },
 ): Promise<AgencyServerTestResult> {
   const authUser = await verifySupabaseBearerUser(headers);
   const bearerToken = getBearerToken(headers);
@@ -833,6 +926,10 @@ export async function executeAgencyServerTest(
 
   let resolvedServerUrl =
     typeof input?.serverUrl === 'string' ? input.serverUrl.trim() : '';
+  const rawCatalogApiKey =
+    typeof input?.catalogApiKey === 'string'
+      ? input.catalogApiKey.replace(/[\r\n]/g, '').trim().slice(0, 512)
+      : '';
 
   const { url: supabaseUrl, key: supabaseKey } = getSupabaseServerConfig();
   if (supabaseUrl && supabaseKey) {
@@ -884,6 +981,15 @@ export async function executeAgencyServerTest(
     };
   }
 
+  const testRequestHeaders: Record<string, string> = {
+    Accept: 'application/json',
+    'User-Agent': 'SearchLink-Agency-Test/1.0',
+  };
+  if (rawCatalogApiKey) {
+    testRequestHeaders['x-api-key'] = rawCatalogApiKey;
+    testRequestHeaders.Authorization = `Bearer ${rawCatalogApiKey}`;
+  }
+
   const candidates = buildCatalogTestCandidateUrls(parsedSafeUrl);
   const overallStartedAt = Date.now();
   let lastRemoteStatus: number | undefined;
@@ -898,10 +1004,7 @@ export async function executeAgencyServerTest(
         method: 'GET',
         timeoutMs: 15_000,
         maxRedirects: 2,
-        headers: {
-          Accept: 'application/json',
-          'User-Agent': 'SearchLink-Agency-Test/1.0',
-        },
+        headers: testRequestHeaders,
       });
 
       lastRemoteStatus = response.status;
@@ -951,10 +1054,7 @@ export async function executeAgencyServerTest(
           method: 'GET',
           timeoutMs: 12_000,
           maxRedirects: 2,
-          headers: {
-            Accept: 'application/json',
-            'User-Agent': 'SearchLink-Agency-Test/1.0',
-          },
+          headers: testRequestHeaders,
         });
         if (!pageRes.ok) break;
         const pageJson = await pageRes.json().catch(() => null);

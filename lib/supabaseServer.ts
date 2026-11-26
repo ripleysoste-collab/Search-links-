@@ -55,6 +55,83 @@ export function markExternalServerActiveForKeyHashes(
   }
 }
 
+function isServiceCoveredByExternalScope(options: {
+  serviceScope: string;
+  externalCreatedAt: string | null;
+  serviceId: string;
+  serviceCreatedAt: string | null;
+}): boolean {
+  const scope = (options.serviceScope || '').trim();
+  if (!scope) return false;
+  if (scope === 'all') return true;
+  if (scope === 'new') {
+    const extMs = options.externalCreatedAt
+      ? Date.parse(options.externalCreatedAt)
+      : NaN;
+    const srvMs = options.serviceCreatedAt
+      ? Date.parse(options.serviceCreatedAt)
+      : NaN;
+    if (!Number.isFinite(extMs) || !Number.isFinite(srvMs)) {
+      return false;
+    }
+    return srvMs >= extMs;
+  }
+  return options.serviceId === scope;
+}
+
+async function checkExternalServerSelectiveWithAdmin(
+  admin: SupabaseClient,
+  keyHash: string,
+): Promise<boolean | null> {
+  try {
+    const { data: keyRow, error: keyErr } = await admin
+      .from('servicio_api_keys')
+      .select('servicio_id, user_id')
+      .eq('key_hash', keyHash)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    if (keyErr) return null;
+    if (!keyRow || typeof keyRow.servicio_id !== 'string') return false;
+
+    const { data: srvRow, error: srvErr } = await admin
+      .from('servicios')
+      .select('id, user_id, created_at')
+      .eq('id', keyRow.servicio_id)
+      .maybeSingle();
+
+    if (srvErr) return null;
+    if (!srvRow) return false;
+
+    const ownerUserId =
+      (typeof keyRow.user_id === 'string' && keyRow.user_id) ||
+      (typeof srvRow.user_id === 'string' && srvRow.user_id) ||
+      '';
+    if (!ownerUserId) return false;
+
+    const { data: extRow, error: extErr } = await admin
+      .from('servidores_externos')
+      .select('service_scope, auto_sync_enabled, created_at')
+      .eq('user_id', ownerUserId)
+      .maybeSingle();
+
+    if (extErr) return null;
+    if (!extRow || !extRow.auto_sync_enabled) return false;
+
+    return isServiceCoveredByExternalScope({
+      serviceScope:
+        typeof extRow.service_scope === 'string' ? extRow.service_scope : '',
+      externalCreatedAt:
+        typeof extRow.created_at === 'string' ? extRow.created_at : null,
+      serviceId: String(srvRow.id),
+      serviceCreatedAt:
+        typeof srvRow.created_at === 'string' ? srvRow.created_at : null,
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function isExternalServerActiveForKeyHash(
   supabase: SupabaseClient,
   keyHash: string,
@@ -65,28 +142,43 @@ async function isExternalServerActiveForKeyHash(
     return cached.active;
   }
 
-  try {
-    const { data, error } = await supabase.rpc(
-      'check_external_server_by_key_hash',
-      { p_key_hash: keyHash },
-    );
-    if (error) {
-      // Gracefully allow until servidores_externos SQL migration is executed
+  let isActive = false;
+  let resolved = false;
+
+  const admin = getSupabaseAdminClient();
+  if (admin) {
+    const adminCheck = await checkExternalServerSelectiveWithAdmin(admin, keyHash);
+    if (typeof adminCheck === 'boolean') {
+      isActive = adminCheck;
+      resolved = true;
+    }
+  }
+
+  if (!resolved) {
+    try {
+      const { data, error } = await supabase.rpc(
+        'check_external_server_by_key_hash',
+        { p_key_hash: keyHash },
+      );
+      if (error) {
+        // Gracefully allow until servidores_externos SQL migration is executed
+        return false;
+      }
+      isActive = data === true;
+    } catch {
       return false;
     }
-    const isActive = data === true;
-    if (externalServerStatusCache.size >= EXTERNAL_SERVER_CACHE_MAX_ENTRIES) {
-      const oldestKey = externalServerStatusCache.keys().next().value;
-      if (oldestKey) externalServerStatusCache.delete(oldestKey);
-    }
-    externalServerStatusCache.set(keyHash, {
-      active: isActive,
-      expiresAt: now + EXTERNAL_SERVER_STATUS_TTL_MS,
-    });
-    return isActive;
-  } catch {
-    return false;
   }
+
+  if (externalServerStatusCache.size >= EXTERNAL_SERVER_CACHE_MAX_ENTRIES) {
+    const oldestKey = externalServerStatusCache.keys().next().value;
+    if (oldestKey) externalServerStatusCache.delete(oldestKey);
+  }
+  externalServerStatusCache.set(keyHash, {
+    active: isActive,
+    expiresAt: now + EXTERNAL_SERVER_STATUS_TTL_MS,
+  });
+  return isActive;
 }
 
 export function invalidateCoreCatalogCache(filter?: {
@@ -378,7 +470,7 @@ export async function resolveSearchLinkCoreEndpoint(
         ok: false,
         status: 403,
         error:
-          'Esta cuenta tiene un servidor externo conectado. Las peticiones de catálogo deben realizarse directamente a tu propio servidor.',
+          'Este servicio está conectado a un servidor externo. Las peticiones de catálogo deben realizarse directamente a tu propio servidor.',
       };
     }
   }

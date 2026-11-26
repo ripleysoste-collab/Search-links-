@@ -39,6 +39,7 @@ export function AdvancedSettingsView({
   const [isExecuting, setIsExecuting] = useState(false);
   const [isUnfreezing, setIsUnfreezing] = useState(false);
   const [showEmptyR2Notice, setShowEmptyR2Notice] = useState(false);
+  const [showNoActiveApisNotice, setShowNoActiveApisNotice] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -90,10 +91,17 @@ export function AdvancedSettingsView({
     if (isPaused || isExecuting || isUnfreezing) return;
     setActionFeedback(null);
     if (key === 'r2-delete' && !hasR2Images) {
+      setShowNoActiveApisNotice(false);
       setShowEmptyR2Notice(true);
       return;
     }
+    if (key === 'pause-apis' && !hasActiveApis) {
+      setShowEmptyR2Notice(false);
+      setShowNoActiveApisNotice(true);
+      return;
+    }
     setShowEmptyR2Notice(false);
+    setShowNoActiveApisNotice(false);
     setPendingAction(key);
   };
 
@@ -149,6 +157,7 @@ export function AdvancedSettingsView({
     if (isPaused || isExecuting || isUnfreezing) return;
     setIsUnfreezing(true);
     setShowEmptyR2Notice(false);
+    setShowNoActiveApisNotice(false);
     setActionFeedback(null);
 
     try {
@@ -207,7 +216,7 @@ export function AdvancedSettingsView({
             </p>
 
             {actionFeedback?.type === 'error' && (
-              <p className="mt-2 text-xs leading-relaxed text-rose-600">
+              <p role="alert" className="mt-2 text-xs leading-relaxed text-rose-600">
                 {actionFeedback.text}
               </p>
             )}
@@ -217,7 +226,9 @@ export function AdvancedSettingsView({
                 type="button"
                 disabled={isExecuting}
                 onClick={handleCancelInline}
-                className="text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-45 disabled:cursor-default"
+                className={`text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-45 disabled:cursor-default ${
+                  variant === 'mobile' ? 'min-h-[44px] inline-flex items-center px-1 -ml-1' : ''
+                }`}
               >
                 {t.common.cancel}
               </button>
@@ -225,7 +236,9 @@ export function AdvancedSettingsView({
                 type="button"
                 disabled={isExecuting}
                 onClick={() => void handleAcceptInline()}
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-60 disabled:cursor-default"
+                className={`inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-60 disabled:cursor-default ${
+                  variant === 'mobile' ? 'min-h-[44px] px-1' : ''
+                }`}
               >
                 {isExecuting && (
                   <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
@@ -239,6 +252,7 @@ export function AdvancedSettingsView({
 
       {actionFeedback && !activeConfig && (
         <p
+          role={actionFeedback.type === 'error' ? 'alert' : 'status'}
           className={`mb-4 text-xs leading-relaxed border-b border-slate-200/75 pb-3.5 ${
             actionFeedback.type === 'error' ? 'text-rose-600' : 'text-slate-700'
           }`}
@@ -266,13 +280,20 @@ export function AdvancedSettingsView({
               type="button"
               disabled={isPaused || isUnfreezing}
               onClick={() => handleRequestAction(item.key)}
-              className="mt-2.5 inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 cursor-pointer disabled:cursor-default"
+              className={`mt-2.5 inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-xs font-semibold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 cursor-pointer disabled:cursor-default ${
+                variant === 'mobile' ? 'min-h-[44px] px-4 py-2' : 'px-3.5 py-1.5'
+              }`}
             >
               {item.buttonLabel}
             </button>
             {item.key === 'r2-delete' && showEmptyR2Notice && !hasR2Images && (
-              <p className="mt-2 text-xs text-rose-600">
+              <p role="alert" className="mt-2 text-xs text-rose-600">
                 {t.advancedSettings.r2EmptyError}
+              </p>
+            )}
+            {item.key === 'pause-apis' && showNoActiveApisNotice && !hasActiveApis && (
+              <p role="alert" className="mt-2 text-xs text-rose-600">
+                {t.advancedSettings.noActiveApisError}
               </p>
             )}
           </div>
@@ -297,7 +318,9 @@ export function AdvancedSettingsView({
             type="button"
             disabled={isPaused || isUnfreezing}
             onClick={() => void handleUnfreezeAllApis()}
-            className="mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 px-3.5 py-1.5 text-xs font-semibold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-60 disabled:cursor-default"
+            className={`mt-2.5 inline-flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-xs font-semibold text-white transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-60 disabled:cursor-default ${
+              variant === 'mobile' ? 'min-h-[44px] px-4 py-2' : 'px-3.5 py-1.5'
+            }`}
           >
             {isUnfreezing && (
               <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />

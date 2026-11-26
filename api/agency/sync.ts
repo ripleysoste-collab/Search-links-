@@ -57,7 +57,9 @@ export default async function handler(
 
   const body = await readJsonBody(req);
   const rawEventType =
-    body.eventType === 'service.created' || body.eventType === 'service.updated'
+    body.eventType === 'service.created' ||
+    body.eventType === 'service.updated' ||
+    body.eventType === 'resync'
       ? (body.eventType as AgencySyncEventType)
       : 'manual';
 

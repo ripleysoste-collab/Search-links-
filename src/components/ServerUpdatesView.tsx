@@ -55,6 +55,9 @@ export function formatAgencyUpdateTitle(
   if (record.eventType === 'service.updated') {
     return t.connectServer.updatesTitleServiceUpdated(firstServiceName);
   }
+  if (record.eventType === 'resync') {
+    return t.connectServer.updatesTitleResync;
+  }
   if (record.serviceScope === 'new') {
     return t.connectServer.updatesTitleNewHandshake;
   }

@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { AlertCircle, CheckCircle2, ImageOff, Loader2 } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  ImageOff,
+  Loader2,
+} from 'lucide-react';
 import {
   dispatchAgencyServerTest,
   type AgencyServerTestItem,
@@ -22,12 +29,14 @@ export function ServerTestView({
   const [step, setStep] = useState<'confirm' | 'loading' | 'result'>('confirm');
   const [result, setResult] = useState<ExecuteAgencyTestCallResult | null>(null);
   const [brokenImageKeys, setBrokenImageKeys] = useState<Set<string>>(() => new Set());
+  const [catalogApiKey, setCatalogApiKey] = useState('');
+  const [showCatalogApiKey, setShowCatalogApiKey] = useState(false);
 
   const runServerEvaluation = async () => {
     setStep('loading');
     setBrokenImageKeys(new Set());
     try {
-      const response = await dispatchAgencyServerTest(serverUrl);
+      const response = await dispatchAgencyServerTest(serverUrl, catalogApiKey);
       setResult(response);
       setStep('result');
     } catch {
@@ -38,6 +47,59 @@ export function ServerTestView({
       setStep('result');
     }
   };
+
+  const renderCatalogKeyField = (fieldIdSuffix: string) => (
+    <div>
+      <label
+        htmlFor={`server-test-catalog-key-${variant}-${fieldIdSuffix}`}
+        className="block text-[11.5px] font-medium text-slate-600 mb-1.5"
+      >
+        {t.connectServer.testCatalogKeyLabel}
+      </label>
+      <div
+        className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 flex items-center gap-1.5 px-3.5 focus-within:border-blue-500/75 focus-within:bg-white transition-colors ${
+          variant === 'mobile' ? 'min-h-[46px]' : 'h-10'
+        }`}
+      >
+        <input
+          id={`server-test-catalog-key-${variant}-${fieldIdSuffix}`}
+          type={showCatalogApiKey ? 'text' : 'password'}
+          value={catalogApiKey}
+          onChange={(e) => setCatalogApiKey(e.target.value)}
+          placeholder={t.connectServer.testCatalogKeyPlaceholder}
+          aria-label={t.connectServer.testCatalogKeyAria}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          className="flex-1 min-w-0 bg-transparent font-mono text-xs text-slate-900 placeholder:font-sans placeholder:text-slate-400 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setShowCatalogApiKey((prev) => !prev)}
+          aria-label={
+            showCatalogApiKey
+              ? t.connectServer.testHideCatalogKeyAria
+              : t.connectServer.testShowCatalogKeyAria
+          }
+          title={
+            showCatalogApiKey
+              ? t.connectServer.testHideCatalogKeyAria
+              : t.connectServer.testShowCatalogKeyAria
+          }
+          className={`${
+            variant === 'mobile' ? 'min-w-[44px] min-h-[44px]' : 'w-8 h-8'
+          } rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400`}
+        >
+          {showCatalogApiKey ? (
+            <EyeOff className="w-4 h-4" aria-hidden="true" />
+          ) : (
+            <Eye className="w-4 h-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
 
   const containerPadding = variant === 'desktop' ? 'px-8 py-7' : 'px-5 py-6';
 
@@ -58,6 +120,8 @@ export function ServerTestView({
               {t.connectServer.testConsentPrompt}
             </p>
           </div>
+
+          {renderCatalogKeyField('confirm')}
 
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
@@ -114,14 +178,19 @@ export function ServerTestView({
     >
       <div className="space-y-4">
         {!result?.ok ? (
-          <div className="py-8 flex flex-col items-start gap-2.5">
-            <div className="inline-flex items-center gap-2 text-rose-600">
-              <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
-              <span className="text-sm font-semibold">{httpLabel}</span>
+          <div className="py-6 space-y-4">
+            <div className="flex flex-col items-start gap-2.5">
+              <div className="inline-flex items-center gap-2 text-rose-600">
+                <AlertCircle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                <span className="text-sm font-semibold">{httpLabel}</span>
+              </div>
+              <p className="text-xs leading-relaxed text-slate-700">
+                {result?.error || t.connectServer.disconnectNetworkError}
+              </p>
             </div>
-            <p className="text-xs leading-relaxed text-slate-700">
-              {result?.error || t.connectServer.disconnectNetworkError}
-            </p>
+            {(result?.remoteStatus === 401 || result?.remoteStatus === 403) && (
+              <div className="max-w-md pt-1">{renderCatalogKeyField('retry')}</div>
+            )}
           </div>
         ) : displayItems.length === 0 ? (
           <p className="py-8 text-xs leading-relaxed text-slate-600">

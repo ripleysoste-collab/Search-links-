@@ -965,7 +965,9 @@ async function startServer() {
     };
 
     const rawEventType: AgencySyncEventType =
-      body.eventType === 'service.created' || body.eventType === 'service.updated'
+      body.eventType === 'service.created' ||
+      body.eventType === 'service.updated' ||
+      body.eventType === 'resync'
         ? body.eventType
         : 'manual';
 
@@ -1000,9 +1002,14 @@ async function startServer() {
 
   app.post('/api/agency/test', express.json({ limit: '64kb' }), async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    const body = (req.body || {}) as { serverUrl?: unknown };
+    const body = (req.body || {}) as {
+      serverUrl?: unknown;
+      catalogApiKey?: unknown;
+    };
     const result = await executeAgencyServerTest(req.headers, {
       serverUrl: typeof body.serverUrl === 'string' ? body.serverUrl : undefined,
+      catalogApiKey:
+        typeof body.catalogApiKey === 'string' ? body.catalogApiKey : undefined,
     });
     if (!result.ok) {
       return res.status(result.status).json(result);
