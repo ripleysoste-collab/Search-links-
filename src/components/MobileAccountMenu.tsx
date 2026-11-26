@@ -56,6 +56,9 @@ interface MobileAccountMenuProps {
   connectServerModalOpen: boolean;
   advancedSettingsModalOpen: boolean;
   panelOpen: boolean;
+  panelSubView: 'organization' | 'store';
+  selectedStoreServiceId: string | null;
+  selectedSchemaServiceId: string | null;
   user: User;
   orgProfile: OrganizationProfile;
   services: OrganizationServiceItem[];
@@ -75,8 +78,13 @@ interface MobileAccountMenuProps {
   onCloseConnectServerModal: () => void;
   onOpenAdvancedSettingsModal: () => void;
   onCloseAdvancedSettingsModal: () => void;
+  onBackToAccountFromAdvancedSettings: () => void;
   onOpenPanel: () => void;
   onClosePanel: () => void;
+  onOpenStore: (service: OrganizationServiceItem) => void;
+  onBackToOrganization: () => void;
+  onOpenSchema: (service: OrganizationServiceItem) => void;
+  onCloseSchema: () => void;
   onOpenDocumentation: (
     docId:
       | 'privacy'
@@ -132,6 +140,9 @@ export function MobileAccountMenu({
   connectServerModalOpen,
   advancedSettingsModalOpen,
   panelOpen,
+  panelSubView,
+  selectedStoreServiceId,
+  selectedSchemaServiceId,
   user,
   orgProfile,
   services,
@@ -151,8 +162,13 @@ export function MobileAccountMenu({
   onCloseConnectServerModal,
   onOpenAdvancedSettingsModal,
   onCloseAdvancedSettingsModal,
+  onBackToAccountFromAdvancedSettings,
   onOpenPanel,
   onClosePanel,
+  onOpenStore,
+  onBackToOrganization,
+  onOpenSchema,
+  onCloseSchema,
   onOpenDocumentation,
   onSignOut,
   onPurgeAllR2,
@@ -171,15 +187,6 @@ export function MobileAccountMenu({
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<string | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
-  const [panelSubView, setPanelSubView] = useState<'organization' | 'store'>(
-    'organization',
-  );
-  const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
-    null,
-  );
-  const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
-    null,
-  );
   const [serverConnState, setServerConnState] = useState<AgencyConnectionState>(() =>
     loadAgencyConnectionState(user.id),
   );
@@ -290,14 +297,6 @@ export function MobileAccountMenu({
       setMobileTestOpen(false);
     }
   }, [isServerConnected]);
-
-  useEffect(() => {
-    if (!panelOpen) {
-      setPanelSubView('organization');
-      setSelectedStoreServiceId(null);
-      setSelectedSchemaServiceId(null);
-    }
-  }, [panelOpen]);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -827,7 +826,6 @@ export function MobileAccountMenu({
                   onClick={() => {
                     setConfirmSignOut(false);
                     setSignOutError(null);
-                    onCloseAccountModal();
                     onOpenAdvancedSettingsModal();
                   }}
                   className="block mb-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
@@ -871,7 +869,7 @@ export function MobileAccountMenu({
                 {panelSubView === 'store' && (
                   <button
                     type="button"
-                    onClick={() => setPanelSubView('organization')}
+                    onClick={onBackToOrganization}
                     aria-label={t.menu.backToOrgAria}
                     className="w-8 h-8 -ml-1 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-950 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
                   >
@@ -912,12 +910,9 @@ export function MobileAccountMenu({
                 onSaveOrgProfile={onSaveOrgProfile}
                 onRenameService={onRenameService}
                 onNewProduct={onNewProduct}
-                onOpenStore={(service) => {
-                  setSelectedStoreServiceId(service.id);
-                  setPanelSubView('store');
-                }}
+                onOpenStore={onOpenStore}
                 onViewServiceHistory={onViewServiceHistory}
-                onOpenSchema={(service) => setSelectedSchemaServiceId(service.id)}
+                onOpenSchema={onOpenSchema}
                 onOpenServiceChat={onOpenServiceChat}
                 onRotateServiceKey={onRotateServiceKey}
                 onToggleServiceActive={onToggleServiceActive}
@@ -939,7 +934,7 @@ export function MobileAccountMenu({
             downloadZipTitle={t.org.downloadSchemaZipTitle}
             closeAria={t.org.backToOrgSchemaAria}
             onDownloadZip={() => downloadServiceSchemaZip(activeSchemaInput)}
-            onClose={() => setSelectedSchemaServiceId(null)}
+            onClose={onCloseSchema}
           />
         )}
       </AnimatePresence>
@@ -1237,10 +1232,7 @@ export function MobileAccountMenu({
               <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    onCloseAdvancedSettingsModal();
-                    onOpenAccountModal();
-                  }}
+                  onClick={onBackToAccountFromAdvancedSettings}
                   aria-label={t.menu.backToGoogleAccountAria}
                   className="w-8 h-8 -ml-1 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-950 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
                 >

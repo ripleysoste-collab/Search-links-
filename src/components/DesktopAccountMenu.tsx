@@ -40,8 +40,22 @@ import {
   type SupportedLocale,
 } from '../lib/i18n';
 
+export type DesktopMenuView =
+  | 'menu'
+  | 'google-account'
+  | 'advanced-settings'
+  | 'organization'
+  | 'connect-server'
+  | 'store'
+  | 'schema'
+  | 'language';
+
 interface DesktopAccountMenuProps {
   open: boolean;
+  view: DesktopMenuView;
+  selectedStoreServiceId: string | null;
+  selectedSchemaServiceId: string | null;
+  onViewChange: (nextView: DesktopMenuView, service?: OrganizationServiceItem) => void;
   user: User;
   orgProfile: OrganizationProfile;
   services: OrganizationServiceItem[];
@@ -75,16 +89,6 @@ interface DesktopAccountMenuProps {
   hasPausedApis: boolean;
 }
 
-type DesktopMenuView =
-  | 'menu'
-  | 'google-account'
-  | 'advanced-settings'
-  | 'organization'
-  | 'connect-server'
-  | 'store'
-  | 'schema'
-  | 'language';
-
 function getUserDisplayInfo(
   user: User,
   userFallback: string,
@@ -113,6 +117,10 @@ function getUserDisplayInfo(
 
 export function DesktopAccountMenu({
   open,
+  view,
+  selectedStoreServiceId,
+  selectedSchemaServiceId,
+  onViewChange,
   user,
   orgProfile,
   services,
@@ -137,14 +145,7 @@ export function DesktopAccountMenu({
 }: DesktopAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
-  const [view, setView] = useState<DesktopMenuView>('menu');
   const [docsExpanded, setDocsExpanded] = useState(false);
-  const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
-    null,
-  );
-  const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
-    null,
-  );
   const [schemaCopied, setSchemaCopied] = useState(false);
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -216,10 +217,7 @@ export function DesktopAccountMenu({
 
   useEffect(() => {
     if (!open) {
-      setView('menu');
       setDocsExpanded(false);
-      setSelectedStoreServiceId(null);
-      setSelectedSchemaServiceId(null);
       setSchemaCopied(false);
       setConfirmSignOut(false);
       setSigningOut(false);
@@ -232,18 +230,6 @@ export function DesktopAccountMenu({
       setDesktopUpdateCopied(false);
     }
   }, [open]);
-
-  useEffect(() => {
-    if (!open || view !== 'schema') return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setView('organization');
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, view]);
 
   const selectedStoreService =
     services.find((srv) => srv.id === selectedStoreServiceId) ?? services[0] ?? null;
@@ -469,7 +455,7 @@ export function DesktopAccountMenu({
 
                   <button
                     type="button"
-                    onClick={() => setView('organization')}
+                    onClick={() => onViewChange('organization')}
                     aria-label={t.org.backToOrgSchemaAria}
                     className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer"
                   >
@@ -495,7 +481,7 @@ export function DesktopAccountMenu({
                           }
                           setConfirmSignOut(false);
                           setSignOutError(null);
-                          setView(
+                          onViewChange(
                             view === 'store'
                               ? 'organization'
                               : view === 'advanced-settings'
@@ -612,7 +598,7 @@ export function DesktopAccountMenu({
                     <li>
                       <button
                         type="button"
-                        onClick={() => setView('google-account')}
+                        onClick={() => onViewChange('google-account')}
                         className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
                       >
                         {t.menu.googleAccount}
@@ -621,7 +607,7 @@ export function DesktopAccountMenu({
                     <li>
                       <button
                         type="button"
-                        onClick={() => setView('organization')}
+                        onClick={() => onViewChange('organization')}
                         className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
                       >
                         {t.menu.organization}
@@ -630,7 +616,7 @@ export function DesktopAccountMenu({
                     <li>
                       <button
                         type="button"
-                        onClick={() => setView('connect-server')}
+                        onClick={() => onViewChange('connect-server')}
                         className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
                       >
                         {t.menu.connectServer}
@@ -639,7 +625,7 @@ export function DesktopAccountMenu({
                     <li>
                       <button
                         type="button"
-                        onClick={() => setView('language')}
+                        onClick={() => onViewChange('language')}
                         className="w-full py-3 text-left text-[14px] font-medium text-slate-800 hover:text-slate-950 transition-colors duration-150 focus-visible:outline-none focus-visible:text-slate-950 cursor-pointer"
                       >
                         {t.menu.language}
@@ -798,14 +784,12 @@ export function DesktopAccountMenu({
                     onRenameService={onRenameService}
                     onNewProduct={onNewProduct}
                     onOpenStore={(service) => {
-                      setSelectedStoreServiceId(service.id);
-                      setView('store');
+                      onViewChange('store', service);
                     }}
                     onViewServiceHistory={onViewServiceHistory}
                     onOpenSchema={(service) => {
                       setSchemaCopied(false);
-                      setSelectedSchemaServiceId(service.id);
-                      setView('schema');
+                      onViewChange('schema', service);
                     }}
                     onOpenServiceChat={onOpenServiceChat}
                     onRotateServiceKey={onRotateServiceKey}
@@ -1071,7 +1055,7 @@ export function DesktopAccountMenu({
                     onUnfreezeAllApis={onUnfreezeAllApis}
                   />
                 </motion.div>
-              ) : (
+              ) : view === 'google-account' ? (
                 <motion.div
                   key="desktop-google-account-view"
                   initial={shouldReduceMotion ? undefined : { opacity: 0, x: 14 }}
@@ -1231,7 +1215,7 @@ export function DesktopAccountMenu({
                       onClick={() => {
                         setConfirmSignOut(false);
                         setSignOutError(null);
-                        setView('advanced-settings');
+                        onViewChange('advanced-settings');
                       }}
                       className="block mb-2.5 text-sm font-medium text-blue-600 hover:text-blue-700 transition-colors duration-150 focus-visible:outline-none focus-visible:underline cursor-pointer"
                     >
@@ -1249,6 +1233,36 @@ export function DesktopAccountMenu({
                       {t.menu.signOut}
                     </button>
                   </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="desktop-organization-fallback-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 flex flex-col"
+                >
+                  <DesktopOrganizationView
+                    orgProfile={orgProfile}
+                    googlePhotoUrl={info.photoUrl}
+                    googleInitialLetter={info.initialLetter}
+                    services={services}
+                    onSaveOrgProfile={onSaveOrgProfile}
+                    onRenameService={onRenameService}
+                    onNewProduct={onNewProduct}
+                    onOpenStore={(service) => {
+                      onViewChange('store', service);
+                    }}
+                    onViewServiceHistory={onViewServiceHistory}
+                    onOpenSchema={(service) => {
+                      setSchemaCopied(false);
+                      onViewChange('schema', service);
+                    }}
+                    onOpenServiceChat={onOpenServiceChat}
+                    onRotateServiceKey={onRotateServiceKey}
+                    onToggleServiceActive={onToggleServiceActive}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>

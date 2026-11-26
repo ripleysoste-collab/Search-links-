@@ -196,20 +196,20 @@ export function AdvancedSettingsView({
             initial={
               shouldReduceMotion
                 ? { opacity: 0 }
-                : { opacity: 0, height: 0, marginBottom: 0 }
+                : { opacity: 0, y: -4 }
             }
             animate={
               shouldReduceMotion
                 ? { opacity: 1 }
-                : { opacity: 1, height: 'auto', marginBottom: 20 }
+                : { opacity: 1, y: 0 }
             }
             exit={
               shouldReduceMotion
                 ? { opacity: 0 }
-                : { opacity: 0, height: 0, marginBottom: 0 }
+                : { opacity: 0, y: -4 }
             }
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden border-b border-slate-200/80 pb-4"
+            transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+            className="shrink-0 mb-5 border-b border-slate-200/80 pb-4"
           >
             <p className="text-[13px] leading-relaxed text-slate-900">
               {activeConfig.confirmText}
@@ -221,13 +221,13 @@ export function AdvancedSettingsView({
               </p>
             )}
 
-            <div className="mt-3 flex items-center gap-5">
+            <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
               <button
                 type="button"
                 disabled={isExecuting}
                 onClick={handleCancelInline}
-                className={`text-xs font-medium text-slate-500 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-45 disabled:cursor-default ${
-                  variant === 'mobile' ? 'min-h-[44px] inline-flex items-center px-1 -ml-1' : ''
+                className={`inline-flex items-center justify-center rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-50 disabled:cursor-default ${
+                  variant === 'mobile' ? 'min-h-[44px] px-4 py-2' : 'px-3.5 py-1.5'
                 }`}
               >
                 {t.common.cancel}
@@ -236,8 +236,8 @@ export function AdvancedSettingsView({
                 type="button"
                 disabled={isExecuting}
                 onClick={() => void handleAcceptInline()}
-                className={`inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 transition-colors focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-60 disabled:cursor-default ${
-                  variant === 'mobile' ? 'min-h-[44px] px-1' : ''
+                className={`inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-60 disabled:cursor-default ${
+                  variant === 'mobile' ? 'min-h-[44px] px-4 py-2' : 'px-3.5 py-1.5'
                 }`}
               >
                 {isExecuting && (
@@ -253,7 +253,7 @@ export function AdvancedSettingsView({
       {actionFeedback && !activeConfig && (
         <p
           role={actionFeedback.type === 'error' ? 'alert' : 'status'}
-          className={`mb-4 text-xs leading-relaxed border-b border-slate-200/75 pb-3.5 ${
+          className={`shrink-0 mb-4 text-xs leading-relaxed border-b border-slate-200/75 pb-3.5 ${
             actionFeedback.type === 'error' ? 'text-rose-600' : 'text-slate-700'
           }`}
         >
@@ -264,7 +264,7 @@ export function AdvancedSettingsView({
       {/* Clean 4-option list — paused/dimmed while inline confirmation is open */}
       <div
         aria-disabled={isPaused}
-        className={`divide-y divide-slate-200/75 transition-opacity duration-150 ${
+        className={`shrink-0 divide-y divide-slate-200/75 transition-opacity duration-150 ${
           isPaused ? 'opacity-40 pointer-events-none select-none' : 'opacity-100'
         }`}
       >
@@ -304,7 +304,7 @@ export function AdvancedSettingsView({
       {hasPausedApis && (
         <div
           aria-disabled={isPaused}
-          className={`mt-1 pt-5 border-t border-slate-200/80 transition-opacity duration-150 ${
+          className={`shrink-0 mt-1 pt-5 border-t border-slate-200/80 transition-opacity duration-150 ${
             isPaused ? 'opacity-40 pointer-events-none select-none' : 'opacity-100'
           }`}
         >

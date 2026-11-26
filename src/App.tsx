@@ -5,7 +5,10 @@ import { Bookmark, Link2, Loader2, PenLine, Upload, X } from 'lucide-react';
 import desktopDesertBg from './assets/images/bg_desert_desktop_1794853953945.jpg';
 import { AuthDrawer } from './components/AuthDrawer';
 import { AutomationExamplesSection } from './components/AutomationExamplesSection';
-import { DesktopAccountMenu } from './components/DesktopAccountMenu';
+import {
+  DesktopAccountMenu,
+  type DesktopMenuView,
+} from './components/DesktopAccountMenu';
 import { DesktopImageBankPanel } from './components/DesktopImageBankPanel';
 import { ImageBankResultsGrid, ImageBankSavedGrid } from './components/ImageBankGrid';
 import type {
@@ -19,6 +22,17 @@ import {
 } from './components/DualCatalogShowcase';
 import { MobileAccountMenu } from './components/MobileAccountMenu';
 import { LegalDocumentPage, type LegalDocId } from './components/LegalDocumentPage';
+import {
+  IMAGE_BANK_PATH,
+  type AppRoute,
+  buildAppRoutePath,
+  isAuthCallbackPathname,
+  isImageBankPathname,
+  isProtectedAppRoute,
+  normalizePathname,
+  parseAppRoute,
+  resolveLegalDocRouteFromPathname,
+} from './lib/appRoutes';
 import {
   MobileCatalogCarousel,
   type CompressedImageMeta,
@@ -106,125 +120,16 @@ type BatchImageSource =
   | { kind: 'file'; file: File }
   | { kind: 'url'; url: string };
 
-const PRIVACY_POLICY_PATH = '/politicas-de-privacidad';
-const TERMS_AND_CONDITIONS_PATH = '/terminos-y-condiciones';
-const CONTENT_POLICY_PATH = '/politicas-de-contenido';
-const COOKIE_POLICY_PATH = '/politicas-de-cookies';
-const AGENCY_MODE_PATH = '/modo-agencia';
-const AGENCY_GUIDE_PATH = '/cosas-a-tener-en-cuenta-modo-agencia';
-const AGENCY_LIABILITY_PATH = '/responsabilidad-modo-agencia';
-const INTELLECTUAL_PROPERTY_PATH = '/propiedad-intelectual-y-responsabilidad';
-const IMAGE_BANK_PATH = '/banco-publico';
-
-function isImageBankPathname(pathname: string): boolean {
-  return pathname.replace(/\/+$/, '').toLowerCase() === IMAGE_BANK_PATH;
-}
-
 function isSavedCatalogCommand(value: string): boolean {
   return /^\/(?:cat[aá]logo|borrador)\/?$/i.test(value.trim());
 }
 
-const PRIVACY_POLICY_ALIASES = new Set([
-  '/politicas-de-privacidad',
-  '/politica-de-privacidad',
-  '/privacidad',
-  '/privacy',
-  '/privacidade',
-  '/politicas-de-privacidade',
-]);
-
-const TERMS_ALIASES = new Set([
-  '/terminos-y-condiciones',
-  '/terminos',
-  '/terms-and-conditions',
-  '/terms',
-  '/termos-e-condicoes',
-  '/termos',
-]);
-
-const CONTENT_POLICY_ALIASES = new Set([
-  '/politicas-de-contenido',
-  '/politica-de-contenido',
-  '/content-policies',
-  '/content-policy',
-  '/politicas-de-conteudo',
-  '/politica-de-conteudo',
-]);
-
-const COOKIE_POLICY_ALIASES = new Set([
-  '/politicas-de-cookies',
-  '/politica-de-cookies',
-  '/cookie-policies',
-  '/cookie-policy',
-  '/cookies',
-]);
-
-const AGENCY_MODE_ALIASES = new Set([
-  '/modo-agencia',
-  '/modo-desarrollador',
-  '/agency-mode',
-  '/developer-mode',
-  '/modo-agencia-desarrollo',
-]);
-
-const AGENCY_GUIDE_ALIASES = new Set([
-  '/cosas-a-tener-en-cuenta-modo-agencia',
-  '/guia-modo-agencia',
-  '/informacion-modo-agencia',
-  '/agency-guide',
-  '/agency-mode-guide',
-  '/things-to-keep-in-mind-agency-mode',
-  '/o-que-considerar-modo-agencia',
-]);
-
-const AGENCY_LIABILITY_ALIASES = new Set([
-  '/responsabilidad-modo-agencia',
-  '/responsabilidad-agencia',
-  '/propiedad-modo-agencia',
-  '/agency-liability',
-  '/agency-mode-liability',
-  '/responsabilidade-modo-agencia',
-]);
-
-const INTELLECTUAL_PROPERTY_ALIASES = new Set([
-  '/propiedad-intelectual-y-responsabilidad',
-  '/propiedad-intelectual',
-  '/limites-y-responsabilidad',
-  '/responsabilidad',
-  '/intellectual-property',
-  '/intellectual-property-and-liability',
-  '/liability',
-  '/dmca',
-  '/propriedade-intelectual-e-responsabilidade',
-  '/propriedade-intelectual',
-  '/responsabilidade',
-]);
-
-function resolveLegalDocRouteFromPathname(pathname: string): LegalDocId | null {
-  const normalized = pathname.replace(/\/+$/, '').toLowerCase();
-  if (PRIVACY_POLICY_ALIASES.has(normalized)) return 'privacy';
-  if (TERMS_ALIASES.has(normalized)) return 'terms';
-  if (CONTENT_POLICY_ALIASES.has(normalized)) return 'content';
-  if (COOKIE_POLICY_ALIASES.has(normalized)) return 'cookies';
-  if (AGENCY_MODE_ALIASES.has(normalized)) return 'agency';
-  if (AGENCY_GUIDE_ALIASES.has(normalized)) return 'agency-guide';
-  if (AGENCY_LIABILITY_ALIASES.has(normalized)) return 'agency-liability';
-  if (INTELLECTUAL_PROPERTY_ALIASES.has(normalized)) return 'liability';
-  return null;
-}
-
-function getCanonicalLegalDocPath(docId: LegalDocId): string {
-  if (docId === 'terms') return TERMS_AND_CONDITIONS_PATH;
-  if (docId === 'content') return CONTENT_POLICY_PATH;
-  if (docId === 'cookies') return COOKIE_POLICY_PATH;
-  if (docId === 'agency') return AGENCY_MODE_PATH;
-  if (docId === 'agency-guide') return AGENCY_GUIDE_PATH;
-  if (docId === 'agency-liability') return AGENCY_LIABILITY_PATH;
-  if (docId === 'liability') return INTELLECTUAL_PROPERTY_PATH;
-  return PRIVACY_POLICY_PATH;
-}
-
 export default function App() {
+  const initialRoute = useMemo<AppRoute>(() => {
+    if (typeof window === 'undefined') return { kind: 'home' };
+    return parseAppRoute(window.location.pathname);
+  }, []);
+
   const [url, setUrl] = useState('');
   const [catalogImages, setCatalogImages] = useState<CatalogImageItem[]>(
     CATALOG_SAMPLE_IMAGES,
@@ -236,17 +141,14 @@ export default function App() {
   const [activeBgImage, setActiveBgImage] = useState<CatalogImageItem | null>(null);
   const [hasAnimatedFirstBg, setHasAnimatedFirstBg] = useState(false);
   const [shouldAnimateBgEntry, setShouldAnimateBgEntry] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(() =>
-    typeof window !== 'undefined' && window.location.pathname === '/login',
-  );
-  const [activeDocRoute, setActiveDocRoute] = useState<LegalDocId | null>(() =>
-    typeof window !== 'undefined'
-      ? resolveLegalDocRouteFromPathname(window.location.pathname)
-      : null,
+  const [isAuthOpen, setIsAuthOpen] = useState(initialRoute.kind === 'login');
+  const [activeDocRoute, setActiveDocRoute] = useState<LegalDocId | null>(
+    initialRoute.kind === 'doc' ? initialRoute.docId : null,
   );
   const [isDesktopMenuOpen, setIsDesktopMenuOpen] = useState(false);
-  const [isImageBankOpen, setIsImageBankOpen] = useState(() =>
-    typeof window !== 'undefined' && isImageBankPathname(window.location.pathname),
+  const [desktopMenuView, setDesktopMenuView] = useState<DesktopMenuView>('menu');
+  const [isImageBankOpen, setIsImageBankOpen] = useState(
+    initialRoute.kind === 'image-bank',
   );
   const [imageBankQuery, setImageBankQuery] = useState('');
   const [imageBankResults, setImageBankResults] = useState<ImageBankImageItem[]>([]);
@@ -276,6 +178,15 @@ export default function App() {
   const [isMobileConnectServerOpen, setIsMobileConnectServerOpen] = useState(false);
   const [isMobileAdvancedSettingsOpen, setIsMobileAdvancedSettingsOpen] = useState(false);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
+  const [mobilePanelSubView, setMobilePanelSubView] = useState<'organization' | 'store'>(
+    'organization',
+  );
+  const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
+    null,
+  );
+  const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
+    null,
+  );
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [isFileUploadFlow, setIsFileUploadFlow] = useState(false);
   const [isReadOnlyReplay, setIsReadOnlyReplay] = useState(false);
@@ -331,7 +242,22 @@ export default function App() {
     useState<ServiceCredentialsDisplay | null>(null);
   const [guestIpBlocked, setGuestIpBlocked] = useState(false);
   const authUserRef = useRef<User | null>(null);
+  const authResolvedRef = useRef<boolean>(!supabase);
   const orgServicesRef = useRef<OrganizationServiceItem[]>([]);
+  const isDesktopViewportRef = useRef<boolean>(isDesktopViewport);
+  const pendingProtectedRouteRef = useRef<AppRoute | null>(
+    isProtectedAppRoute(initialRoute) ? initialRoute : null,
+  );
+  const pendingServiceSlugRef = useRef<{
+    kind: 'store' | 'schema' | 'search-ia';
+    slug?: string;
+  } | null>(
+    initialRoute.kind === 'store' ||
+      initialRoute.kind === 'schema' ||
+      initialRoute.kind === 'search-ia'
+      ? { kind: initialRoute.kind, slug: initialRoute.slug }
+      : null,
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const imageBankMobileInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -356,9 +282,23 @@ export default function App() {
   const isDesktopImageBankActive = isImageBankOpen && isDesktopViewport;
 
   useEffect(() => {
+    isDesktopViewportRef.current = isDesktopViewport;
+  }, [isDesktopViewport]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     const mq = window.matchMedia('(min-width: 1024px)');
-    const syncViewport = () => setIsDesktopViewport(mq.matches);
+    const syncViewport = () => {
+      const nextDesktop = mq.matches;
+      isDesktopViewportRef.current = nextDesktop;
+      setIsDesktopViewport(nextDesktop);
+      if (authUserRef.current) {
+        const currentRoute = parseAppRoute(window.location.pathname);
+        if (isProtectedAppRoute(currentRoute) && currentRoute.kind !== 'search-ia') {
+          applyRouteToState(currentRoute, { isDesktop: nextDesktop });
+        }
+      }
+    };
     syncViewport();
     mq.addEventListener('change', syncViewport);
     return () => mq.removeEventListener('change', syncViewport);
@@ -1211,11 +1151,18 @@ export default function App() {
     extractAbortRef.current?.abort();
     cancelOngoingCompression();
     setIsDesktopMenuOpen(false);
+    setDesktopMenuView('menu');
     setIsMobileMenuOpen(false);
     setIsMobileAccountModalOpen(false);
     setIsMobileLanguageModalOpen(false);
     setIsMobileConnectServerOpen(false);
+    setIsMobileAdvancedSettingsOpen(false);
     setIsMobilePanelOpen(false);
+    setMobilePanelSubView('organization');
+    setSelectedStoreServiceId(null);
+    setSelectedSchemaServiceId(null);
+    setActiveChatServiceId(null);
+    pushRouteUrl({ kind: 'home' });
     setIsExtracting(false);
     setPendingDomainBatch(null);
     setExtractError(null);
@@ -1305,10 +1252,18 @@ export default function App() {
         : buildFallbackServiceSnapshot(service);
 
     setIsDesktopMenuOpen(false);
+    setDesktopMenuView('menu');
     setIsMobileMenuOpen(false);
     setIsMobileAccountModalOpen(false);
     setIsMobileLanguageModalOpen(false);
+    setIsMobileConnectServerOpen(false);
+    setIsMobileAdvancedSettingsOpen(false);
     setIsMobilePanelOpen(false);
+    setMobilePanelSubView('organization');
+    setSelectedStoreServiceId(null);
+    setSelectedSchemaServiceId(null);
+    setActiveChatServiceId(null);
+    pushRouteUrl({ kind: 'home' });
     setIsExtracting(false);
     setPendingDomainBatch(null);
     setExtractError(null);
@@ -1340,12 +1295,240 @@ export default function App() {
     setCatalogVersion((prev) => prev + 1);
   };
 
+  const pushRouteUrl = (route: AppRoute, mode: 'push' | 'replace' = 'push') => {
+    if (typeof window === 'undefined') return;
+    if (isAuthCallbackPathname(window.location.pathname)) return;
+    const targetPath = buildAppRoutePath(route);
+    if (normalizePathname(window.location.pathname) === normalizePathname(targetPath)) {
+      return;
+    }
+    if (mode === 'replace') {
+      window.history.replaceState(null, '', targetPath);
+    } else {
+      window.history.pushState(null, '', targetPath);
+    }
+  };
+
+  const resolveServiceBySlug = (
+    slug: string | undefined,
+    servicesList: OrganizationServiceItem[],
+  ): OrganizationServiceItem | null => {
+    if (servicesList.length === 0) return null;
+    if (slug) {
+      const targetSlug = slug.toLowerCase();
+      const matched = servicesList.find(
+        (srv) =>
+          (srv.slug ?? '').toLowerCase() === targetSlug ||
+          srv.id.toLowerCase() === targetSlug,
+      );
+      if (matched) return matched;
+    }
+    return servicesList[0] ?? null;
+  };
+
+  const applyRouteToState = (
+    route: AppRoute,
+    options?: { isDesktop?: boolean; services?: OrganizationServiceItem[] },
+  ) => {
+    const isDesktop = options?.isDesktop ?? isDesktopViewportRef.current;
+    const servicesList = options?.services ?? orgServicesRef.current;
+
+    if (route.kind === 'doc') {
+      setIsDesktopMenuOpen(false);
+      setIsMobileMenuOpen(false);
+      setIsImageBankOpen(false);
+      setIsImageBankSavedView(false);
+      setActiveChatServiceId(null);
+      setActiveDocRoute(route.docId);
+      return;
+    }
+
+    setActiveDocRoute(null);
+
+    if (route.kind === 'image-bank') {
+      setIsAuthOpen(false);
+      setActiveChatServiceId(null);
+      setIsDesktopMenuOpen(false);
+      setDesktopMenuView('menu');
+      setIsMobileMenuOpen(false);
+      setIsMobileAccountModalOpen(false);
+      setIsMobileLanguageModalOpen(false);
+      setIsMobileConnectServerOpen(false);
+      setIsMobileAdvancedSettingsOpen(false);
+      setIsMobilePanelOpen(false);
+      setIsImageBankOpen(true);
+      return;
+    }
+
+    setIsImageBankOpen(false);
+    setIsImageBankSavedView(false);
+
+    if (route.kind === 'login') {
+      setActiveChatServiceId(null);
+      if (!authUserRef.current) {
+        setIsAuthOpen(true);
+      } else {
+        setIsAuthOpen(false);
+      }
+      return;
+    }
+
+    if (route.kind === 'home') {
+      setIsAuthOpen(false);
+      setActiveChatServiceId(null);
+      setIsDesktopMenuOpen(false);
+      setDesktopMenuView('menu');
+      setIsMobileMenuOpen(false);
+      setIsMobileAccountModalOpen(false);
+      setIsMobileLanguageModalOpen(false);
+      setIsMobileConnectServerOpen(false);
+      setIsMobileAdvancedSettingsOpen(false);
+      setIsMobilePanelOpen(false);
+      setMobilePanelSubView('organization');
+      setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
+      return;
+    }
+
+    // Protected application routes
+    setIsAuthOpen(false);
+    setIsMobileMenuOpen(false);
+
+    if (route.kind === 'search-ia') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setActiveChatServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'search-ia', slug: route.slug };
+      }
+      return;
+    }
+
+    setActiveChatServiceId(null);
+
+    if (route.kind === 'store') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setSelectedStoreServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'store', slug: route.slug };
+        setSelectedStoreServiceId(null);
+      }
+      setSelectedSchemaServiceId(null);
+      if (isDesktop) {
+        setIsDesktopMenuOpen(true);
+        setDesktopMenuView('store');
+      } else {
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(true);
+        setMobilePanelSubView('store');
+      }
+      return;
+    }
+
+    if (route.kind === 'schema') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setSelectedSchemaServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'schema', slug: route.slug };
+        setSelectedSchemaServiceId(null);
+      }
+      setSelectedStoreServiceId(null);
+      if (isDesktop) {
+        setIsDesktopMenuOpen(true);
+        setDesktopMenuView('schema');
+      } else {
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(true);
+        setMobilePanelSubView('organization');
+      }
+      return;
+    }
+
+    // google-account | advanced-settings | organization | connect-server | language
+    setSelectedStoreServiceId(null);
+    setSelectedSchemaServiceId(null);
+    setMobilePanelSubView('organization');
+
+    if (isDesktop) {
+      setIsDesktopMenuOpen(true);
+      setDesktopMenuView(route.kind);
+      return;
+    }
+
+    setIsMobileAccountModalOpen(route.kind === 'google-account');
+    setIsMobileAdvancedSettingsOpen(route.kind === 'advanced-settings');
+    setIsMobilePanelOpen(route.kind === 'organization');
+    setIsMobileConnectServerOpen(route.kind === 'connect-server');
+    setIsMobileLanguageModalOpen(route.kind === 'language');
+  };
+
+  const navigateToAppRoute = (
+    route: AppRoute,
+    mode: 'push' | 'replace' = 'push',
+  ) => {
+    applyRouteToState(route);
+    pushRouteUrl(route, mode);
+  };
+
+  const getUnderlyingRouteWithoutChat = (): AppRoute => {
+    if (isDesktopViewportRef.current) {
+      if (!isDesktopMenuOpen || desktopMenuView === 'menu') return { kind: 'home' };
+      if (desktopMenuView === 'store') {
+        const srv = orgServicesRef.current.find((s) => s.id === selectedStoreServiceId);
+        return { kind: 'store', slug: srv?.slug };
+      }
+      if (desktopMenuView === 'schema') {
+        const srv = orgServicesRef.current.find((s) => s.id === selectedSchemaServiceId);
+        return { kind: 'schema', slug: srv?.slug };
+      }
+      return { kind: desktopMenuView };
+    }
+    if (isMobilePanelOpen) {
+      if (selectedSchemaServiceId) {
+        const srv = orgServicesRef.current.find((s) => s.id === selectedSchemaServiceId);
+        return { kind: 'schema', slug: srv?.slug };
+      }
+      if (mobilePanelSubView === 'store') {
+        const srv = orgServicesRef.current.find((s) => s.id === selectedStoreServiceId);
+        return { kind: 'store', slug: srv?.slug };
+      }
+      return { kind: 'organization' };
+    }
+    if (isMobileConnectServerOpen) return { kind: 'connect-server' };
+    if (isMobileAdvancedSettingsOpen) return { kind: 'advanced-settings' };
+    if (isMobileAccountModalOpen) return { kind: 'google-account' };
+    if (isMobileLanguageModalOpen) return { kind: 'language' };
+    return { kind: 'home' };
+  };
+
+  const handleOpenServiceChat = (service: OrganizationServiceItem) => {
+    pendingServiceSlugRef.current = null;
+    setActiveChatServiceId(service.id);
+    pushRouteUrl({ kind: 'search-ia', slug: service.slug }, 'push');
+  };
+
+  const handleCloseServiceChat = () => {
+    setActiveChatServiceId(null);
+    pushRouteUrl(getUnderlyingRouteWithoutChat(), 'push');
+  };
+
   const openAuthFlow = () => {
     if (authUserRef.current) return;
     setIsImageBankOpen(false);
     setIsImageBankSavedView(false);
     if (typeof window !== 'undefined') {
-      if (window.innerWidth < 1024 && window.location.pathname !== '/login') {
+      if (window.innerWidth < 1024 && normalizePathname(window.location.pathname) !== '/login') {
         window.history.pushState({ authRoute: true }, '', '/login');
       } else if (isImageBankPathname(window.location.pathname)) {
         window.history.replaceState(null, '', '/');
@@ -1515,6 +1698,7 @@ export default function App() {
       } else {
         if (isDesktopViewport) {
           setIsDesktopMenuOpen(false);
+          setDesktopMenuView('menu');
           setIsAuthOpen(false);
         }
         if (typeof window !== 'undefined' && !isImageBankPathname(window.location.pathname)) {
@@ -1527,19 +1711,20 @@ export default function App() {
 
   const closeAuthFlow = () => {
     setIsAuthOpen(false);
-    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+    if (typeof window !== 'undefined' && normalizePathname(window.location.pathname) === '/login') {
       window.history.replaceState(null, '', '/');
     }
   };
 
   const openDocumentationRoute = (docId: LegalDocId, fromAuth = false) => {
     setIsDesktopMenuOpen(false);
+    setDesktopMenuView('menu');
     setIsMobileMenuOpen(false);
     docReturnToAuthRef.current = fromAuth;
     if (!fromAuth) {
       setIsAuthOpen(false);
     }
-    const targetPath = getCanonicalLegalDocPath(docId);
+    const targetPath = buildAppRoutePath({ kind: 'doc', docId });
     if (
       typeof window !== 'undefined' &&
       resolveLegalDocRouteFromPathname(window.location.pathname) !== docId
@@ -1566,39 +1751,102 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!supabase) return;
+    if (authUser && pendingServiceSlugRef.current && orgServices.length > 0) {
+      const pending = pendingServiceSlugRef.current;
+      pendingServiceSlugRef.current = null;
+      const matched = resolveServiceBySlug(pending.slug, orgServices);
+      if (matched) {
+        if (pending.kind === 'store') {
+          setSelectedStoreServiceId(matched.id);
+        } else if (pending.kind === 'schema') {
+          setSelectedSchemaServiceId(matched.id);
+        } else if (pending.kind === 'search-ia') {
+          setActiveChatServiceId(matched.id);
+        }
+      }
+    }
+  }, [authUser, orgServices]);
+
+  useEffect(() => {
+    if (!supabase) {
+      authResolvedRef.current = true;
+      if (pendingProtectedRouteRef.current) {
+        pendingProtectedRouteRef.current = null;
+        if (typeof window !== 'undefined') {
+          const isMobile = window.innerWidth < 1024;
+          window.history.replaceState(null, '', isMobile ? '/login' : '/');
+        }
+        setIsAuthOpen(true);
+      }
+      return;
+    }
     let active = true;
 
     void supabase.auth.getSession().then(({ data }) => {
-      if (active) {
-        const sessionUser = data.session?.user ?? null;
-        setAuthUser(sessionUser);
-        if (sessionUser) {
-          setIsAuthOpen(false);
-          if (window.location.pathname === '/login') {
-            window.history.replaceState(null, '', '/');
-          }
+      if (!active) return;
+      authResolvedRef.current = true;
+      const sessionUser = data.session?.user ?? null;
+      authUserRef.current = sessionUser;
+      setAuthUser(sessionUser);
+      if (sessionUser) {
+        setIsAuthOpen(false);
+        const pendingRoute = pendingProtectedRouteRef.current;
+        pendingProtectedRouteRef.current = null;
+        if (pendingRoute) {
+          applyRouteToState(pendingRoute);
+        } else if (
+          normalizePathname(window.location.pathname) === '/login' ||
+          isAuthCallbackPathname(window.location.pathname)
+        ) {
+          window.history.replaceState(null, '', '/');
         }
+      } else if (pendingProtectedRouteRef.current) {
+        pendingProtectedRouteRef.current = null;
+        const isMobile = window.innerWidth < 1024;
+        window.history.replaceState(null, '', isMobile ? '/login' : '/');
+        setIsAuthOpen(true);
       }
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (active) {
-        const nextUser = session?.user ?? null;
-        setAuthUser(nextUser);
-        if (nextUser) {
-          setIsAuthOpen(false);
-          if (window.location.pathname === '/login') {
+      if (!active) return;
+      const nextUser = session?.user ?? null;
+      authUserRef.current = nextUser;
+      setAuthUser(nextUser);
+      if (nextUser) {
+        setIsAuthOpen(false);
+        const pendingRoute = pendingProtectedRouteRef.current;
+        if (pendingRoute) {
+          pendingProtectedRouteRef.current = null;
+          applyRouteToState(pendingRoute);
+        } else {
+          const currentRoute = parseAppRoute(window.location.pathname);
+          if (isProtectedAppRoute(currentRoute)) {
+            applyRouteToState(currentRoute);
+          } else if (
+            normalizePathname(window.location.pathname) === '/login' ||
+            isAuthCallbackPathname(window.location.pathname)
+          ) {
             window.history.replaceState(null, '', '/');
           }
-        } else {
-          setIsDesktopMenuOpen(false);
-          setIsMobileMenuOpen(false);
-          setIsMobileAccountModalOpen(false);
-          setIsMobileLanguageModalOpen(false);
-          setIsMobilePanelOpen(false);
+        }
+      } else {
+        setIsDesktopMenuOpen(false);
+        setDesktopMenuView('menu');
+        setIsMobileMenuOpen(false);
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(false);
+        setMobilePanelSubView('organization');
+        setSelectedStoreServiceId(null);
+        setSelectedSchemaServiceId(null);
+        setActiveChatServiceId(null);
+        if (authResolvedRef.current && isProtectedAppRoute(parseAppRoute(window.location.pathname))) {
+          window.history.replaceState(null, '', '/');
         }
       }
     });
@@ -1611,29 +1859,55 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      const matchedDoc = resolveLegalDocRouteFromPathname(window.location.pathname);
-      if (matchedDoc) {
-        setActiveDocRoute(matchedDoc);
+      const nextRoute = parseAppRoute(window.location.pathname);
+
+      if (nextRoute.kind === 'doc') {
+        applyRouteToState(nextRoute);
         return;
       }
-      setActiveDocRoute(null);
 
-      if (isImageBankPathname(window.location.pathname)) {
-        setIsAuthOpen(false);
-        setIsImageBankOpen(true);
+      if (nextRoute.kind === 'image-bank') {
+        applyRouteToState(nextRoute);
         return;
       }
-      setIsImageBankOpen(false);
-      setIsImageBankSavedView(false);
 
-      if (window.location.pathname === '/login' && !authUserRef.current) {
-        setIsAuthOpen(true);
-      } else if (docReturnToAuthRef.current && !authUserRef.current) {
+      if (nextRoute.kind === 'login') {
+        if (!authUserRef.current) {
+          applyRouteToState(nextRoute);
+        } else {
+          window.history.replaceState(null, '', '/');
+          applyRouteToState({ kind: 'home' });
+        }
+        return;
+      }
+
+      if (isProtectedAppRoute(nextRoute)) {
+        if (authUserRef.current) {
+          applyRouteToState(nextRoute);
+        } else if (authResolvedRef.current) {
+          window.history.replaceState(
+            null,
+            '',
+            window.innerWidth < 1024 ? '/login' : '/',
+          );
+          setActiveDocRoute(null);
+          setIsImageBankOpen(false);
+          setIsAuthOpen(true);
+        } else {
+          pendingProtectedRouteRef.current = nextRoute;
+        }
+        return;
+      }
+
+      // Home route
+      if (docReturnToAuthRef.current && !authUserRef.current) {
         docReturnToAuthRef.current = false;
+        setActiveDocRoute(null);
         setIsAuthOpen(true);
-      } else {
-        setIsAuthOpen(false);
+        return;
       }
+
+      applyRouteToState({ kind: 'home' });
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -1653,12 +1927,17 @@ export default function App() {
     setCarriedFreeImagesUsed(0);
     setActiveChatServiceId(null);
     setIsDesktopMenuOpen(false);
+    setDesktopMenuView('menu');
     setIsMobileMenuOpen(false);
     setIsMobileAccountModalOpen(false);
     setIsMobileLanguageModalOpen(false);
     setIsMobileConnectServerOpen(false);
     setIsMobileAdvancedSettingsOpen(false);
     setIsMobilePanelOpen(false);
+    setMobilePanelSubView('organization');
+    setSelectedStoreServiceId(null);
+    setSelectedSchemaServiceId(null);
+    pushRouteUrl({ kind: 'home' }, 'replace');
   };
 
   const handleSignOut = async () => {
@@ -1821,17 +2100,30 @@ export default function App() {
       if (event.key === 'Escape') {
         event.preventDefault();
         if (activeChatServiceId) {
-          setActiveChatServiceId(null);
+          handleCloseServiceChat();
+          return;
+        }
+        if (isDesktopMenuOpen && desktopMenuView === 'schema') {
+          navigateToAppRoute({ kind: 'organization' });
+          return;
+        }
+        if (isMobilePanelOpen && selectedSchemaServiceId) {
+          navigateToAppRoute({ kind: 'organization' });
           return;
         }
         if (isAuthOpen) closeAuthFlow();
-        if (isDesktopMenuOpen) setIsDesktopMenuOpen(false);
+        if (
+          isDesktopMenuOpen ||
+          isMobileAccountModalOpen ||
+          isMobileLanguageModalOpen ||
+          isMobileConnectServerOpen ||
+          isMobileAdvancedSettingsOpen ||
+          isMobilePanelOpen
+        ) {
+          navigateToAppRoute({ kind: 'home' });
+          return;
+        }
         if (isMobileMenuOpen) setIsMobileMenuOpen(false);
-        if (isMobileAccountModalOpen) setIsMobileAccountModalOpen(false);
-        if (isMobileLanguageModalOpen) setIsMobileLanguageModalOpen(false);
-        if (isMobileConnectServerOpen) setIsMobileConnectServerOpen(false);
-        if (isMobileAdvancedSettingsOpen) setIsMobileAdvancedSettingsOpen(false);
-        if (isMobilePanelOpen) setIsMobilePanelOpen(false);
         return;
       }
 
@@ -1852,12 +2144,14 @@ export default function App() {
   }, [
     isAuthOpen,
     isDesktopMenuOpen,
+    desktopMenuView,
     isMobileMenuOpen,
     isMobileAccountModalOpen,
     isMobileLanguageModalOpen,
     isMobileConnectServerOpen,
     isMobileAdvancedSettingsOpen,
     isMobilePanelOpen,
+    selectedSchemaServiceId,
     activeChatServiceId,
   ]);
 
@@ -3129,7 +3423,12 @@ export default function App() {
             onClick={() => {
               closeImageBank();
               if (authUser) {
-                setIsDesktopMenuOpen((prev) => !prev);
+                if (isDesktopMenuOpen) {
+                  navigateToAppRoute({ kind: 'home' });
+                } else {
+                  setDesktopMenuView('menu');
+                  setIsDesktopMenuOpen(true);
+                }
               } else {
                 openAuthFlow();
               }
@@ -3234,7 +3533,7 @@ export default function App() {
               jobNotice={jobLifecycleNotice}
               onOpenOrganization={() => {
                 if (authUser) {
-                  setIsMobilePanelOpen(true);
+                  navigateToAppRoute({ kind: 'organization' });
                 } else {
                   openAuthFlow();
                 }
@@ -3249,6 +3548,44 @@ export default function App() {
       {authUser && (
         <DesktopAccountMenu
           open={isDesktopMenuOpen}
+          view={desktopMenuView}
+          selectedStoreServiceId={selectedStoreServiceId}
+          selectedSchemaServiceId={selectedSchemaServiceId}
+          onViewChange={(nextView, service) => {
+            if (nextView === 'menu') {
+              setDesktopMenuView('menu');
+              setSelectedStoreServiceId(null);
+              setSelectedSchemaServiceId(null);
+              pushRouteUrl({ kind: 'home' });
+              return;
+            }
+            if (nextView === 'store') {
+              const target =
+                service ??
+                orgServices.find((srv) => srv.id === selectedStoreServiceId) ??
+                orgServices[0];
+              setSelectedStoreServiceId(target?.id ?? null);
+              setSelectedSchemaServiceId(null);
+              setDesktopMenuView('store');
+              pushRouteUrl({ kind: 'store', slug: target?.slug });
+              return;
+            }
+            if (nextView === 'schema') {
+              const target =
+                service ??
+                orgServices.find((srv) => srv.id === selectedSchemaServiceId) ??
+                orgServices[0];
+              setSelectedSchemaServiceId(target?.id ?? null);
+              setSelectedStoreServiceId(null);
+              setDesktopMenuView('schema');
+              pushRouteUrl({ kind: 'schema', slug: target?.slug });
+              return;
+            }
+            setSelectedStoreServiceId(null);
+            setSelectedSchemaServiceId(null);
+            setDesktopMenuView(nextView);
+            pushRouteUrl({ kind: nextView });
+          }}
           user={authUser}
           orgProfile={orgProfile}
           services={orgServices}
@@ -3256,11 +3593,11 @@ export default function App() {
           onRenameService={handleRenameService}
           onNewProduct={handleStartNewProduct}
           onViewServiceHistory={handleViewServiceHistory}
-          onOpenServiceChat={(service) => setActiveChatServiceId(service.id)}
+          onOpenServiceChat={handleOpenServiceChat}
           onRotateServiceKey={handleRotateServiceKey}
           onToggleServiceActive={handleToggleServiceActive}
           onOpenDocumentation={openDocumentationRoute}
-          onClose={() => setIsDesktopMenuOpen(false)}
+          onClose={() => navigateToAppRoute({ kind: 'home' })}
           onSignOut={handleSignOut}
           onPurgeAllR2={handlePurgeAllR2}
           onClearBrowserData={handleClearBrowserData}
@@ -3282,6 +3619,9 @@ export default function App() {
           connectServerModalOpen={isMobileConnectServerOpen}
           advancedSettingsModalOpen={isMobileAdvancedSettingsOpen}
           panelOpen={isMobilePanelOpen}
+          panelSubView={mobilePanelSubView}
+          selectedStoreServiceId={selectedStoreServiceId}
+          selectedSchemaServiceId={selectedSchemaServiceId}
           user={authUser}
           orgProfile={orgProfile}
           services={orgServices}
@@ -3289,20 +3629,33 @@ export default function App() {
           onRenameService={handleRenameService}
           onNewProduct={handleStartNewProduct}
           onViewServiceHistory={handleViewServiceHistory}
-          onOpenServiceChat={(service) => setActiveChatServiceId(service.id)}
+          onOpenServiceChat={handleOpenServiceChat}
           onRotateServiceKey={handleRotateServiceKey}
           onToggleServiceActive={handleToggleServiceActive}
           onCloseMenu={() => setIsMobileMenuOpen(false)}
-          onOpenAccountModal={() => setIsMobileAccountModalOpen(true)}
-          onCloseAccountModal={() => setIsMobileAccountModalOpen(false)}
-          onOpenLanguageModal={() => setIsMobileLanguageModalOpen(true)}
-          onCloseLanguageModal={() => setIsMobileLanguageModalOpen(false)}
-          onOpenConnectServerModal={() => setIsMobileConnectServerOpen(true)}
-          onCloseConnectServerModal={() => setIsMobileConnectServerOpen(false)}
-          onOpenAdvancedSettingsModal={() => setIsMobileAdvancedSettingsOpen(true)}
-          onCloseAdvancedSettingsModal={() => setIsMobileAdvancedSettingsOpen(false)}
-          onOpenPanel={() => setIsMobilePanelOpen(true)}
-          onClosePanel={() => setIsMobilePanelOpen(false)}
+          onOpenAccountModal={() => navigateToAppRoute({ kind: 'google-account' })}
+          onCloseAccountModal={() => navigateToAppRoute({ kind: 'home' })}
+          onOpenLanguageModal={() => navigateToAppRoute({ kind: 'language' })}
+          onCloseLanguageModal={() => navigateToAppRoute({ kind: 'home' })}
+          onOpenConnectServerModal={() => navigateToAppRoute({ kind: 'connect-server' })}
+          onCloseConnectServerModal={() => navigateToAppRoute({ kind: 'home' })}
+          onOpenAdvancedSettingsModal={() =>
+            navigateToAppRoute({ kind: 'advanced-settings' })
+          }
+          onCloseAdvancedSettingsModal={() => navigateToAppRoute({ kind: 'home' })}
+          onBackToAccountFromAdvancedSettings={() =>
+            navigateToAppRoute({ kind: 'google-account' })
+          }
+          onOpenPanel={() => navigateToAppRoute({ kind: 'organization' })}
+          onClosePanel={() => navigateToAppRoute({ kind: 'home' })}
+          onOpenStore={(service) =>
+            navigateToAppRoute({ kind: 'store', slug: service.slug })
+          }
+          onBackToOrganization={() => navigateToAppRoute({ kind: 'organization' })}
+          onOpenSchema={(service) =>
+            navigateToAppRoute({ kind: 'schema', slug: service.slug })
+          }
+          onCloseSchema={() => navigateToAppRoute({ kind: 'organization' })}
           onOpenDocumentation={openDocumentationRoute}
           onSignOut={handleSignOut}
           onPurgeAllR2={handlePurgeAllR2}
@@ -3325,7 +3678,7 @@ export default function App() {
         }
         organizationName={orgProfile.name}
         userId={authUser?.id}
-        onClose={() => setActiveChatServiceId(null)}
+        onClose={handleCloseServiceChat}
       />
 
       {/* Auth view: independent /login full-screen on mobile, right half drawer on desktop */}
