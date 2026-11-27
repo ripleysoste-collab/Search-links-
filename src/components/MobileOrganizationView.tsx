@@ -3,23 +3,13 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Camera,
   Check,
-  Copy,
   Loader2,
   MoreHorizontal,
   Pencil,
-  Play,
   Plus,
-  RefreshCw,
   Store,
-  X,
 } from 'lucide-react';
 import { compressAndUploadOrgLogo } from '../lib/imageCompression';
-import {
-  buildCoreCurlSnippet,
-  isRawCoreApiKey,
-  testCoreServiceEndpoint,
-  type CoreEndpointTestResult,
-} from '../lib/searchLinkCore';
 import { useI18n } from '../lib/i18n';
 import type {
   OrganizationProfile,
@@ -35,19 +25,14 @@ interface MobileOrganizationViewProps {
   onRenameService: (serviceId: string, nextName: string) => void;
   onNewProduct: () => void;
   onOpenStore: (service: OrganizationServiceItem) => void;
+  onOpenApiKey: (service: OrganizationServiceItem) => void;
+  onOpenEndpointTest: (service: OrganizationServiceItem) => void;
   onViewServiceHistory: (service: OrganizationServiceItem) => void;
   onOpenSchema: (service: OrganizationServiceItem) => void;
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
-  onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
-  onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
 }
 
 type OnboardingStage = 'welcome' | 'congrats';
-
-interface CredentialModalState {
-  serviceId: string;
-  kind: 'api' | 'endpoint';
-}
 
 export function MobileOrganizationView({
   orgProfile,
@@ -58,11 +43,11 @@ export function MobileOrganizationView({
   onRenameService,
   onNewProduct,
   onOpenStore,
+  onOpenApiKey,
+  onOpenEndpointTest,
   onViewServiceHistory,
   onOpenSchema,
   onOpenServiceChat,
-  onRotateServiceKey,
-  onToggleServiceActive,
 }: MobileOrganizationViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
@@ -81,16 +66,6 @@ export function MobileOrganizationView({
   const [orgNameInput, setOrgNameInput] = useState(orgProfile.name);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [serviceNameInput, setServiceNameInput] = useState('');
-  const [credentialBox, setCredentialBox] = useState<CredentialModalState | null>(null);
-  const [copiedCredential, setCopiedCredential] = useState<'main' | 'curl' | false>(
-    false,
-  );
-  const [rotatingKey, setRotatingKey] = useState(false);
-  const [togglingStatus, setTogglingStatus] = useState(false);
-  const [testingEndpoint, setTestingEndpoint] = useState(false);
-  const [manualTestKey, setManualTestKey] = useState('');
-  const [endpointTestResult, setEndpointTestResult] =
-    useState<CoreEndpointTestResult | null>(null);
   const [logoImgFailed, setLogoImgFailed] = useState(false);
   const [storePickerOpen, setStorePickerOpen] = useState(false);
   const [openActionMenuServiceId, setOpenActionMenuServiceId] = useState<string | null>(
@@ -218,33 +193,6 @@ export function MobileOrganizationView({
     }
     setEditingServiceId(null);
   };
-
-  const handleCopyCredential = async (
-    text: string,
-    target: 'main' | 'curl' = 'main',
-  ) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedCredential(target);
-      window.setTimeout(() => setCopiedCredential(false), 1600);
-    } catch {
-      setCopiedCredential(false);
-    }
-  };
-
-  const openCredentialBox = (
-    service: OrganizationServiceItem,
-    kind: 'api' | 'endpoint',
-  ) => {
-    setCopiedCredential(false);
-    setEndpointTestResult(null);
-    setManualTestKey(isRawCoreApiKey(service.apiKey) ? service.apiKey : '');
-    setCredentialBox({ serviceId: service.id, kind });
-  };
-
-  const activeCredentialService = credentialBox
-    ? services.find((s) => s.id === credentialBox.serviceId) ?? null
-    : null;
 
   // 1. Mobile First-time Onboarding (clean, compact, breathable)
   if (!orgProfile.hasCompletedSetup) {
@@ -663,14 +611,15 @@ export function MobileOrganizationView({
             </p>
           </div>
         ) : (
-          <ul className="space-y-2.5 pb-4">
-            {services.map((service) => {
+          <ul className="space-y-2.5 pb-24">
+            {services.map((service, idx) => {
               const isEditingThis = editingServiceId === service.id;
+              const openMenuDownward = idx === 0;
 
               return (
                 <li
                   key={`mob-srv-${service.id}`}
-                  className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3.5 space-y-2.5"
+                  className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-3.5 space-y-2"
                 >
                   <div className="flex items-center justify-between gap-2">
                     {isEditingThis ? (
@@ -692,14 +641,14 @@ export function MobileOrganizationView({
                         <button
                           type="submit"
                           aria-label={t.org.saveServiceNameAria}
-                          className="w-6 h-6 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                          className="w-7 h-7 rounded-md bg-slate-900 text-white flex items-center justify-center shrink-0 cursor-pointer"
                         >
                           <Check className="w-3 h-3" aria-hidden="true" />
                         </button>
                       </form>
                     ) : (
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                        <span className="text-[13px] font-semibold text-slate-950 truncate">
+                        <span className="text-[13.5px] font-semibold text-slate-950 truncate">
                           {service.name}
                         </span>
                         <button
@@ -709,45 +658,19 @@ export function MobileOrganizationView({
                             setEditingServiceId(service.id);
                           }}
                           aria-label={t.org.renameServiceAria(service.name)}
-                          className="w-5 h-5 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 shrink-0 cursor-pointer"
+                          className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 shrink-0 cursor-pointer"
                         >
-                          <Pencil className="w-2.5 h-2.5" aria-hidden="true" />
+                          <Pencil className="w-3 h-3" aria-hidden="true" />
                         </button>
                       </div>
                     )}
-
-                    <span className="text-[10.5px] font-medium text-slate-400 tabular-nums shrink-0">
-                      {t.org.productCountShort(service.itemCount)}
-                    </span>
                   </div>
 
-                  {/* Bottom row: Left = dot items | Bottom-right = small red history icon */}
-                  <div className="flex items-end justify-between gap-2">
-                    <div className="flex flex-col gap-1.5 pl-0.5 min-w-0">
-                      <button
-                        type="button"
-                        onClick={() => openCredentialBox(service, 'api')}
-                        className="flex items-center gap-2 text-left text-[11.5px] font-medium text-slate-600 active:text-slate-950 py-0.5 cursor-pointer"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"
-                        />
-                        <span>{t.org.serviceApiLink}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => openCredentialBox(service, 'endpoint')}
-                        className="flex items-center gap-2 text-left text-[11.5px] font-medium text-slate-600 active:text-slate-950 py-0.5 cursor-pointer"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="w-1.5 h-1.5 rounded-full bg-slate-900 shrink-0"
-                        />
-                        <span>{t.org.serviceEndpointLink}</span>
-                      </button>
-                    </div>
+                  {/* Bottom row: Left = product count | Right = three-dots menu */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-slate-400 tabular-nums shrink-0">
+                      {t.org.productCountShort(service.itemCount)}
+                    </span>
 
                     <div data-mobile-service-action-menu className="relative shrink-0">
                       <button
@@ -760,7 +683,7 @@ export function MobileOrganizationView({
                         aria-haspopup="menu"
                         aria-expanded={openActionMenuServiceId === service.id}
                         aria-label={t.org.moreActionsAria(service.name)}
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
                           openActionMenuServiceId === service.id
                             ? 'bg-white text-slate-950 shadow-2xs'
                             : 'text-slate-400 hover:text-slate-900 active:bg-white'
@@ -777,18 +700,46 @@ export function MobileOrganizationView({
                             initial={
                               shouldReduceMotion
                                 ? { opacity: 0 }
-                                : { opacity: 0, scale: 0.96, y: 4 }
+                                : { opacity: 0, scale: 0.96, y: openMenuDownward ? -4 : 4 }
                             }
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={
                               shouldReduceMotion
                                 ? { opacity: 0 }
-                                : { opacity: 0, scale: 0.96, y: 4 }
+                                : { opacity: 0, scale: 0.96, y: openMenuDownward ? -4 : 4 }
                             }
                             transition={{ duration: 0.14 }}
-                            className="absolute right-0 bottom-full mb-1.5 w-36 rounded-2xl border border-slate-200/95 bg-white shadow-[0_16px_40px_-12px_rgba(15,23,42,0.24)] p-1 z-30"
+                            className={`absolute right-0 ${
+                              openMenuDownward ? 'top-full mt-1.5' : 'bottom-full mb-1.5'
+                            } w-44 rounded-2xl border border-slate-200/95 bg-white shadow-[0_16px_40px_-12px_rgba(15,23,42,0.24)] p-1 z-30`}
                           >
                             <ul className="divide-y divide-slate-100">
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setOpenActionMenuServiceId(null);
+                                    onOpenApiKey(service);
+                                  }}
+                                  className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
+                                >
+                                  {t.org.menuViewApi}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setOpenActionMenuServiceId(null);
+                                    onOpenEndpointTest(service);
+                                  }}
+                                  className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
+                                >
+                                  {t.org.menuTestEndpoint}
+                                </button>
+                              </li>
                               {onOpenServiceChat && (
                                 <li>
                                   <button
@@ -798,7 +749,7 @@ export function MobileOrganizationView({
                                       setOpenActionMenuServiceId(null);
                                       onOpenServiceChat(service);
                                     }}
-                                    className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer"
+                                    className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
                                   >
                                     {t.org.menuSearchAi}
                                   </button>
@@ -812,7 +763,7 @@ export function MobileOrganizationView({
                                     setOpenActionMenuServiceId(null);
                                     onViewServiceHistory(service);
                                   }}
-                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer"
+                                  className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
                                 >
                                   {t.org.menuViewProcess}
                                 </button>
@@ -825,7 +776,7 @@ export function MobileOrganizationView({
                                     setOpenActionMenuServiceId(null);
                                     onOpenSchema(service);
                                   }}
-                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer"
+                                  className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
                                 >
                                   {t.org.menuViewSchema}
                                 </button>
@@ -842,273 +793,6 @@ export function MobileOrganizationView({
           </ul>
         )}
       </div>
-
-      {/* Centered Search Link Core credential & live tester dialog */}
-      <AnimatePresence>
-        {credentialBox && activeCredentialService && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0 : 0.16 }}
-            onClick={() => setCredentialBox(null)}
-            className="fixed inset-0 z-50 bg-slate-950/35 backdrop-blur-[2px] flex items-center justify-center p-5"
-          >
-            <motion.div
-              role="dialog"
-              aria-modal="true"
-              initial={
-                shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 8 }
-              }
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={
-                shouldReduceMotion ? { opacity: 0 } : { opacity: 0, scale: 0.95, y: 6 }
-              }
-              transition={{ duration: 0.18 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-[340px] rounded-2xl border border-slate-200/95 bg-white p-4 shadow-xl space-y-3"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-semibold text-slate-950">
-                      {credentialBox.kind === 'api'
-                        ? t.org.serviceApiLink
-                        : t.org.serviceEndpointLink}
-                    </p>
-                    <span className="text-[10px] font-medium text-slate-400">
-                      Search Link Core
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                    {activeCredentialService.name}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setCredentialBox(null)}
-                  aria-label={t.common.close}
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-              </div>
-
-              {(() => {
-                const rawApiKeyAvailable = isRawCoreApiKey(
-                  activeCredentialService.apiKey,
-                );
-                const mainValue =
-                  credentialBox.kind === 'api'
-                    ? rawApiKeyAvailable
-                      ? activeCredentialService.apiKey
-                      : activeCredentialService.keyPrefix ||
-                        activeCredentialService.apiKey
-                    : activeCredentialService.endpointUrl;
-                const canCopyMain =
-                  credentialBox.kind === 'endpoint' || rawApiKeyAvailable;
-                const serviceIsActive = activeCredentialService.isActive !== false;
-
-                return (
-                  <>
-                    <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200/85 bg-slate-50/80 px-3 py-2">
-                      <span className="font-mono text-xs font-medium text-slate-800 truncate">
-                        {mainValue}
-                      </span>
-
-                      {canCopyMain && (
-                        <button
-                          type="button"
-                          onClick={() => void handleCopyCredential(mainValue, 'main')}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200/90 text-[11px] font-semibold text-slate-700 cursor-pointer shrink-0"
-                        >
-                          {copiedCredential === 'main' ? (
-                            <>
-                              <Check
-                                className="w-3 h-3 text-emerald-600 stroke-[2.75]"
-                                aria-hidden="true"
-                              />
-                              {t.common.copied}
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" aria-hidden="true" />
-                              {t.common.copy}
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </div>
-
-                    {credentialBox.kind === 'api' ? (
-                      <div className="space-y-2.5">
-                        <p className="text-[11px] text-slate-500 leading-relaxed">
-                          {rawApiKeyAvailable
-                            ? t.org.apiHintRaw
-                            : t.org.apiHintPrefixMobile}
-                        </p>
-
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          {onToggleServiceActive ? (
-                            <button
-                              type="button"
-                              disabled={togglingStatus}
-                              onClick={async () => {
-                                setTogglingStatus(true);
-                                try {
-                                  await onToggleServiceActive(
-                                    activeCredentialService.id,
-                                    !serviceIsActive,
-                                  );
-                                } finally {
-                                  setTogglingStatus(false);
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200/90 text-[11px] font-medium text-slate-700 cursor-pointer disabled:opacity-50"
-                            >
-                              <span
-                                aria-hidden="true"
-                                className={`w-1.5 h-1.5 rounded-full ${
-                                  serviceIsActive ? 'bg-emerald-500' : 'bg-amber-500'
-                                }`}
-                              />
-                              <span>
-                                {serviceIsActive
-                                  ? t.org.serviceActiveMobile
-                                  : t.org.servicePausedMobile}
-                              </span>
-                            </button>
-                          ) : (
-                            <span />
-                          )}
-
-                          {onRotateServiceKey && (
-                            <button
-                              type="button"
-                              disabled={rotatingKey}
-                              onClick={async () => {
-                                setRotatingKey(true);
-                                try {
-                                  const newKey = await onRotateServiceKey(
-                                    activeCredentialService.id,
-                                  );
-                                  if (newKey) {
-                                    setManualTestKey(newKey);
-                                  }
-                                } finally {
-                                  setRotatingKey(false);
-                                }
-                              }}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 text-white text-[11px] font-semibold cursor-pointer disabled:opacity-50"
-                            >
-                              <RefreshCw
-                                className={`w-3 h-3 ${rotatingKey ? 'animate-spin' : ''}`}
-                                aria-hidden="true"
-                              />
-                              <span>{t.org.regenerateKeyMobile}</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {!rawApiKeyAvailable && (
-                          <input
-                            type="text"
-                            value={manualTestKey}
-                            onChange={(e) => setManualTestKey(e.target.value)}
-                            placeholder={t.org.pasteKeyPlaceholder}
-                            className="w-full rounded-lg border border-slate-200/90 bg-slate-50/70 px-2.5 py-1.5 font-mono text-[11px] text-slate-800 placeholder:text-slate-400 focus:bg-white focus:border-blue-500 focus:outline-none"
-                          />
-                        )}
-
-                        <div className="flex items-center justify-between gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleCopyCredential(
-                                buildCoreCurlSnippet(
-                                  activeCredentialService.endpointUrl,
-                                  manualTestKey || activeCredentialService.apiKey,
-                                ),
-                                'curl',
-                              )
-                            }
-                            className="text-[11px] font-medium text-blue-600 cursor-pointer"
-                          >
-                            {copiedCredential === 'curl'
-                              ? t.org.curlCopied
-                              : t.org.copyCurlMobile}
-                          </button>
-
-                          <button
-                            type="button"
-                            disabled={
-                              testingEndpoint ||
-                              !(manualTestKey.trim() || rawApiKeyAvailable)
-                            }
-                            onClick={async () => {
-                              const keyToUse =
-                                manualTestKey.trim() ||
-                                (rawApiKeyAvailable
-                                  ? activeCredentialService.apiKey
-                                  : '');
-                              if (!keyToUse) return;
-                              setTestingEndpoint(true);
-                              try {
-                                const res = await testCoreServiceEndpoint(
-                                  activeCredentialService.endpointUrl,
-                                  keyToUse,
-                                );
-                                setEndpointTestResult(res);
-                              } finally {
-                                setTestingEndpoint(false);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-[11px] font-semibold cursor-pointer disabled:opacity-45"
-                          >
-                            {testingEndpoint ? (
-                              <Loader2
-                                className="w-3 h-3 animate-spin"
-                                aria-hidden="true"
-                              />
-                            ) : (
-                              <Play className="w-3 h-3" aria-hidden="true" />
-                            )}
-                            <span>{t.org.testLive}</span>
-                          </button>
-                        </div>
-
-                        {endpointTestResult && (
-                          <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 p-2.5 space-y-1.5">
-                            <div className="flex items-center justify-between text-[10.5px] font-medium">
-                              <span
-                                className={
-                                  endpointTestResult.ok
-                                    ? 'text-emerald-600'
-                                    : 'text-rose-600'
-                                }
-                              >
-                                HTTP {endpointTestResult.status || 'ERR'}
-                              </span>
-                              <span className="text-slate-400 tabular-nums">
-                                {endpointTestResult.latencyMs} ms
-                              </span>
-                            </div>
-                            <pre className="max-h-32 overflow-auto font-mono text-[10px] leading-relaxed text-slate-700 whitespace-pre-wrap break-all">
-                              {endpointTestResult.rawJson}
-                            </pre>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

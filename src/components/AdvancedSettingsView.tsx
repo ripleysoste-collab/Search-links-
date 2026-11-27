@@ -221,13 +221,13 @@ export function AdvancedSettingsView({
               </p>
             )}
 
-            <div className="mt-3.5 flex flex-wrap items-center gap-2.5">
+            <div className="mt-3 flex items-center gap-5">
               <button
                 type="button"
                 disabled={isExecuting}
                 onClick={handleCancelInline}
-                className={`inline-flex items-center justify-center rounded-xl bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-50 disabled:cursor-default ${
-                  variant === 'mobile' ? 'min-h-[44px] px-4 py-2' : 'px-3.5 py-1.5'
+                className={`bg-transparent border-0 p-0 text-xs font-semibold text-red-600 hover:text-red-700 hover:underline whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-45 disabled:cursor-default ${
+                  variant === 'mobile' ? 'min-h-[44px] inline-flex items-center px-1 -ml-1' : ''
                 }`}
               >
                 {t.common.cancel}
@@ -236,8 +236,8 @@ export function AdvancedSettingsView({
                 type="button"
                 disabled={isExecuting}
                 onClick={() => void handleAcceptInline()}
-                className={`inline-flex items-center justify-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-xs font-semibold text-white whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 cursor-pointer disabled:opacity-60 disabled:cursor-default ${
-                  variant === 'mobile' ? 'min-h-[44px] px-4 py-2' : 'px-3.5 py-1.5'
+                className={`bg-transparent border-0 p-0 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline whitespace-nowrap shrink-0 transition-colors duration-150 focus-visible:outline-none focus-visible:underline cursor-pointer disabled:opacity-60 disabled:cursor-default ${
+                  variant === 'mobile' ? 'min-h-[44px] px-1' : ''
                 }`}
               >
                 {isExecuting && (

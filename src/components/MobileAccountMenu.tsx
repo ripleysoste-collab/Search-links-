@@ -25,6 +25,8 @@ import { ServerTestView } from './ServerTestView';
 import { ServerSecretHelpView } from './ServerSecretHelpView';
 import { ServerUpdatesView } from './ServerUpdatesView';
 import { ServerSecretKeyView } from './ServerSecretKeyView';
+import { ServiceApiKeyView } from './ServiceApiKeyView';
+import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
@@ -56,9 +58,11 @@ interface MobileAccountMenuProps {
   connectServerModalOpen: boolean;
   advancedSettingsModalOpen: boolean;
   panelOpen: boolean;
-  panelSubView: 'organization' | 'store';
+  panelSubView: 'organization' | 'store' | 'api-key' | 'endpoint-test';
   selectedStoreServiceId: string | null;
   selectedSchemaServiceId: string | null;
+  selectedApiKeyServiceId: string | null;
+  selectedEndpointTestServiceId: string | null;
   user: User;
   orgProfile: OrganizationProfile;
   services: OrganizationServiceItem[];
@@ -82,6 +86,8 @@ interface MobileAccountMenuProps {
   onOpenPanel: () => void;
   onClosePanel: () => void;
   onOpenStore: (service: OrganizationServiceItem) => void;
+  onOpenApiKey: (service: OrganizationServiceItem) => void;
+  onOpenEndpointTest: (service: OrganizationServiceItem) => void;
   onBackToOrganization: () => void;
   onOpenSchema: (service: OrganizationServiceItem) => void;
   onCloseSchema: () => void;
@@ -143,6 +149,8 @@ export function MobileAccountMenu({
   panelSubView,
   selectedStoreServiceId,
   selectedSchemaServiceId,
+  selectedApiKeyServiceId,
+  selectedEndpointTestServiceId,
   user,
   orgProfile,
   services,
@@ -166,6 +174,8 @@ export function MobileAccountMenu({
   onOpenPanel,
   onClosePanel,
   onOpenStore,
+  onOpenApiKey,
+  onOpenEndpointTest,
   onBackToOrganization,
   onOpenSchema,
   onCloseSchema,
@@ -215,6 +225,12 @@ export function MobileAccountMenu({
 
   const selectedStoreService =
     services.find((srv) => srv.id === selectedStoreServiceId) ?? services[0] ?? null;
+
+  const selectedApiKeyService =
+    services.find((srv) => srv.id === selectedApiKeyServiceId) ?? services[0] ?? null;
+
+  const selectedEndpointTestService =
+    services.find((srv) => srv.id === selectedEndpointTestServiceId) ?? services[0] ?? null;
 
   const selectedSchemaService = useMemo(
     () =>
@@ -856,7 +872,13 @@ export function MobileAccountMenu({
             role="dialog"
             aria-modal="true"
             aria-label={
-              panelSubView === 'store' ? t.menu.myStore : t.menu.organization
+              panelSubView === 'store'
+                ? t.menu.myStore
+                : panelSubView === 'api-key'
+                  ? t.org.menuViewApi
+                  : panelSubView === 'endpoint-test'
+                    ? t.org.menuTestEndpoint
+                    : t.menu.organization
             }
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
@@ -866,7 +888,9 @@ export function MobileAccountMenu({
           >
             <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
               <div className="flex items-center gap-2 min-w-0">
-                {panelSubView === 'store' && (
+                {(panelSubView === 'store' ||
+                  panelSubView === 'api-key' ||
+                  panelSubView === 'endpoint-test') && (
                   <button
                     type="button"
                     onClick={onBackToOrganization}
@@ -877,7 +901,13 @@ export function MobileAccountMenu({
                   </button>
                 )}
                 <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
-                  {panelSubView === 'store' ? t.menu.myStore : t.menu.organization}
+                  {panelSubView === 'store'
+                    ? t.menu.myStore
+                    : panelSubView === 'api-key'
+                      ? t.org.menuViewApi
+                      : panelSubView === 'endpoint-test'
+                        ? t.org.menuTestEndpoint
+                        : t.menu.organization}
                 </span>
               </div>
 
@@ -901,6 +931,18 @@ export function MobileAccountMenu({
                 organizationName={orgProfile.name}
                 organizationLogoUrl={orgProfile.logoUrl || info.photoUrl}
               />
+            ) : panelSubView === 'api-key' && selectedApiKeyService ? (
+              <ServiceApiKeyView
+                service={selectedApiKeyService}
+                variant="mobile"
+                onRotateServiceKey={onRotateServiceKey}
+                onToggleServiceActive={onToggleServiceActive}
+              />
+            ) : panelSubView === 'endpoint-test' && selectedEndpointTestService ? (
+              <ServiceEndpointTestView
+                service={selectedEndpointTestService}
+                variant="mobile"
+              />
             ) : (
               <MobileOrganizationView
                 orgProfile={orgProfile}
@@ -911,11 +953,11 @@ export function MobileAccountMenu({
                 onRenameService={onRenameService}
                 onNewProduct={onNewProduct}
                 onOpenStore={onOpenStore}
+                onOpenApiKey={onOpenApiKey}
+                onOpenEndpointTest={onOpenEndpointTest}
                 onViewServiceHistory={onViewServiceHistory}
                 onOpenSchema={onOpenSchema}
                 onOpenServiceChat={onOpenServiceChat}
-                onRotateServiceKey={onRotateServiceKey}
-                onToggleServiceActive={onToggleServiceActive}
               />
             )}
           </motion.section>

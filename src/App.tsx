@@ -178,15 +178,21 @@ export default function App() {
   const [isMobileConnectServerOpen, setIsMobileConnectServerOpen] = useState(false);
   const [isMobileAdvancedSettingsOpen, setIsMobileAdvancedSettingsOpen] = useState(false);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
-  const [mobilePanelSubView, setMobilePanelSubView] = useState<'organization' | 'store'>(
-    'organization',
-  );
+  const [mobilePanelSubView, setMobilePanelSubView] = useState<
+    'organization' | 'store' | 'api-key' | 'endpoint-test'
+  >('organization');
   const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
     null,
   );
   const [selectedSchemaServiceId, setSelectedSchemaServiceId] = useState<string | null>(
     null,
   );
+  const [selectedApiKeyServiceId, setSelectedApiKeyServiceId] = useState<string | null>(
+    null,
+  );
+  const [selectedEndpointTestServiceId, setSelectedEndpointTestServiceId] = useState<
+    string | null
+  >(null);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [isFileUploadFlow, setIsFileUploadFlow] = useState(false);
   const [isReadOnlyReplay, setIsReadOnlyReplay] = useState(false);
@@ -249,11 +255,13 @@ export default function App() {
     isProtectedAppRoute(initialRoute) ? initialRoute : null,
   );
   const pendingServiceSlugRef = useRef<{
-    kind: 'store' | 'schema' | 'search-ia';
+    kind: 'store' | 'schema' | 'api-key' | 'endpoint-test' | 'search-ia';
     slug?: string;
   } | null>(
     initialRoute.kind === 'store' ||
       initialRoute.kind === 'schema' ||
+      initialRoute.kind === 'api-key' ||
+      initialRoute.kind === 'endpoint-test' ||
       initialRoute.kind === 'search-ia'
       ? { kind: initialRoute.kind, slug: initialRoute.slug }
       : null,
@@ -1161,6 +1169,8 @@ export default function App() {
     setMobilePanelSubView('organization');
     setSelectedStoreServiceId(null);
     setSelectedSchemaServiceId(null);
+    setSelectedApiKeyServiceId(null);
+    setSelectedEndpointTestServiceId(null);
     setActiveChatServiceId(null);
     pushRouteUrl({ kind: 'home' });
     setIsExtracting(false);
@@ -1387,6 +1397,8 @@ export default function App() {
       setMobilePanelSubView('organization');
       setSelectedStoreServiceId(null);
       setSelectedSchemaServiceId(null);
+      setSelectedApiKeyServiceId(null);
+      setSelectedEndpointTestServiceId(null);
       return;
     }
 
@@ -1417,6 +1429,8 @@ export default function App() {
         setSelectedStoreServiceId(null);
       }
       setSelectedSchemaServiceId(null);
+      setSelectedApiKeyServiceId(null);
+      setSelectedEndpointTestServiceId(null);
       if (isDesktop) {
         setIsDesktopMenuOpen(true);
         setDesktopMenuView('store');
@@ -1441,6 +1455,8 @@ export default function App() {
         setSelectedSchemaServiceId(null);
       }
       setSelectedStoreServiceId(null);
+      setSelectedApiKeyServiceId(null);
+      setSelectedEndpointTestServiceId(null);
       if (isDesktop) {
         setIsDesktopMenuOpen(true);
         setDesktopMenuView('schema');
@@ -1455,9 +1471,63 @@ export default function App() {
       return;
     }
 
+    if (route.kind === 'api-key') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setSelectedApiKeyServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'api-key', slug: route.slug };
+        setSelectedApiKeyServiceId(null);
+      }
+      setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
+      setSelectedEndpointTestServiceId(null);
+      if (isDesktop) {
+        setIsDesktopMenuOpen(true);
+        setDesktopMenuView('api-key');
+      } else {
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(true);
+        setMobilePanelSubView('api-key');
+      }
+      return;
+    }
+
+    if (route.kind === 'endpoint-test') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setSelectedEndpointTestServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'endpoint-test', slug: route.slug };
+        setSelectedEndpointTestServiceId(null);
+      }
+      setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
+      setSelectedApiKeyServiceId(null);
+      if (isDesktop) {
+        setIsDesktopMenuOpen(true);
+        setDesktopMenuView('endpoint-test');
+      } else {
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(true);
+        setMobilePanelSubView('endpoint-test');
+      }
+      return;
+    }
+
     // google-account | advanced-settings | organization | connect-server | language
     setSelectedStoreServiceId(null);
     setSelectedSchemaServiceId(null);
+    setSelectedApiKeyServiceId(null);
+    setSelectedEndpointTestServiceId(null);
     setMobilePanelSubView('organization');
 
     if (isDesktop) {
@@ -1492,6 +1562,16 @@ export default function App() {
         const srv = orgServicesRef.current.find((s) => s.id === selectedSchemaServiceId);
         return { kind: 'schema', slug: srv?.slug };
       }
+      if (desktopMenuView === 'api-key') {
+        const srv = orgServicesRef.current.find((s) => s.id === selectedApiKeyServiceId);
+        return { kind: 'api-key', slug: srv?.slug };
+      }
+      if (desktopMenuView === 'endpoint-test') {
+        const srv = orgServicesRef.current.find(
+          (s) => s.id === selectedEndpointTestServiceId,
+        );
+        return { kind: 'endpoint-test', slug: srv?.slug };
+      }
       return { kind: desktopMenuView };
     }
     if (isMobilePanelOpen) {
@@ -1502,6 +1582,16 @@ export default function App() {
       if (mobilePanelSubView === 'store') {
         const srv = orgServicesRef.current.find((s) => s.id === selectedStoreServiceId);
         return { kind: 'store', slug: srv?.slug };
+      }
+      if (mobilePanelSubView === 'api-key') {
+        const srv = orgServicesRef.current.find((s) => s.id === selectedApiKeyServiceId);
+        return { kind: 'api-key', slug: srv?.slug };
+      }
+      if (mobilePanelSubView === 'endpoint-test') {
+        const srv = orgServicesRef.current.find(
+          (s) => s.id === selectedEndpointTestServiceId,
+        );
+        return { kind: 'endpoint-test', slug: srv?.slug };
       }
       return { kind: 'organization' };
     }
@@ -1760,6 +1850,10 @@ export default function App() {
           setSelectedStoreServiceId(matched.id);
         } else if (pending.kind === 'schema') {
           setSelectedSchemaServiceId(matched.id);
+        } else if (pending.kind === 'api-key') {
+          setSelectedApiKeyServiceId(matched.id);
+        } else if (pending.kind === 'endpoint-test') {
+          setSelectedEndpointTestServiceId(matched.id);
         } else if (pending.kind === 'search-ia') {
           setActiveChatServiceId(matched.id);
         }
@@ -2103,11 +2197,21 @@ export default function App() {
           handleCloseServiceChat();
           return;
         }
-        if (isDesktopMenuOpen && desktopMenuView === 'schema') {
+        if (
+          isDesktopMenuOpen &&
+          (desktopMenuView === 'schema' ||
+            desktopMenuView === 'api-key' ||
+            desktopMenuView === 'endpoint-test')
+        ) {
           navigateToAppRoute({ kind: 'organization' });
           return;
         }
-        if (isMobilePanelOpen && selectedSchemaServiceId) {
+        if (
+          isMobilePanelOpen &&
+          (selectedSchemaServiceId ||
+            mobilePanelSubView === 'api-key' ||
+            mobilePanelSubView === 'endpoint-test')
+        ) {
           navigateToAppRoute({ kind: 'organization' });
           return;
         }
@@ -2151,6 +2255,7 @@ export default function App() {
     isMobileConnectServerOpen,
     isMobileAdvancedSettingsOpen,
     isMobilePanelOpen,
+    mobilePanelSubView,
     selectedSchemaServiceId,
     activeChatServiceId,
   ]);
@@ -3551,11 +3656,15 @@ export default function App() {
           view={desktopMenuView}
           selectedStoreServiceId={selectedStoreServiceId}
           selectedSchemaServiceId={selectedSchemaServiceId}
+          selectedApiKeyServiceId={selectedApiKeyServiceId}
+          selectedEndpointTestServiceId={selectedEndpointTestServiceId}
           onViewChange={(nextView, service) => {
             if (nextView === 'menu') {
               setDesktopMenuView('menu');
               setSelectedStoreServiceId(null);
               setSelectedSchemaServiceId(null);
+              setSelectedApiKeyServiceId(null);
+              setSelectedEndpointTestServiceId(null);
               pushRouteUrl({ kind: 'home' });
               return;
             }
@@ -3566,6 +3675,8 @@ export default function App() {
                 orgServices[0];
               setSelectedStoreServiceId(target?.id ?? null);
               setSelectedSchemaServiceId(null);
+              setSelectedApiKeyServiceId(null);
+              setSelectedEndpointTestServiceId(null);
               setDesktopMenuView('store');
               pushRouteUrl({ kind: 'store', slug: target?.slug });
               return;
@@ -3577,12 +3688,42 @@ export default function App() {
                 orgServices[0];
               setSelectedSchemaServiceId(target?.id ?? null);
               setSelectedStoreServiceId(null);
+              setSelectedApiKeyServiceId(null);
+              setSelectedEndpointTestServiceId(null);
               setDesktopMenuView('schema');
               pushRouteUrl({ kind: 'schema', slug: target?.slug });
               return;
             }
+            if (nextView === 'api-key') {
+              const target =
+                service ??
+                orgServices.find((srv) => srv.id === selectedApiKeyServiceId) ??
+                orgServices[0];
+              setSelectedApiKeyServiceId(target?.id ?? null);
+              setSelectedStoreServiceId(null);
+              setSelectedSchemaServiceId(null);
+              setSelectedEndpointTestServiceId(null);
+              setDesktopMenuView('api-key');
+              pushRouteUrl({ kind: 'api-key', slug: target?.slug });
+              return;
+            }
+            if (nextView === 'endpoint-test') {
+              const target =
+                service ??
+                orgServices.find((srv) => srv.id === selectedEndpointTestServiceId) ??
+                orgServices[0];
+              setSelectedEndpointTestServiceId(target?.id ?? null);
+              setSelectedStoreServiceId(null);
+              setSelectedSchemaServiceId(null);
+              setSelectedApiKeyServiceId(null);
+              setDesktopMenuView('endpoint-test');
+              pushRouteUrl({ kind: 'endpoint-test', slug: target?.slug });
+              return;
+            }
             setSelectedStoreServiceId(null);
             setSelectedSchemaServiceId(null);
+            setSelectedApiKeyServiceId(null);
+            setSelectedEndpointTestServiceId(null);
             setDesktopMenuView(nextView);
             pushRouteUrl({ kind: nextView });
           }}
@@ -3622,6 +3763,8 @@ export default function App() {
           panelSubView={mobilePanelSubView}
           selectedStoreServiceId={selectedStoreServiceId}
           selectedSchemaServiceId={selectedSchemaServiceId}
+          selectedApiKeyServiceId={selectedApiKeyServiceId}
+          selectedEndpointTestServiceId={selectedEndpointTestServiceId}
           user={authUser}
           orgProfile={orgProfile}
           services={orgServices}
@@ -3650,6 +3793,12 @@ export default function App() {
           onClosePanel={() => navigateToAppRoute({ kind: 'home' })}
           onOpenStore={(service) =>
             navigateToAppRoute({ kind: 'store', slug: service.slug })
+          }
+          onOpenApiKey={(service) =>
+            navigateToAppRoute({ kind: 'api-key', slug: service.slug })
+          }
+          onOpenEndpointTest={(service) =>
+            navigateToAppRoute({ kind: 'endpoint-test', slug: service.slug })
           }
           onBackToOrganization={() => navigateToAppRoute({ kind: 'organization' })}
           onOpenSchema={(service) =>

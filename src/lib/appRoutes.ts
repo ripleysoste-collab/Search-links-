@@ -18,6 +18,8 @@ export const CONNECT_SERVER_PATH = '/conectar-servidor';
 export const LANGUAGE_PATH = '/idioma';
 export const STORE_PATH = '/mi-tienda';
 export const SCHEMA_PATH = '/esquema';
+export const VIEW_API_PATH = '/ver-api';
+export const TEST_ENDPOINT_PATH = '/probar-endpoint';
 export const SEARCH_IA_PATH = '/search-ia';
 
 export type AppRoute =
@@ -32,6 +34,8 @@ export type AppRoute =
   | { kind: 'language' }
   | { kind: 'store'; slug?: string }
   | { kind: 'schema'; slug?: string }
+  | { kind: 'api-key'; slug?: string }
+  | { kind: 'endpoint-test'; slug?: string }
   | { kind: 'search-ia'; slug?: string };
 
 const PRIVACY_POLICY_ALIASES = new Set([
@@ -183,6 +187,21 @@ export function parseAppRoute(pathname: string): AppRoute {
     return { kind: 'schema', slug: decodeSlugSegment(firstSeg) };
   }
 
+  if (normalized === VIEW_API_PATH || normalized.startsWith(`${VIEW_API_PATH}/`)) {
+    const rest = normalized.slice(VIEW_API_PATH.length).replace(/^\/+/, '');
+    const firstSeg = rest.split('/')[0];
+    return { kind: 'api-key', slug: decodeSlugSegment(firstSeg) };
+  }
+
+  if (
+    normalized === TEST_ENDPOINT_PATH ||
+    normalized.startsWith(`${TEST_ENDPOINT_PATH}/`)
+  ) {
+    const rest = normalized.slice(TEST_ENDPOINT_PATH.length).replace(/^\/+/, '');
+    const firstSeg = rest.split('/')[0];
+    return { kind: 'endpoint-test', slug: decodeSlugSegment(firstSeg) };
+  }
+
   if (normalized === SEARCH_IA_PATH || normalized.startsWith(`${SEARCH_IA_PATH}/`)) {
     const rest = normalized.slice(SEARCH_IA_PATH.length).replace(/^\/+/, '');
     const firstSeg = rest.split('/')[0];
@@ -220,6 +239,14 @@ export function buildAppRoutePath(route: AppRoute): string {
       return route.slug
         ? `${SCHEMA_PATH}/${encodeURIComponent(route.slug)}`
         : SCHEMA_PATH;
+    case 'api-key':
+      return route.slug
+        ? `${VIEW_API_PATH}/${encodeURIComponent(route.slug)}`
+        : VIEW_API_PATH;
+    case 'endpoint-test':
+      return route.slug
+        ? `${TEST_ENDPOINT_PATH}/${encodeURIComponent(route.slug)}`
+        : TEST_ENDPOINT_PATH;
     case 'search-ia':
       return route.slug
         ? `${SEARCH_IA_PATH}/${encodeURIComponent(route.slug)}`
@@ -236,6 +263,8 @@ export function isProtectedAppRoute(route: AppRoute): boolean {
     route.kind === 'language' ||
     route.kind === 'store' ||
     route.kind === 'schema' ||
+    route.kind === 'api-key' ||
+    route.kind === 'endpoint-test' ||
     route.kind === 'search-ia'
   );
 }

@@ -320,6 +320,21 @@ export interface TranslationDictionary {
     downloadSchemaZipAria: string;
     downloadSchemaZipTitle: string;
     backToOrgSchemaAria: string;
+    apiKeyFieldLabel: string;
+    endpointFieldLabel: string;
+    showApiKeyAria: string;
+    hideApiKeyAria: string;
+    copyApiKeyAria: string;
+    copyEndpointAria: string;
+    rotateBtn: string;
+    rotatingBtn: string;
+    rotateSuccessMsg: string;
+    rotateErrorMsg: string;
+    testBtn: string;
+    testingBtn: string;
+    missingKeyForTestNote: string;
+    menuViewApi: string;
+    menuTestEndpoint: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -951,6 +966,21 @@ const ES_DICTIONARY: TranslationDictionary = {
     downloadSchemaZipAria: 'Descargar esquema en ZIP',
     downloadSchemaZipTitle: 'Descargar ZIP',
     backToOrgSchemaAria: 'Volver a Organización',
+    apiKeyFieldLabel: 'API Key',
+    endpointFieldLabel: 'Endpoint',
+    showApiKeyAria: 'Mostrar API Key',
+    hideApiKeyAria: 'Ocultar API Key',
+    copyApiKeyAria: 'Copiar API Key',
+    copyEndpointAria: 'Copiar URL del endpoint',
+    rotateBtn: 'Rotar',
+    rotatingBtn: 'Rotando…',
+    rotateSuccessMsg: 'Se generó una nueva API Key. La anterior dejó de funcionar.',
+    rotateErrorMsg: 'No se pudo rotar la API Key. Intenta de nuevo.',
+    testBtn: 'Probar',
+    testingBtn: 'Probando…',
+    missingKeyForTestNote: 'Pega tu API Key completa arriba o rótala desde Ver API para ejecutar la prueba.',
+    menuViewApi: 'Ver API',
+    menuTestEndpoint: 'Probar endpoint',
   },
   store: {
     emptyDescDesktop:
@@ -1686,6 +1716,21 @@ const EN_DICTIONARY: TranslationDictionary = {
     downloadSchemaZipAria: 'Download schema ZIP',
     downloadSchemaZipTitle: 'Download ZIP',
     backToOrgSchemaAria: 'Back to Organization',
+    apiKeyFieldLabel: 'API Key',
+    endpointFieldLabel: 'Endpoint',
+    showApiKeyAria: 'Show API Key',
+    hideApiKeyAria: 'Hide API Key',
+    copyApiKeyAria: 'Copy API Key',
+    copyEndpointAria: 'Copy endpoint URL',
+    rotateBtn: 'Rotate',
+    rotatingBtn: 'Rotating…',
+    rotateSuccessMsg: 'A new API Key has been generated. The previous key is no longer active.',
+    rotateErrorMsg: 'Could not rotate the API Key. Please try again.',
+    testBtn: 'Test',
+    testingBtn: 'Testing…',
+    missingKeyForTestNote: 'Paste your full API Key above or rotate it in View API to run the test.',
+    menuViewApi: 'View API',
+    menuTestEndpoint: 'Test endpoint',
   },
   store: {
     emptyDescDesktop: 'This service does not have any saved products yet.',
@@ -2421,6 +2466,21 @@ const PT_DICTIONARY: TranslationDictionary = {
     downloadSchemaZipAria: 'Baixar esquema em ZIP',
     downloadSchemaZipTitle: 'Baixar ZIP',
     backToOrgSchemaAria: 'Voltar para Organização',
+    apiKeyFieldLabel: 'API Key',
+    endpointFieldLabel: 'Endpoint',
+    showApiKeyAria: 'Mostrar API Key',
+    hideApiKeyAria: 'Ocultar API Key',
+    copyApiKeyAria: 'Copiar API Key',
+    copyEndpointAria: 'Copiar URL do endpoint',
+    rotateBtn: 'Rotacionar',
+    rotatingBtn: 'Rotacionando…',
+    rotateSuccessMsg: 'Uma nova API Key foi gerada. A chave anterior foi desativada.',
+    rotateErrorMsg: 'Não foi possível rotacionar a API Key. Tente novamente.',
+    testBtn: 'Testar',
+    testingBtn: 'Testando…',
+    missingKeyForTestNote: 'Cole sua API Key completa acima ou rotacione em Ver API para executar o teste.',
+    menuViewApi: 'Ver API',
+    menuTestEndpoint: 'Testar endpoint',
   },
   store: {
     emptyDescDesktop:

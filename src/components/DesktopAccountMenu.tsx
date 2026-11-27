@@ -19,6 +19,8 @@ import {
   formatAgencyUpdateTitle,
 } from './ServerUpdatesView';
 import { ServerSecretKeyView } from './ServerSecretKeyView';
+import { ServiceApiKeyView } from './ServiceApiKeyView';
+import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -48,6 +50,8 @@ export type DesktopMenuView =
   | 'connect-server'
   | 'store'
   | 'schema'
+  | 'api-key'
+  | 'endpoint-test'
   | 'language';
 
 interface DesktopAccountMenuProps {
@@ -55,6 +59,8 @@ interface DesktopAccountMenuProps {
   view: DesktopMenuView;
   selectedStoreServiceId: string | null;
   selectedSchemaServiceId: string | null;
+  selectedApiKeyServiceId: string | null;
+  selectedEndpointTestServiceId: string | null;
   onViewChange: (nextView: DesktopMenuView, service?: OrganizationServiceItem) => void;
   user: User;
   orgProfile: OrganizationProfile;
@@ -120,6 +126,8 @@ export function DesktopAccountMenu({
   view,
   selectedStoreServiceId,
   selectedSchemaServiceId,
+  selectedApiKeyServiceId,
+  selectedEndpointTestServiceId,
   onViewChange,
   user,
   orgProfile,
@@ -237,6 +245,12 @@ export function DesktopAccountMenu({
   const selectedSchemaService =
     services.find((srv) => srv.id === selectedSchemaServiceId) ?? services[0] ?? null;
 
+  const selectedApiKeyService =
+    services.find((srv) => srv.id === selectedApiKeyServiceId) ?? services[0] ?? null;
+
+  const selectedEndpointTestService =
+    services.find((srv) => srv.id === selectedEndpointTestServiceId) ?? services[0] ?? null;
+
   const activeSchemaInput = useMemo(
     () =>
       selectedSchemaService
@@ -287,6 +301,8 @@ export function DesktopAccountMenu({
     view === 'connect-server' ||
     view === 'store' ||
     view === 'schema' ||
+    view === 'api-key' ||
+    view === 'endpoint-test' ||
     view === 'language';
   const isServerConnected = serverConnState.autoSyncEnabled;
   const isDesktopServerTestActive =
@@ -324,9 +340,13 @@ export function DesktopAccountMenu({
               ? t.menu.myStore
               : view === 'schema'
                 ? t.org.schemaTitle
-                : view === 'language'
-                  ? t.menu.language
-                  : t.menu.account;
+                : view === 'api-key'
+                  ? t.org.menuViewApi
+                  : view === 'endpoint-test'
+                    ? t.org.menuTestEndpoint
+                    : view === 'language'
+                      ? t.menu.language
+                      : t.menu.account;
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -355,9 +375,13 @@ export function DesktopAccountMenu({
                     ? t.connectServer.title
                     : view === 'store'
                       ? t.menu.myStore
-                      : view === 'language'
-                        ? t.menu.languagesTitle
-                        : t.menu.accountMenuAria
+                      : view === 'api-key'
+                        ? t.org.menuViewApi
+                        : view === 'endpoint-test'
+                          ? t.org.menuTestEndpoint
+                          : view === 'language'
+                            ? t.menu.languagesTitle
+                            : t.menu.accountMenuAria
           }
           initial={
             shouldReduceMotion
@@ -482,7 +506,9 @@ export function DesktopAccountMenu({
                           setConfirmSignOut(false);
                           setSignOutError(null);
                           onViewChange(
-                            view === 'store'
+                            view === 'store' ||
+                              view === 'api-key' ||
+                              view === 'endpoint-test'
                               ? 'organization'
                               : view === 'advanced-settings'
                                 ? 'google-account'
@@ -492,7 +518,9 @@ export function DesktopAccountMenu({
                         aria-label={
                           isDesktopServerUpdatesActive && selectedDesktopUpdate
                             ? t.connectServer.updatesBackToListAria
-                            : view === 'store'
+                            : view === 'store' ||
+                                view === 'api-key' ||
+                                view === 'endpoint-test'
                               ? t.menu.backToOrgAria
                               : view === 'advanced-settings'
                                 ? t.menu.backToGoogleAccountAria
@@ -786,14 +814,18 @@ export function DesktopAccountMenu({
                     onOpenStore={(service) => {
                       onViewChange('store', service);
                     }}
+                    onOpenApiKey={(service) => {
+                      onViewChange('api-key', service);
+                    }}
+                    onOpenEndpointTest={(service) => {
+                      onViewChange('endpoint-test', service);
+                    }}
                     onViewServiceHistory={onViewServiceHistory}
                     onOpenSchema={(service) => {
                       setSchemaCopied(false);
                       onViewChange('schema', service);
                     }}
                     onOpenServiceChat={onOpenServiceChat}
-                    onRotateServiceKey={onRotateServiceKey}
-                    onToggleServiceActive={onToggleServiceActive}
                   />
                 </motion.div>
               ) : view === 'connect-server' ? (
@@ -917,6 +949,36 @@ export function DesktopAccountMenu({
                     service={selectedStoreService}
                     organizationName={orgProfile.name}
                     organizationLogoUrl={orgProfile.logoUrl || info.photoUrl}
+                  />
+                </motion.div>
+              ) : view === 'api-key' && selectedApiKeyService ? (
+                <motion.div
+                  key="desktop-api-key-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <ServiceApiKeyView
+                    service={selectedApiKeyService}
+                    variant="desktop"
+                    onRotateServiceKey={onRotateServiceKey}
+                    onToggleServiceActive={onToggleServiceActive}
+                  />
+                </motion.div>
+              ) : view === 'endpoint-test' && selectedEndpointTestService ? (
+                <motion.div
+                  key="desktop-endpoint-test-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <ServiceEndpointTestView
+                    service={selectedEndpointTestService}
+                    variant="desktop"
                   />
                 </motion.div>
               ) : view === 'schema' && selectedSchemaService ? (
@@ -1254,14 +1316,18 @@ export function DesktopAccountMenu({
                     onOpenStore={(service) => {
                       onViewChange('store', service);
                     }}
+                    onOpenApiKey={(service) => {
+                      onViewChange('api-key', service);
+                    }}
+                    onOpenEndpointTest={(service) => {
+                      onViewChange('endpoint-test', service);
+                    }}
                     onViewServiceHistory={onViewServiceHistory}
                     onOpenSchema={(service) => {
                       setSchemaCopied(false);
                       onViewChange('schema', service);
                     }}
                     onOpenServiceChat={onOpenServiceChat}
-                    onRotateServiceKey={onRotateServiceKey}
-                    onToggleServiceActive={onToggleServiceActive}
                   />
                 </motion.div>
               )}
