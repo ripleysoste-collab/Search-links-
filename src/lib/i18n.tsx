@@ -335,6 +335,17 @@ export interface TranslationDictionary {
     missingKeyForTestNote: string;
     menuViewApi: string;
     menuTestEndpoint: string;
+    apiHelpLink: string;
+    apiHelpTitle: string;
+    apiHelpCloseAria: string;
+    apiHelpUseTitle: string;
+    apiHelpUseBody: string;
+    apiHelpHeadersLabel: string;
+    apiHelpSecurityTitle: string;
+    apiHelpSecurityBodyRaw: string;
+    apiHelpSecurityBodyPrefixOnly: string;
+    apiHelpStatusTitle: string;
+    apiHelpStatusBody: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -981,6 +992,21 @@ const ES_DICTIONARY: TranslationDictionary = {
     missingKeyForTestNote: 'Pega tu API Key completa arriba o rótala desde Ver API para ejecutar la prueba.',
     menuViewApi: 'Ver API',
     menuTestEndpoint: 'Probar endpoint',
+    apiHelpLink: 'Ayuda',
+    apiHelpTitle: 'Ayuda',
+    apiHelpCloseAria: 'Cerrar ayuda de API',
+    apiHelpUseTitle: 'Cómo usar tu API Key',
+    apiHelpUseBody:
+      'Envía esta llave en tus solicitudes HTTP hacia el endpoint del servicio usando cualquiera de los siguientes encabezados:',
+    apiHelpHeadersLabel: 'Encabezados compatibles:',
+    apiHelpSecurityTitle: 'Seguridad y rotación',
+    apiHelpSecurityBodyRaw:
+      'Por seguridad la llave se muestra oculta con puntos. Si necesitas invalidar la actual, usa Rotar para generar una nueva al instante; la llave anterior dejará de funcionar de inmediato.',
+    apiHelpSecurityBodyPrefixOnly:
+      'Por seguridad solo guardamos el prefijo en la nube después de crear o rotar la llave en otro navegador. Usa Rotar para generar una llave completa nueva y reemplazar la anterior al instante.',
+    apiHelpStatusTitle: 'Estado del servicio',
+    apiHelpStatusBody:
+      'Cuando el servicio está activo responde normalmente a las consultas del endpoint y de Search IA. Si lo pausas, las peticiones externas serán rechazadas hasta reactivarlo.',
   },
   store: {
     emptyDescDesktop:
@@ -1731,6 +1757,21 @@ const EN_DICTIONARY: TranslationDictionary = {
     missingKeyForTestNote: 'Paste your full API Key above or rotate it in View API to run the test.',
     menuViewApi: 'View API',
     menuTestEndpoint: 'Test endpoint',
+    apiHelpLink: 'Help',
+    apiHelpTitle: 'Help',
+    apiHelpCloseAria: 'Close API help',
+    apiHelpUseTitle: 'How to use your API Key',
+    apiHelpUseBody:
+      'Send this key in your HTTP requests to the service endpoint using either of the following headers:',
+    apiHelpHeadersLabel: 'Supported headers:',
+    apiHelpSecurityTitle: 'Security & rotation',
+    apiHelpSecurityBodyRaw:
+      'For security, the key is masked with dots. If you need to invalidate the current key, tap Rotate to generate a new one immediately—the previous key stops working right away.',
+    apiHelpSecurityBodyPrefixOnly:
+      'For security, only the key prefix is stored in the cloud after being created or rotated in another browser. Use Rotate to generate a brand-new full key and replace the previous one immediately.',
+    apiHelpStatusTitle: 'Service status',
+    apiHelpStatusBody:
+      'When active, this service responds normally to endpoint and Search AI requests. If paused, external API calls are rejected until you turn it back on.',
   },
   store: {
     emptyDescDesktop: 'This service does not have any saved products yet.',
@@ -2481,6 +2522,21 @@ const PT_DICTIONARY: TranslationDictionary = {
     missingKeyForTestNote: 'Cole sua API Key completa acima ou rotacione em Ver API para executar o teste.',
     menuViewApi: 'Ver API',
     menuTestEndpoint: 'Testar endpoint',
+    apiHelpLink: 'Ajuda',
+    apiHelpTitle: 'Ajuda',
+    apiHelpCloseAria: 'Fechar ajuda da API',
+    apiHelpUseTitle: 'Como usar sua API Key',
+    apiHelpUseBody:
+      'Envie esta chave nas suas requisições HTTP para o endpoint do serviço usando qualquer um dos cabeçalhos abaixo:',
+    apiHelpHeadersLabel: 'Cabeçalhos compatíveis:',
+    apiHelpSecurityTitle: 'Segurança e rotação',
+    apiHelpSecurityBodyRaw:
+      'Por segurança, a chave fica oculta com pontos. Se precisar invalidar a atual, use Rotacionar para gerar uma nova na hora; a chave anterior deixa de funcionar imediatamente.',
+    apiHelpSecurityBodyPrefixOnly:
+      'Por segurança, apenas o prefixo é salvo na nuvem após criar ou rotacionar a chave em outro navegador. Use Rotacionar para gerar uma chave completa nova e substituir a anterior na hora.',
+    apiHelpStatusTitle: 'Estado do serviço',
+    apiHelpStatusBody:
+      'Quando o serviço está ativo, ele responde normalmente às consultas do endpoint e do Search IA. Se for pausado, as requisições externas são recusadas até reativar.',
   },
   store: {
     emptyDescDesktop:

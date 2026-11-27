@@ -26,6 +26,7 @@ import { ServerSecretHelpView } from './ServerSecretHelpView';
 import { ServerUpdatesView } from './ServerUpdatesView';
 import { ServerSecretKeyView } from './ServerSecretKeyView';
 import { ServiceApiKeyView } from './ServiceApiKeyView';
+import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
@@ -205,6 +206,7 @@ export function MobileAccountMenu({
   const [quickServerCopied, setQuickServerCopied] = useState(false);
   const [mobileTestOpen, setMobileTestOpen] = useState(false);
   const [mobileSecretHelpOpen, setMobileSecretHelpOpen] = useState(false);
+  const [mobileApiHelpOpen, setMobileApiHelpOpen] = useState(false);
   const [mobileUpdatesOpen, setMobileUpdatesOpen] = useState(false);
   const [mobileSecretKeyOpen, setMobileSecretKeyOpen] = useState(false);
   const swipeTouchRef = useRef<{
@@ -327,6 +329,12 @@ export function MobileAccountMenu({
       setSignOutError(null);
     }
   }, [accountModalOpen]);
+
+  useEffect(() => {
+    if (!panelOpen || panelSubView !== 'api-key') {
+      setMobileApiHelpOpen(false);
+    }
+  }, [panelOpen, panelSubView]);
 
   const handleCopyQuickServerFile = async () => {
     if (!activeQuickServerFile) return;
@@ -936,7 +944,7 @@ export function MobileAccountMenu({
                 service={selectedApiKeyService}
                 variant="mobile"
                 onRotateServiceKey={onRotateServiceKey}
-                onToggleServiceActive={onToggleServiceActive}
+                onOpenHelp={() => setMobileApiHelpOpen(true)}
               />
             ) : panelSubView === 'endpoint-test' && selectedEndpointTestService ? (
               <ServiceEndpointTestView
@@ -1189,6 +1197,46 @@ export function MobileAccountMenu({
             <ServerSecretHelpView variant="mobile" />
           </motion.section>
         )}
+      </AnimatePresence>
+
+      {/* 3b-ter-bis. Mobile full-screen API Key Ayuda dialog */}
+      <AnimatePresence>
+        {panelOpen &&
+          panelSubView === 'api-key' &&
+          selectedApiKeyService &&
+          mobileApiHelpOpen && (
+            <motion.section
+              role="dialog"
+              aria-modal="true"
+              aria-label={t.org.apiHelpTitle}
+              initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
+              animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 10 }}
+              transition={{ duration: shouldReduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+              className="fixed inset-0 z-[55] lg:hidden bg-white flex flex-col"
+            >
+              <header className="flex items-center justify-between px-4 pt-3.5 pb-3 border-b border-slate-200/80 bg-white/95 backdrop-blur-sm shrink-0 z-20">
+                <span className="text-[15px] font-semibold tracking-tight text-slate-950 truncate">
+                  {t.org.apiHelpTitle}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setMobileApiHelpOpen(false)}
+                  aria-label={t.org.apiHelpCloseAria}
+                  className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-4.5 h-4.5" aria-hidden="true" />
+                </button>
+              </header>
+
+              <ServiceApiHelpView
+                service={selectedApiKeyService}
+                variant="mobile"
+                onToggleServiceActive={onToggleServiceActive}
+              />
+            </motion.section>
+          )}
       </AnimatePresence>
 
       {/* 3b-quater. Mobile full-screen Tus actualizaciones dialog */}

@@ -20,6 +20,7 @@ import {
 } from './ServerUpdatesView';
 import { ServerSecretKeyView } from './ServerSecretKeyView';
 import { ServiceApiKeyView } from './ServiceApiKeyView';
+import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
@@ -164,6 +165,7 @@ export function DesktopAccountMenu({
   );
   const [isTestingServer, setIsTestingServer] = useState(false);
   const [isHelpingSecret, setIsHelpingSecret] = useState(false);
+  const [isHelpingApiKey, setIsHelpingApiKey] = useState(false);
   const [isViewingServerUpdates, setIsViewingServerUpdates] = useState(false);
   const [isViewingSecretKey, setIsViewingSecretKey] = useState(false);
   const [selectedDesktopUpdate, setSelectedDesktopUpdate] =
@@ -220,6 +222,9 @@ export function DesktopAccountMenu({
       setIsViewingSecretKey(false);
       setSelectedDesktopUpdate(null);
       setDesktopUpdateCopied(false);
+    }
+    if (!open || view !== 'api-key') {
+      setIsHelpingApiKey(false);
     }
   }, [open, view, serverConnState.autoSyncEnabled]);
 
@@ -322,6 +327,7 @@ export function DesktopAccountMenu({
     !isDesktopServerTestActive &&
     !isDesktopServerUpdatesActive &&
     !isDesktopSecretKeyActive;
+  const isDesktopApiHelpActive = view === 'api-key' && isHelpingApiKey;
   const isConnectSplitView =
     view === 'connect-server' &&
     !isServerConnected &&
@@ -493,6 +499,7 @@ export function DesktopAccountMenu({
                   {isExpandedPanelView &&
                     !isDesktopServerTestActive &&
                     !isDesktopSecretHelpActive &&
+                    !isDesktopApiHelpActive &&
                     !isDesktopSecretKeyActive &&
                     (!isDesktopServerUpdatesActive || Boolean(selectedDesktopUpdate)) && (
                       <button
@@ -550,7 +557,9 @@ export function DesktopAccountMenu({
                             ? t.connectServer.secretKeyViewTitle
                             : isDesktopSecretHelpActive
                               ? t.connectServer.secretHelpTitle
-                              : topTitle}
+                              : isDesktopApiHelpActive
+                                ? t.org.apiHelpTitle
+                                : topTitle}
                     </span>
                   )}
                 </div>
@@ -588,6 +597,8 @@ export function DesktopAccountMenu({
                         setIsViewingSecretKey(false);
                       } else if (isDesktopSecretHelpActive) {
                         setIsHelpingSecret(false);
+                      } else if (isDesktopApiHelpActive) {
+                        setIsHelpingApiKey(false);
                       } else {
                         onClose();
                       }
@@ -601,7 +612,9 @@ export function DesktopAccountMenu({
                             ? t.connectServer.secretKeyCloseAria
                             : isDesktopSecretHelpActive
                               ? t.connectServer.secretHelpCloseAria
-                              : t.menu.closeMenuAria
+                              : isDesktopApiHelpActive
+                                ? t.org.apiHelpCloseAria
+                                : t.menu.closeMenuAria
                     }
                     className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
                   >
@@ -953,19 +966,31 @@ export function DesktopAccountMenu({
                 </motion.div>
               ) : view === 'api-key' && selectedApiKeyService ? (
                 <motion.div
-                  key="desktop-api-key-view"
+                  key={
+                    isDesktopApiHelpActive
+                      ? 'desktop-api-help-view'
+                      : 'desktop-api-key-view'
+                  }
                   initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
                   transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
                   className="flex-1 min-h-0 bg-white flex flex-col"
                 >
-                  <ServiceApiKeyView
-                    service={selectedApiKeyService}
-                    variant="desktop"
-                    onRotateServiceKey={onRotateServiceKey}
-                    onToggleServiceActive={onToggleServiceActive}
-                  />
+                  {isDesktopApiHelpActive ? (
+                    <ServiceApiHelpView
+                      service={selectedApiKeyService}
+                      variant="desktop"
+                      onToggleServiceActive={onToggleServiceActive}
+                    />
+                  ) : (
+                    <ServiceApiKeyView
+                      service={selectedApiKeyService}
+                      variant="desktop"
+                      onRotateServiceKey={onRotateServiceKey}
+                      onOpenHelp={() => setIsHelpingApiKey(true)}
+                    />
+                  )}
                 </motion.div>
               ) : view === 'endpoint-test' && selectedEndpointTestService ? (
                 <motion.div
