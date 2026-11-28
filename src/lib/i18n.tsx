@@ -358,6 +358,17 @@ export interface TranslationDictionary {
     trafficMenuFilter: string;
     trafficMenuSuspend: string;
     trafficMenuDownload: string;
+    trafficLimitTitle: string;
+    backToTrafficAria: string;
+    trafficLimitPerMinuteLabel: string;
+    trafficLimitPerHourLabel: string;
+    trafficLimitDailyLabel: string;
+    trafficLimitQuickSecurityLabel: string;
+    trafficLimitOriginPlaceholder: string;
+    trafficLimitOriginAria: (index: number) => string;
+    trafficLimitRemoveOriginAria: string;
+    trafficLimitAddAnotherUrl: string;
+    trafficLimitSaveBtn: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -1013,6 +1024,17 @@ const ES_DICTIONARY: TranslationDictionary = {
     trafficMenuFilter: 'Filtrar',
     trafficMenuSuspend: 'Suspender',
     trafficMenuDownload: 'Descargar',
+    trafficLimitTitle: 'Limitar',
+    backToTrafficAria: 'Volver a Tráfico',
+    trafficLimitPerMinuteLabel: 'Peticiones por minuto',
+    trafficLimitPerHourLabel: 'Peticiones por hora',
+    trafficLimitDailyLabel: 'Peticiones diarias',
+    trafficLimitQuickSecurityLabel: 'Seguridad rápida',
+    trafficLimitOriginPlaceholder: 'https://tu-servidor.com',
+    trafficLimitOriginAria: (index) => `URL de origen permitida ${index}`,
+    trafficLimitRemoveOriginAria: 'Quitar URL',
+    trafficLimitAddAnotherUrl: 'Agregar otra URL',
+    trafficLimitSaveBtn: 'Guardar',
     menuDeleteService: 'Eliminar',
     deleteServiceConfirmText: (name) =>
       `¿Eliminar "${name}"? Se borrarán su API Key y productos publicados de forma permanente.`,
@@ -1791,6 +1813,17 @@ const EN_DICTIONARY: TranslationDictionary = {
     trafficMenuFilter: 'Filter',
     trafficMenuSuspend: 'Suspend',
     trafficMenuDownload: 'Download',
+    trafficLimitTitle: 'Limit',
+    backToTrafficAria: 'Back to Traffic',
+    trafficLimitPerMinuteLabel: 'Requests per minute',
+    trafficLimitPerHourLabel: 'Requests per hour',
+    trafficLimitDailyLabel: 'Daily requests',
+    trafficLimitQuickSecurityLabel: 'Quick security',
+    trafficLimitOriginPlaceholder: 'https://your-server.com',
+    trafficLimitOriginAria: (index) => `Allowed origin URL ${index}`,
+    trafficLimitRemoveOriginAria: 'Remove URL',
+    trafficLimitAddAnotherUrl: 'Add another URL',
+    trafficLimitSaveBtn: 'Save',
     menuDeleteService: 'Delete',
     deleteServiceConfirmText: (name) =>
       `Delete "${name}"? Its API Key and published products will be permanently deleted.`,
@@ -2569,6 +2602,17 @@ const PT_DICTIONARY: TranslationDictionary = {
     trafficMenuFilter: 'Filtrar',
     trafficMenuSuspend: 'Suspender',
     trafficMenuDownload: 'Baixar',
+    trafficLimitTitle: 'Limitar',
+    backToTrafficAria: 'Voltar para Tráfego',
+    trafficLimitPerMinuteLabel: 'Requisições por minuto',
+    trafficLimitPerHourLabel: 'Requisições por hora',
+    trafficLimitDailyLabel: 'Requisições diárias',
+    trafficLimitQuickSecurityLabel: 'Segurança rápida',
+    trafficLimitOriginPlaceholder: 'https://seu-servidor.com',
+    trafficLimitOriginAria: (index) => `URL de origem permitida ${index}`,
+    trafficLimitRemoveOriginAria: 'Remover URL',
+    trafficLimitAddAnotherUrl: 'Adicionar outra URL',
+    trafficLimitSaveBtn: 'Salvar',
     menuDeleteService: 'Excluir',
     deleteServiceConfirmText: (name) =>
       `Excluir "${name}"? Sua API Key e produtos publicados serão excluídos permanentemente.`,

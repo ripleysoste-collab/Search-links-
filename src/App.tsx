@@ -180,7 +180,12 @@ export default function App() {
   const [isMobileAdvancedSettingsOpen, setIsMobileAdvancedSettingsOpen] = useState(false);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [mobilePanelSubView, setMobilePanelSubView] = useState<
-    'organization' | 'store' | 'api-key' | 'endpoint-test' | 'traffic'
+    | 'organization'
+    | 'store'
+    | 'api-key'
+    | 'endpoint-test'
+    | 'traffic'
+    | 'traffic-limit'
   >('organization');
   const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
     null,
@@ -197,6 +202,9 @@ export default function App() {
   const [selectedTrafficServiceId, setSelectedTrafficServiceId] = useState<string | null>(
     null,
   );
+  const [selectedTrafficLimitServiceId, setSelectedTrafficLimitServiceId] = useState<
+    string | null
+  >(null);
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [isFileUploadFlow, setIsFileUploadFlow] = useState(false);
   const [isReadOnlyReplay, setIsReadOnlyReplay] = useState(false);
@@ -259,7 +267,14 @@ export default function App() {
     isProtectedAppRoute(initialRoute) ? initialRoute : null,
   );
   const pendingServiceSlugRef = useRef<{
-    kind: 'store' | 'schema' | 'api-key' | 'endpoint-test' | 'traffic' | 'search-ia';
+    kind:
+      | 'store'
+      | 'schema'
+      | 'api-key'
+      | 'endpoint-test'
+      | 'traffic'
+      | 'traffic-limit'
+      | 'search-ia';
     slug?: string;
   } | null>(
     initialRoute.kind === 'store' ||
@@ -267,6 +282,7 @@ export default function App() {
       initialRoute.kind === 'api-key' ||
       initialRoute.kind === 'endpoint-test' ||
       initialRoute.kind === 'traffic' ||
+      initialRoute.kind === 'traffic-limit' ||
       initialRoute.kind === 'search-ia'
       ? { kind: initialRoute.kind, slug: initialRoute.slug }
       : null,
@@ -1186,6 +1202,7 @@ export default function App() {
     setSelectedApiKeyServiceId((prev) => (prev === serviceId ? null : prev));
     setSelectedEndpointTestServiceId((prev) => (prev === serviceId ? null : prev));
     setSelectedTrafficServiceId((prev) => (prev === serviceId ? null : prev));
+    setSelectedTrafficLimitServiceId((prev) => (prev === serviceId ? null : prev));
     setActiveChatServiceId((prev) => (prev === serviceId ? null : prev));
     if (deletedService) {
       setActiveServiceCredentials((prev) =>
@@ -1218,6 +1235,7 @@ export default function App() {
     setSelectedApiKeyServiceId(null);
     setSelectedEndpointTestServiceId(null);
     setSelectedTrafficServiceId(null);
+    setSelectedTrafficLimitServiceId(null);
     setActiveChatServiceId(null);
     pushRouteUrl({ kind: 'home' });
     setIsExtracting(false);
@@ -1557,6 +1575,7 @@ export default function App() {
       setSelectedSchemaServiceId(null);
       setSelectedApiKeyServiceId(null);
       setSelectedTrafficServiceId(null);
+      setSelectedTrafficLimitServiceId(null);
       if (isDesktop) {
         setIsDesktopMenuOpen(true);
         setDesktopMenuView('endpoint-test');
@@ -1584,6 +1603,7 @@ export default function App() {
       setSelectedSchemaServiceId(null);
       setSelectedApiKeyServiceId(null);
       setSelectedEndpointTestServiceId(null);
+      setSelectedTrafficLimitServiceId(null);
       if (isDesktop) {
         setIsDesktopMenuOpen(true);
         setDesktopMenuView('traffic');
@@ -1598,12 +1618,41 @@ export default function App() {
       return;
     }
 
+    if (route.kind === 'traffic-limit') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setSelectedTrafficLimitServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'traffic-limit', slug: route.slug };
+        setSelectedTrafficLimitServiceId(null);
+      }
+      setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
+      setSelectedApiKeyServiceId(null);
+      setSelectedEndpointTestServiceId(null);
+      setSelectedTrafficServiceId(null);
+      if (isDesktop) {
+        setIsDesktopMenuOpen(true);
+        setDesktopMenuView('traffic-limit');
+      } else {
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(true);
+        setMobilePanelSubView('traffic-limit');
+      }
+      return;
+    }
+
     // google-account | advanced-settings | organization | connect-server | language
     setSelectedStoreServiceId(null);
     setSelectedSchemaServiceId(null);
     setSelectedApiKeyServiceId(null);
     setSelectedEndpointTestServiceId(null);
     setSelectedTrafficServiceId(null);
+    setSelectedTrafficLimitServiceId(null);
     setMobilePanelSubView('organization');
 
     if (isDesktop) {
@@ -1654,6 +1703,12 @@ export default function App() {
         );
         return { kind: 'traffic', slug: srv?.slug };
       }
+      if (desktopMenuView === 'traffic-limit') {
+        const srv = orgServicesRef.current.find(
+          (s) => s.id === selectedTrafficLimitServiceId,
+        );
+        return { kind: 'traffic-limit', slug: srv?.slug };
+      }
       return { kind: desktopMenuView };
     }
     if (isMobilePanelOpen) {
@@ -1680,6 +1735,12 @@ export default function App() {
           (s) => s.id === selectedTrafficServiceId,
         );
         return { kind: 'traffic', slug: srv?.slug };
+      }
+      if (mobilePanelSubView === 'traffic-limit') {
+        const srv = orgServicesRef.current.find(
+          (s) => s.id === selectedTrafficLimitServiceId,
+        );
+        return { kind: 'traffic-limit', slug: srv?.slug };
       }
       return { kind: 'organization' };
     }
@@ -1944,6 +2005,8 @@ export default function App() {
           setSelectedEndpointTestServiceId(matched.id);
         } else if (pending.kind === 'traffic') {
           setSelectedTrafficServiceId(matched.id);
+        } else if (pending.kind === 'traffic-limit') {
+          setSelectedTrafficLimitServiceId(matched.id);
         } else if (pending.kind === 'search-ia') {
           setActiveChatServiceId(matched.id);
         }
@@ -2285,6 +2348,16 @@ export default function App() {
         event.preventDefault();
         if (activeChatServiceId) {
           handleCloseServiceChat();
+          return;
+        }
+        if (isDesktopMenuOpen && desktopMenuView === 'traffic-limit') {
+          const srv = orgServices.find((s) => s.id === selectedTrafficLimitServiceId);
+          navigateToAppRoute({ kind: 'traffic', slug: srv?.slug });
+          return;
+        }
+        if (isMobilePanelOpen && mobilePanelSubView === 'traffic-limit') {
+          const srv = orgServices.find((s) => s.id === selectedTrafficLimitServiceId);
+          navigateToAppRoute({ kind: 'traffic', slug: srv?.slug });
           return;
         }
         if (
@@ -3751,6 +3824,7 @@ export default function App() {
           selectedApiKeyServiceId={selectedApiKeyServiceId}
           selectedEndpointTestServiceId={selectedEndpointTestServiceId}
           selectedTrafficServiceId={selectedTrafficServiceId}
+          selectedTrafficLimitServiceId={selectedTrafficLimitServiceId}
           onViewChange={(nextView, service) => {
             if (nextView === 'menu') {
               setDesktopMenuView('menu');
@@ -3759,6 +3833,7 @@ export default function App() {
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
               setSelectedTrafficServiceId(null);
+              setSelectedTrafficLimitServiceId(null);
               pushRouteUrl({ kind: 'home' });
               return;
             }
@@ -3772,6 +3847,7 @@ export default function App() {
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
               setSelectedTrafficServiceId(null);
+              setSelectedTrafficLimitServiceId(null);
               setDesktopMenuView('store');
               pushRouteUrl({ kind: 'store', slug: target?.slug });
               return;
@@ -3786,6 +3862,7 @@ export default function App() {
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
               setSelectedTrafficServiceId(null);
+              setSelectedTrafficLimitServiceId(null);
               setDesktopMenuView('schema');
               pushRouteUrl({ kind: 'schema', slug: target?.slug });
               return;
@@ -3800,6 +3877,7 @@ export default function App() {
               setSelectedSchemaServiceId(null);
               setSelectedEndpointTestServiceId(null);
               setSelectedTrafficServiceId(null);
+              setSelectedTrafficLimitServiceId(null);
               setDesktopMenuView('api-key');
               pushRouteUrl({ kind: 'api-key', slug: target?.slug });
               return;
@@ -3814,6 +3892,7 @@ export default function App() {
               setSelectedSchemaServiceId(null);
               setSelectedApiKeyServiceId(null);
               setSelectedTrafficServiceId(null);
+              setSelectedTrafficLimitServiceId(null);
               setDesktopMenuView('endpoint-test');
               pushRouteUrl({ kind: 'endpoint-test', slug: target?.slug });
               return;
@@ -3828,8 +3907,24 @@ export default function App() {
               setSelectedSchemaServiceId(null);
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
+              setSelectedTrafficLimitServiceId(null);
               setDesktopMenuView('traffic');
               pushRouteUrl({ kind: 'traffic', slug: target?.slug });
+              return;
+            }
+            if (nextView === 'traffic-limit') {
+              const target =
+                service ??
+                orgServices.find((srv) => srv.id === selectedTrafficLimitServiceId) ??
+                orgServices[0];
+              setSelectedTrafficLimitServiceId(target?.id ?? null);
+              setSelectedStoreServiceId(null);
+              setSelectedSchemaServiceId(null);
+              setSelectedApiKeyServiceId(null);
+              setSelectedEndpointTestServiceId(null);
+              setSelectedTrafficServiceId(null);
+              setDesktopMenuView('traffic-limit');
+              pushRouteUrl({ kind: 'traffic-limit', slug: target?.slug });
               return;
             }
             setSelectedStoreServiceId(null);
@@ -3837,6 +3932,7 @@ export default function App() {
             setSelectedApiKeyServiceId(null);
             setSelectedEndpointTestServiceId(null);
             setSelectedTrafficServiceId(null);
+            setSelectedTrafficLimitServiceId(null);
             setDesktopMenuView(nextView);
             pushRouteUrl({ kind: nextView });
           }}
@@ -3880,6 +3976,7 @@ export default function App() {
           selectedApiKeyServiceId={selectedApiKeyServiceId}
           selectedEndpointTestServiceId={selectedEndpointTestServiceId}
           selectedTrafficServiceId={selectedTrafficServiceId}
+          selectedTrafficLimitServiceId={selectedTrafficLimitServiceId}
           user={authUser}
           orgProfile={orgProfile}
           services={orgServices}
@@ -3918,6 +4015,9 @@ export default function App() {
           }
           onOpenTraffic={(service) =>
             navigateToAppRoute({ kind: 'traffic', slug: service.slug })
+          }
+          onOpenTrafficLimit={(service) =>
+            navigateToAppRoute({ kind: 'traffic-limit', slug: service.slug })
           }
           onBackToOrganization={() => navigateToAppRoute({ kind: 'organization' })}
           onOpenSchema={(service) =>

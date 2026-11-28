@@ -30,6 +30,7 @@ import { ServiceApiKeyView } from './ServiceApiKeyView';
 import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { ServiceTrafficView } from './ServiceTrafficView';
+import { ServiceTrafficLimitView } from './ServiceTrafficLimitView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
@@ -61,12 +62,19 @@ interface MobileAccountMenuProps {
   connectServerModalOpen: boolean;
   advancedSettingsModalOpen: boolean;
   panelOpen: boolean;
-  panelSubView: 'organization' | 'store' | 'api-key' | 'endpoint-test' | 'traffic';
+  panelSubView:
+    | 'organization'
+    | 'store'
+    | 'api-key'
+    | 'endpoint-test'
+    | 'traffic'
+    | 'traffic-limit';
   selectedStoreServiceId: string | null;
   selectedSchemaServiceId: string | null;
   selectedApiKeyServiceId: string | null;
   selectedEndpointTestServiceId: string | null;
   selectedTrafficServiceId: string | null;
+  selectedTrafficLimitServiceId: string | null;
   user: User;
   orgProfile: OrganizationProfile;
   services: OrganizationServiceItem[];
@@ -94,6 +102,7 @@ interface MobileAccountMenuProps {
   onOpenApiKey: (service: OrganizationServiceItem) => void;
   onOpenEndpointTest: (service: OrganizationServiceItem) => void;
   onOpenTraffic: (service: OrganizationServiceItem) => void;
+  onOpenTrafficLimit: (service: OrganizationServiceItem) => void;
   onBackToOrganization: () => void;
   onOpenSchema: (service: OrganizationServiceItem) => void;
   onCloseSchema: () => void;
@@ -158,6 +167,7 @@ export function MobileAccountMenu({
   selectedApiKeyServiceId,
   selectedEndpointTestServiceId,
   selectedTrafficServiceId,
+  selectedTrafficLimitServiceId,
   user,
   orgProfile,
   services,
@@ -185,6 +195,7 @@ export function MobileAccountMenu({
   onOpenApiKey,
   onOpenEndpointTest,
   onOpenTraffic,
+  onOpenTrafficLimit,
   onBackToOrganization,
   onOpenSchema,
   onCloseSchema,
@@ -245,6 +256,9 @@ export function MobileAccountMenu({
 
   const selectedTrafficService =
     services.find((srv) => srv.id === selectedTrafficServiceId) ?? services[0] ?? null;
+
+  const selectedTrafficLimitService =
+    services.find((srv) => srv.id === selectedTrafficLimitServiceId) ?? services[0] ?? null;
 
   const selectedSchemaService = useMemo(
     () =>
@@ -919,7 +933,9 @@ export function MobileAccountMenu({
                     ? t.org.menuTestEndpoint
                     : panelSubView === 'traffic'
                       ? t.org.menuTraffic
-                      : t.menu.organization
+                      : panelSubView === 'traffic-limit'
+                        ? t.org.trafficLimitTitle
+                        : t.menu.organization
             }
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
@@ -932,11 +948,25 @@ export function MobileAccountMenu({
                 {(panelSubView === 'store' ||
                   panelSubView === 'api-key' ||
                   panelSubView === 'endpoint-test' ||
-                  panelSubView === 'traffic') && (
+                  panelSubView === 'traffic' ||
+                  panelSubView === 'traffic-limit') && (
                   <button
                     type="button"
-                    onClick={onBackToOrganization}
-                    aria-label={t.menu.backToOrgAria}
+                    onClick={() => {
+                      if (
+                        panelSubView === 'traffic-limit' &&
+                        selectedTrafficLimitService
+                      ) {
+                        onOpenTraffic(selectedTrafficLimitService);
+                        return;
+                      }
+                      onBackToOrganization();
+                    }}
+                    aria-label={
+                      panelSubView === 'traffic-limit'
+                        ? t.org.backToTrafficAria
+                        : t.menu.backToOrgAria
+                    }
                     className="w-8 h-8 -ml-1 rounded-full flex items-center justify-center text-slate-600 hover:text-slate-950 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
                   >
                     <ArrowLeft className="w-4 h-4" aria-hidden="true" />
@@ -951,7 +981,9 @@ export function MobileAccountMenu({
                         ? t.org.menuTestEndpoint
                         : panelSubView === 'traffic'
                           ? t.org.menuTraffic
-                          : t.menu.organization}
+                          : panelSubView === 'traffic-limit'
+                            ? t.org.trafficLimitTitle
+                            : t.menu.organization}
                 </span>
               </div>
 
@@ -997,7 +1029,12 @@ export function MobileAccountMenu({
                               <button
                                 type="button"
                                 role="menuitem"
-                                onClick={() => setMobileTrafficMenuOpen(false)}
+                                onClick={() => {
+                                  setMobileTrafficMenuOpen(false);
+                                  if (selectedTrafficService) {
+                                    onOpenTrafficLimit(selectedTrafficService);
+                                  }
+                                }}
                                 className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
                               >
                                 {t.org.trafficMenuLimit}
@@ -1076,6 +1113,11 @@ export function MobileAccountMenu({
             ) : panelSubView === 'traffic' && selectedTrafficService ? (
               <ServiceTrafficView
                 service={selectedTrafficService}
+                variant="mobile"
+              />
+            ) : panelSubView === 'traffic-limit' && selectedTrafficLimitService ? (
+              <ServiceTrafficLimitView
+                service={selectedTrafficLimitService}
                 variant="mobile"
               />
             ) : (

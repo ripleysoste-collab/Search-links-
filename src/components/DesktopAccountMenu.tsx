@@ -23,6 +23,7 @@ import { ServiceApiKeyView } from './ServiceApiKeyView';
 import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { ServiceTrafficView } from './ServiceTrafficView';
+import { ServiceTrafficLimitView } from './ServiceTrafficLimitView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -55,6 +56,7 @@ export type DesktopMenuView =
   | 'api-key'
   | 'endpoint-test'
   | 'traffic'
+  | 'traffic-limit'
   | 'language';
 
 interface DesktopAccountMenuProps {
@@ -65,6 +67,7 @@ interface DesktopAccountMenuProps {
   selectedApiKeyServiceId: string | null;
   selectedEndpointTestServiceId: string | null;
   selectedTrafficServiceId: string | null;
+  selectedTrafficLimitServiceId: string | null;
   onViewChange: (nextView: DesktopMenuView, service?: OrganizationServiceItem) => void;
   user: User;
   orgProfile: OrganizationProfile;
@@ -134,6 +137,7 @@ export function DesktopAccountMenu({
   selectedApiKeyServiceId,
   selectedEndpointTestServiceId,
   selectedTrafficServiceId,
+  selectedTrafficLimitServiceId,
   onViewChange,
   user,
   orgProfile,
@@ -290,6 +294,9 @@ export function DesktopAccountMenu({
   const selectedTrafficService =
     services.find((srv) => srv.id === selectedTrafficServiceId) ?? services[0] ?? null;
 
+  const selectedTrafficLimitService =
+    services.find((srv) => srv.id === selectedTrafficLimitServiceId) ?? services[0] ?? null;
+
   const activeSchemaInput = useMemo(
     () =>
       selectedSchemaService
@@ -343,6 +350,7 @@ export function DesktopAccountMenu({
     view === 'api-key' ||
     view === 'endpoint-test' ||
     view === 'traffic' ||
+    view === 'traffic-limit' ||
     view === 'language';
   const isServerConnected = serverConnState.autoSyncEnabled;
   const isDesktopServerTestActive =
@@ -387,9 +395,11 @@ export function DesktopAccountMenu({
                     ? t.org.menuTestEndpoint
                     : view === 'traffic'
                       ? t.org.menuTraffic
-                      : view === 'language'
-                        ? t.menu.language
-                        : t.menu.account;
+                      : view === 'traffic-limit'
+                        ? t.org.trafficLimitTitle
+                        : view === 'language'
+                          ? t.menu.language
+                          : t.menu.account;
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -424,9 +434,11 @@ export function DesktopAccountMenu({
                           ? t.org.menuTestEndpoint
                           : view === 'traffic'
                             ? t.org.menuTraffic
-                            : view === 'language'
-                              ? t.menu.languagesTitle
-                              : t.menu.accountMenuAria
+                            : view === 'traffic-limit'
+                              ? t.org.trafficLimitTitle
+                              : view === 'language'
+                                ? t.menu.languagesTitle
+                                : t.menu.accountMenuAria
           }
           initial={
             shouldReduceMotion
@@ -551,6 +563,13 @@ export function DesktopAccountMenu({
                           }
                           setConfirmSignOut(false);
                           setSignOutError(null);
+                          if (view === 'traffic-limit') {
+                            onViewChange(
+                              'traffic',
+                              selectedTrafficLimitService ?? undefined,
+                            );
+                            return;
+                          }
                           onViewChange(
                             view === 'store' ||
                               view === 'api-key' ||
@@ -565,14 +584,16 @@ export function DesktopAccountMenu({
                         aria-label={
                           isDesktopServerUpdatesActive && selectedDesktopUpdate
                             ? t.connectServer.updatesBackToListAria
-                            : view === 'store' ||
-                                view === 'api-key' ||
-                                view === 'endpoint-test' ||
-                                view === 'traffic'
-                              ? t.menu.backToOrgAria
-                              : view === 'advanced-settings'
-                                ? t.menu.backToGoogleAccountAria
-                                : t.menu.backToMenuAria
+                            : view === 'traffic-limit'
+                              ? t.org.backToTrafficAria
+                              : view === 'store' ||
+                                  view === 'api-key' ||
+                                  view === 'endpoint-test' ||
+                                  view === 'traffic'
+                                ? t.menu.backToOrgAria
+                                : view === 'advanced-settings'
+                                  ? t.menu.backToGoogleAccountAria
+                                  : t.menu.backToMenuAria
                         }
                         className="w-7 h-7 -ml-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer shrink-0"
                       >
@@ -647,7 +668,13 @@ export function DesktopAccountMenu({
                                 <button
                                   type="button"
                                   role="menuitem"
-                                  onClick={() => setTrafficActionsMenuOpen(false)}
+                                  onClick={() => {
+                                    setTrafficActionsMenuOpen(false);
+                                    onViewChange(
+                                      'traffic-limit',
+                                      selectedTrafficService ?? undefined,
+                                    );
+                                  }}
                                   className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
                                 >
                                   {t.org.trafficMenuLimit}
@@ -1146,6 +1173,20 @@ export function DesktopAccountMenu({
                 >
                   <ServiceTrafficView
                     service={selectedTrafficService}
+                    variant="desktop"
+                  />
+                </motion.div>
+              ) : view === 'traffic-limit' && selectedTrafficLimitService ? (
+                <motion.div
+                  key="desktop-traffic-limit-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <ServiceTrafficLimitView
+                    service={selectedTrafficLimitService}
                     variant="desktop"
                   />
                 </motion.div>

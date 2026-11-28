@@ -21,6 +21,7 @@ export const SCHEMA_PATH = '/esquema';
 export const VIEW_API_PATH = '/ver-api';
 export const TEST_ENDPOINT_PATH = '/probar-endpoint';
 export const TRAFFIC_PATH = '/trafico';
+export const TRAFFIC_LIMIT_PATH = '/limitar';
 export const SEARCH_IA_PATH = '/search-ia';
 
 export type AppRoute =
@@ -38,6 +39,7 @@ export type AppRoute =
   | { kind: 'api-key'; slug?: string }
   | { kind: 'endpoint-test'; slug?: string }
   | { kind: 'traffic'; slug?: string }
+  | { kind: 'traffic-limit'; slug?: string }
   | { kind: 'search-ia'; slug?: string };
 
 const PRIVACY_POLICY_ALIASES = new Set([
@@ -210,6 +212,15 @@ export function parseAppRoute(pathname: string): AppRoute {
     return { kind: 'traffic', slug: decodeSlugSegment(firstSeg) };
   }
 
+  if (
+    normalized === TRAFFIC_LIMIT_PATH ||
+    normalized.startsWith(`${TRAFFIC_LIMIT_PATH}/`)
+  ) {
+    const rest = normalized.slice(TRAFFIC_LIMIT_PATH.length).replace(/^\/+/, '');
+    const firstSeg = rest.split('/')[0];
+    return { kind: 'traffic-limit', slug: decodeSlugSegment(firstSeg) };
+  }
+
   if (normalized === SEARCH_IA_PATH || normalized.startsWith(`${SEARCH_IA_PATH}/`)) {
     const rest = normalized.slice(SEARCH_IA_PATH.length).replace(/^\/+/, '');
     const firstSeg = rest.split('/')[0];
@@ -259,6 +270,10 @@ export function buildAppRoutePath(route: AppRoute): string {
       return route.slug
         ? `${TRAFFIC_PATH}/${encodeURIComponent(route.slug)}`
         : TRAFFIC_PATH;
+    case 'traffic-limit':
+      return route.slug
+        ? `${TRAFFIC_LIMIT_PATH}/${encodeURIComponent(route.slug)}`
+        : TRAFFIC_LIMIT_PATH;
     case 'search-ia':
       return route.slug
         ? `${SEARCH_IA_PATH}/${encodeURIComponent(route.slug)}`
@@ -278,6 +293,7 @@ export function isProtectedAppRoute(route: AppRoute): boolean {
     route.kind === 'api-key' ||
     route.kind === 'endpoint-test' ||
     route.kind === 'traffic' ||
+    route.kind === 'traffic-limit' ||
     route.kind === 'search-ia'
   );
 }
