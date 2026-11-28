@@ -640,8 +640,51 @@ export function DesktopAccountMenu({
                                 : { opacity: 0, scale: 0.96, y: -4 }
                             }
                             transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
-                            className="absolute right-0 top-full mt-2 w-44 min-h-[48px] rounded-2xl border border-slate-200/95 bg-white shadow-[0_18px_44px_-12px_rgba(15,23,42,0.24)] p-1 z-30"
-                          />
+                            className="absolute right-0 top-full mt-2 w-44 rounded-2xl border border-slate-200/95 bg-white shadow-[0_18px_44px_-12px_rgba(15,23,42,0.24)] p-1 z-30"
+                          >
+                            <ul className="divide-y divide-slate-100">
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => setTrafficActionsMenuOpen(false)}
+                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                                >
+                                  {t.org.trafficMenuLimit}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => setTrafficActionsMenuOpen(false)}
+                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                                >
+                                  {t.org.trafficMenuFilter}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => setTrafficActionsMenuOpen(false)}
+                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                                >
+                                  {t.org.trafficMenuSuspend}
+                                </button>
+                              </li>
+                              <li>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => setTrafficActionsMenuOpen(false)}
+                                  className="w-full px-3 py-2 rounded-xl text-left text-xs font-medium text-slate-800 hover:bg-slate-50 hover:text-slate-950 transition-colors cursor-pointer whitespace-nowrap"
+                                >
+                                  {t.org.trafficMenuDownload}
+                                </button>
+                              </li>
+                            </ul>
+                          </motion.div>
                         )}
                       </AnimatePresence>
                     </div>

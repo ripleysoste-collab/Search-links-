@@ -354,6 +354,10 @@ export interface TranslationDictionary {
     trafficTotalLabel: string;
     trafficHourlyLabel: string;
     trafficDailyLabel: string;
+    trafficMenuLimit: string;
+    trafficMenuFilter: string;
+    trafficMenuSuspend: string;
+    trafficMenuDownload: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -1005,6 +1009,10 @@ const ES_DICTIONARY: TranslationDictionary = {
     trafficTotalLabel: 'En total',
     trafficHourlyLabel: 'Por hora',
     trafficDailyLabel: 'En el día',
+    trafficMenuLimit: 'Limitar',
+    trafficMenuFilter: 'Filtrar',
+    trafficMenuSuspend: 'Suspender',
+    trafficMenuDownload: 'Descargar',
     menuDeleteService: 'Eliminar',
     deleteServiceConfirmText: (name) =>
       `¿Eliminar "${name}"? Se borrarán su API Key y productos publicados de forma permanente.`,
@@ -1779,6 +1787,10 @@ const EN_DICTIONARY: TranslationDictionary = {
     trafficTotalLabel: 'Total',
     trafficHourlyLabel: 'Per hour',
     trafficDailyLabel: 'Today',
+    trafficMenuLimit: 'Limit',
+    trafficMenuFilter: 'Filter',
+    trafficMenuSuspend: 'Suspend',
+    trafficMenuDownload: 'Download',
     menuDeleteService: 'Delete',
     deleteServiceConfirmText: (name) =>
       `Delete "${name}"? Its API Key and published products will be permanently deleted.`,
@@ -2553,6 +2565,10 @@ const PT_DICTIONARY: TranslationDictionary = {
     trafficTotalLabel: 'No total',
     trafficHourlyLabel: 'Por hora',
     trafficDailyLabel: 'No dia',
+    trafficMenuLimit: 'Limitar',
+    trafficMenuFilter: 'Filtrar',
+    trafficMenuSuspend: 'Suspender',
+    trafficMenuDownload: 'Baixar',
     menuDeleteService: 'Excluir',
     deleteServiceConfirmText: (name) =>
       `Excluir "${name}"? Sua API Key e produtos publicados serão excluídos permanentemente.`,
