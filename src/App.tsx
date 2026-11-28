@@ -78,6 +78,7 @@ import {
   fetchAccountQuotaSummary,
   requestClearBrowserData,
   requestDeleteAccountPermanently,
+  requestDeleteCoreService,
   requestPauseAllApis,
   requestPurgeAllR2Images,
   requestUnfreezeAllApis,
@@ -179,7 +180,7 @@ export default function App() {
   const [isMobileAdvancedSettingsOpen, setIsMobileAdvancedSettingsOpen] = useState(false);
   const [isMobilePanelOpen, setIsMobilePanelOpen] = useState(false);
   const [mobilePanelSubView, setMobilePanelSubView] = useState<
-    'organization' | 'store' | 'api-key' | 'endpoint-test'
+    'organization' | 'store' | 'api-key' | 'endpoint-test' | 'traffic'
   >('organization');
   const [selectedStoreServiceId, setSelectedStoreServiceId] = useState<string | null>(
     null,
@@ -193,6 +194,9 @@ export default function App() {
   const [selectedEndpointTestServiceId, setSelectedEndpointTestServiceId] = useState<
     string | null
   >(null);
+  const [selectedTrafficServiceId, setSelectedTrafficServiceId] = useState<string | null>(
+    null,
+  );
   const [batchNotice, setBatchNotice] = useState<string | null>(null);
   const [isFileUploadFlow, setIsFileUploadFlow] = useState(false);
   const [isReadOnlyReplay, setIsReadOnlyReplay] = useState(false);
@@ -255,13 +259,14 @@ export default function App() {
     isProtectedAppRoute(initialRoute) ? initialRoute : null,
   );
   const pendingServiceSlugRef = useRef<{
-    kind: 'store' | 'schema' | 'api-key' | 'endpoint-test' | 'search-ia';
+    kind: 'store' | 'schema' | 'api-key' | 'endpoint-test' | 'traffic' | 'search-ia';
     slug?: string;
   } | null>(
     initialRoute.kind === 'store' ||
       initialRoute.kind === 'schema' ||
       initialRoute.kind === 'api-key' ||
       initialRoute.kind === 'endpoint-test' ||
+      initialRoute.kind === 'traffic' ||
       initialRoute.kind === 'search-ia'
       ? { kind: initialRoute.kind, slug: initialRoute.slug }
       : null,
@@ -1155,6 +1160,47 @@ export default function App() {
     notifyServiceEditedForAgencySync(serviceId, updated);
   };
 
+  const handleDeleteService = async (serviceId: string): Promise<void> => {
+    const deletedService = orgServicesRef.current.find(
+      (srv) => srv.id === serviceId,
+    );
+    await requestDeleteCoreService(serviceId);
+
+    const updated = orgServicesRef.current.filter((srv) => srv.id !== serviceId);
+    orgServicesRef.current = updated;
+    setOrgServices(updated);
+
+    if (authUserRef.current) {
+      try {
+        window.localStorage.setItem(
+          `searchlink_services_${authUserRef.current.id}`,
+          JSON.stringify(updated),
+        );
+      } catch {
+        // Ignore storage quota errors
+      }
+    }
+
+    setSelectedStoreServiceId((prev) => (prev === serviceId ? null : prev));
+    setSelectedSchemaServiceId((prev) => (prev === serviceId ? null : prev));
+    setSelectedApiKeyServiceId((prev) => (prev === serviceId ? null : prev));
+    setSelectedEndpointTestServiceId((prev) => (prev === serviceId ? null : prev));
+    setSelectedTrafficServiceId((prev) => (prev === serviceId ? null : prev));
+    setActiveChatServiceId((prev) => (prev === serviceId ? null : prev));
+    if (deletedService) {
+      setActiveServiceCredentials((prev) =>
+        prev && prev.endpointUrl === deletedService.endpointUrl ? null : prev,
+      );
+    }
+
+    if (authUserRef.current && updated.length > 0) {
+      void triggerAgencyAutoSyncOnBulkToggle({
+        userId: authUserRef.current.id,
+        services: updated,
+      });
+    }
+  };
+
   const handleStartNewProduct = () => {
     extractAbortRef.current?.abort();
     cancelOngoingCompression();
@@ -1171,6 +1217,7 @@ export default function App() {
     setSelectedSchemaServiceId(null);
     setSelectedApiKeyServiceId(null);
     setSelectedEndpointTestServiceId(null);
+    setSelectedTrafficServiceId(null);
     setActiveChatServiceId(null);
     pushRouteUrl({ kind: 'home' });
     setIsExtracting(false);
@@ -1509,6 +1556,7 @@ export default function App() {
       setSelectedStoreServiceId(null);
       setSelectedSchemaServiceId(null);
       setSelectedApiKeyServiceId(null);
+      setSelectedTrafficServiceId(null);
       if (isDesktop) {
         setIsDesktopMenuOpen(true);
         setDesktopMenuView('endpoint-test');
@@ -1523,11 +1571,39 @@ export default function App() {
       return;
     }
 
+    if (route.kind === 'traffic') {
+      const matched = resolveServiceBySlug(route.slug, servicesList);
+      if (matched) {
+        pendingServiceSlugRef.current = null;
+        setSelectedTrafficServiceId(matched.id);
+      } else {
+        pendingServiceSlugRef.current = { kind: 'traffic', slug: route.slug };
+        setSelectedTrafficServiceId(null);
+      }
+      setSelectedStoreServiceId(null);
+      setSelectedSchemaServiceId(null);
+      setSelectedApiKeyServiceId(null);
+      setSelectedEndpointTestServiceId(null);
+      if (isDesktop) {
+        setIsDesktopMenuOpen(true);
+        setDesktopMenuView('traffic');
+      } else {
+        setIsMobileAccountModalOpen(false);
+        setIsMobileLanguageModalOpen(false);
+        setIsMobileConnectServerOpen(false);
+        setIsMobileAdvancedSettingsOpen(false);
+        setIsMobilePanelOpen(true);
+        setMobilePanelSubView('traffic');
+      }
+      return;
+    }
+
     // google-account | advanced-settings | organization | connect-server | language
     setSelectedStoreServiceId(null);
     setSelectedSchemaServiceId(null);
     setSelectedApiKeyServiceId(null);
     setSelectedEndpointTestServiceId(null);
+    setSelectedTrafficServiceId(null);
     setMobilePanelSubView('organization');
 
     if (isDesktop) {
@@ -1572,6 +1648,12 @@ export default function App() {
         );
         return { kind: 'endpoint-test', slug: srv?.slug };
       }
+      if (desktopMenuView === 'traffic') {
+        const srv = orgServicesRef.current.find(
+          (s) => s.id === selectedTrafficServiceId,
+        );
+        return { kind: 'traffic', slug: srv?.slug };
+      }
       return { kind: desktopMenuView };
     }
     if (isMobilePanelOpen) {
@@ -1592,6 +1674,12 @@ export default function App() {
           (s) => s.id === selectedEndpointTestServiceId,
         );
         return { kind: 'endpoint-test', slug: srv?.slug };
+      }
+      if (mobilePanelSubView === 'traffic') {
+        const srv = orgServicesRef.current.find(
+          (s) => s.id === selectedTrafficServiceId,
+        );
+        return { kind: 'traffic', slug: srv?.slug };
       }
       return { kind: 'organization' };
     }
@@ -1854,6 +1942,8 @@ export default function App() {
           setSelectedApiKeyServiceId(matched.id);
         } else if (pending.kind === 'endpoint-test') {
           setSelectedEndpointTestServiceId(matched.id);
+        } else if (pending.kind === 'traffic') {
+          setSelectedTrafficServiceId(matched.id);
         } else if (pending.kind === 'search-ia') {
           setActiveChatServiceId(matched.id);
         }
@@ -2201,7 +2291,8 @@ export default function App() {
           isDesktopMenuOpen &&
           (desktopMenuView === 'schema' ||
             desktopMenuView === 'api-key' ||
-            desktopMenuView === 'endpoint-test')
+            desktopMenuView === 'endpoint-test' ||
+            desktopMenuView === 'traffic')
         ) {
           navigateToAppRoute({ kind: 'organization' });
           return;
@@ -2210,7 +2301,8 @@ export default function App() {
           isMobilePanelOpen &&
           (selectedSchemaServiceId ||
             mobilePanelSubView === 'api-key' ||
-            mobilePanelSubView === 'endpoint-test')
+            mobilePanelSubView === 'endpoint-test' ||
+            mobilePanelSubView === 'traffic')
         ) {
           navigateToAppRoute({ kind: 'organization' });
           return;
@@ -3658,6 +3750,7 @@ export default function App() {
           selectedSchemaServiceId={selectedSchemaServiceId}
           selectedApiKeyServiceId={selectedApiKeyServiceId}
           selectedEndpointTestServiceId={selectedEndpointTestServiceId}
+          selectedTrafficServiceId={selectedTrafficServiceId}
           onViewChange={(nextView, service) => {
             if (nextView === 'menu') {
               setDesktopMenuView('menu');
@@ -3665,6 +3758,7 @@ export default function App() {
               setSelectedSchemaServiceId(null);
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
+              setSelectedTrafficServiceId(null);
               pushRouteUrl({ kind: 'home' });
               return;
             }
@@ -3677,6 +3771,7 @@ export default function App() {
               setSelectedSchemaServiceId(null);
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
+              setSelectedTrafficServiceId(null);
               setDesktopMenuView('store');
               pushRouteUrl({ kind: 'store', slug: target?.slug });
               return;
@@ -3690,6 +3785,7 @@ export default function App() {
               setSelectedStoreServiceId(null);
               setSelectedApiKeyServiceId(null);
               setSelectedEndpointTestServiceId(null);
+              setSelectedTrafficServiceId(null);
               setDesktopMenuView('schema');
               pushRouteUrl({ kind: 'schema', slug: target?.slug });
               return;
@@ -3703,6 +3799,7 @@ export default function App() {
               setSelectedStoreServiceId(null);
               setSelectedSchemaServiceId(null);
               setSelectedEndpointTestServiceId(null);
+              setSelectedTrafficServiceId(null);
               setDesktopMenuView('api-key');
               pushRouteUrl({ kind: 'api-key', slug: target?.slug });
               return;
@@ -3716,14 +3813,30 @@ export default function App() {
               setSelectedStoreServiceId(null);
               setSelectedSchemaServiceId(null);
               setSelectedApiKeyServiceId(null);
+              setSelectedTrafficServiceId(null);
               setDesktopMenuView('endpoint-test');
               pushRouteUrl({ kind: 'endpoint-test', slug: target?.slug });
+              return;
+            }
+            if (nextView === 'traffic') {
+              const target =
+                service ??
+                orgServices.find((srv) => srv.id === selectedTrafficServiceId) ??
+                orgServices[0];
+              setSelectedTrafficServiceId(target?.id ?? null);
+              setSelectedStoreServiceId(null);
+              setSelectedSchemaServiceId(null);
+              setSelectedApiKeyServiceId(null);
+              setSelectedEndpointTestServiceId(null);
+              setDesktopMenuView('traffic');
+              pushRouteUrl({ kind: 'traffic', slug: target?.slug });
               return;
             }
             setSelectedStoreServiceId(null);
             setSelectedSchemaServiceId(null);
             setSelectedApiKeyServiceId(null);
             setSelectedEndpointTestServiceId(null);
+            setSelectedTrafficServiceId(null);
             setDesktopMenuView(nextView);
             pushRouteUrl({ kind: nextView });
           }}
@@ -3737,6 +3850,7 @@ export default function App() {
           onOpenServiceChat={handleOpenServiceChat}
           onRotateServiceKey={handleRotateServiceKey}
           onToggleServiceActive={handleToggleServiceActive}
+          onDeleteService={handleDeleteService}
           onOpenDocumentation={openDocumentationRoute}
           onClose={() => navigateToAppRoute({ kind: 'home' })}
           onSignOut={handleSignOut}
@@ -3765,6 +3879,7 @@ export default function App() {
           selectedSchemaServiceId={selectedSchemaServiceId}
           selectedApiKeyServiceId={selectedApiKeyServiceId}
           selectedEndpointTestServiceId={selectedEndpointTestServiceId}
+          selectedTrafficServiceId={selectedTrafficServiceId}
           user={authUser}
           orgProfile={orgProfile}
           services={orgServices}
@@ -3775,6 +3890,7 @@ export default function App() {
           onOpenServiceChat={handleOpenServiceChat}
           onRotateServiceKey={handleRotateServiceKey}
           onToggleServiceActive={handleToggleServiceActive}
+          onDeleteService={handleDeleteService}
           onCloseMenu={() => setIsMobileMenuOpen(false)}
           onOpenAccountModal={() => navigateToAppRoute({ kind: 'google-account' })}
           onCloseAccountModal={() => navigateToAppRoute({ kind: 'home' })}
@@ -3799,6 +3915,9 @@ export default function App() {
           }
           onOpenEndpointTest={(service) =>
             navigateToAppRoute({ kind: 'endpoint-test', slug: service.slug })
+          }
+          onOpenTraffic={(service) =>
+            navigateToAppRoute({ kind: 'traffic', slug: service.slug })
           }
           onBackToOrganization={() => navigateToAppRoute({ kind: 'organization' })}
           onOpenSchema={(service) =>

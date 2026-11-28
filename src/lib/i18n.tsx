@@ -346,6 +346,14 @@ export interface TranslationDictionary {
     apiHelpSecurityBodyPrefixOnly: string;
     apiHelpStatusTitle: string;
     apiHelpStatusBody: string;
+    menuDeleteService: string;
+    deleteServiceConfirmText: (name: string) => string;
+    deleteServiceError: string;
+    menuTraffic: string;
+    trafficActionsAria: string;
+    trafficTotalLabel: string;
+    trafficHourlyLabel: string;
+    trafficDailyLabel: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -992,6 +1000,15 @@ const ES_DICTIONARY: TranslationDictionary = {
     missingKeyForTestNote: 'Pega tu API Key completa arriba o rótala desde Ver API para ejecutar la prueba.',
     menuViewApi: 'Ver API',
     menuTestEndpoint: 'Probar endpoint',
+    menuTraffic: 'Tráfico',
+    trafficActionsAria: 'Funciones de tráfico',
+    trafficTotalLabel: 'En total',
+    trafficHourlyLabel: 'Por hora',
+    trafficDailyLabel: 'En el día',
+    menuDeleteService: 'Eliminar',
+    deleteServiceConfirmText: (name) =>
+      `¿Eliminar "${name}"? Se borrarán su API Key y productos publicados de forma permanente.`,
+    deleteServiceError: 'No se pudo eliminar el servicio. Intenta de nuevo.',
     apiHelpLink: 'Ayuda',
     apiHelpTitle: 'Ayuda',
     apiHelpCloseAria: 'Cerrar ayuda de API',
@@ -1757,6 +1774,15 @@ const EN_DICTIONARY: TranslationDictionary = {
     missingKeyForTestNote: 'Paste your full API Key above or rotate it in View API to run the test.',
     menuViewApi: 'View API',
     menuTestEndpoint: 'Test endpoint',
+    menuTraffic: 'Traffic',
+    trafficActionsAria: 'Traffic options',
+    trafficTotalLabel: 'Total',
+    trafficHourlyLabel: 'Per hour',
+    trafficDailyLabel: 'Today',
+    menuDeleteService: 'Delete',
+    deleteServiceConfirmText: (name) =>
+      `Delete "${name}"? Its API Key and published products will be permanently deleted.`,
+    deleteServiceError: 'Could not delete the service. Please try again.',
     apiHelpLink: 'Help',
     apiHelpTitle: 'Help',
     apiHelpCloseAria: 'Close API help',
@@ -2522,6 +2548,15 @@ const PT_DICTIONARY: TranslationDictionary = {
     missingKeyForTestNote: 'Cole sua API Key completa acima ou rotacione em Ver API para executar o teste.',
     menuViewApi: 'Ver API',
     menuTestEndpoint: 'Testar endpoint',
+    menuTraffic: 'Tráfego',
+    trafficActionsAria: 'Opções de tráfego',
+    trafficTotalLabel: 'No total',
+    trafficHourlyLabel: 'Por hora',
+    trafficDailyLabel: 'No dia',
+    menuDeleteService: 'Excluir',
+    deleteServiceConfirmText: (name) =>
+      `Excluir "${name}"? Sua API Key e produtos publicados serão excluídos permanentemente.`,
+    deleteServiceError: 'Não foi possível excluir o serviço. Tente novamente.',
     apiHelpLink: 'Ajuda',
     apiHelpTitle: 'Ajuda',
     apiHelpCloseAria: 'Fechar ajuda da API',

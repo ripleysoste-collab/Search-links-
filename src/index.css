@@ -20,3 +20,45 @@
   display: none;
 }
 
+@keyframes traffic-border-sweep {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.traffic-card-shell {
+  background-color: rgba(226, 232, 240, 0.85);
+}
+
+.traffic-card-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 240%;
+  aspect-ratio: 1 / 1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg 65deg,
+    rgba(59, 130, 246, 0.78) 95deg,
+    rgba(16, 185, 129, 0.92) 135deg,
+    rgba(59, 130, 246, 0.65) 170deg,
+    transparent 210deg 360deg
+  );
+  animation: traffic-border-sweep 6.5s linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .traffic-card-glow {
+    animation: none;
+    transform: translate(-50%, -50%) rotate(45deg);
+    background: linear-gradient(
+      135deg,
+      rgba(59, 130, 246, 0.48),
+      rgba(16, 185, 129, 0.58)
+    );
+  }
+}

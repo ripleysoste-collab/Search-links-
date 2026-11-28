@@ -27,9 +27,11 @@ interface MobileOrganizationViewProps {
   onOpenStore: (service: OrganizationServiceItem) => void;
   onOpenApiKey: (service: OrganizationServiceItem) => void;
   onOpenEndpointTest: (service: OrganizationServiceItem) => void;
+  onOpenTraffic?: (service: OrganizationServiceItem) => void;
   onViewServiceHistory: (service: OrganizationServiceItem) => void;
   onOpenSchema: (service: OrganizationServiceItem) => void;
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
+  onDeleteService?: (serviceId: string) => Promise<void>;
 }
 
 type OnboardingStage = 'welcome' | 'congrats';
@@ -45,9 +47,11 @@ export function MobileOrganizationView({
   onOpenStore,
   onOpenApiKey,
   onOpenEndpointTest,
+  onOpenTraffic,
   onViewServiceHistory,
   onOpenSchema,
   onOpenServiceChat,
+  onDeleteService,
 }: MobileOrganizationViewProps) {
   const { t } = useI18n();
   const shouldReduceMotion = useReducedMotion();
@@ -71,6 +75,11 @@ export function MobileOrganizationView({
   const [openActionMenuServiceId, setOpenActionMenuServiceId] = useState<string | null>(
     null,
   );
+  const [confirmDeleteServiceId, setConfirmDeleteServiceId] = useState<string | null>(
+    null,
+  );
+  const [deletingServiceId, setDeletingServiceId] = useState<string | null>(null);
+  const [deleteServiceError, setDeleteServiceError] = useState<string | null>(null);
 
   useEffect(() => {
     setOrgNameInput(orgProfile.name);
@@ -192,6 +201,24 @@ export function MobileOrganizationView({
       onRenameService(serviceId, cleaned);
     }
     setEditingServiceId(null);
+  };
+
+  const handleConfirmDeleteService = async (serviceId: string) => {
+    if (!onDeleteService || deletingServiceId) return;
+    setDeletingServiceId(serviceId);
+    setDeleteServiceError(null);
+    try {
+      await onDeleteService(serviceId);
+      setConfirmDeleteServiceId(null);
+    } catch (err) {
+      setDeleteServiceError(
+        err instanceof Error && err.message.trim()
+          ? err.message
+          : t.org.deleteServiceError,
+      );
+    } finally {
+      setDeletingServiceId(null);
+    }
   };
 
   // 1. Mobile First-time Onboarding (clean, compact, breathable)
@@ -611,9 +638,11 @@ export function MobileOrganizationView({
             </p>
           </div>
         ) : (
-          <ul className="space-y-2.5 pb-24">
+          <ul className="space-y-2.5 pb-36">
             {services.map((service, idx) => {
               const isEditingThis = editingServiceId === service.id;
+              const isConfirmingDelete = confirmDeleteServiceId === service.id;
+              const isDeletingThis = deletingServiceId === service.id;
               const openMenuDownward = idx === 0;
 
               return (
@@ -781,12 +810,85 @@ export function MobileOrganizationView({
                                   {t.org.menuViewSchema}
                                 </button>
                               </li>
+                              {onOpenTraffic && (
+                                <li>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenuServiceId(null);
+                                      onOpenTraffic(service);
+                                    }}
+                                    className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-slate-800 active:bg-slate-50 cursor-pointer whitespace-nowrap"
+                                  >
+                                    {t.org.menuTraffic}
+                                  </button>
+                                </li>
+                              )}
+                              {onDeleteService && (
+                                <li>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setOpenActionMenuServiceId(null);
+                                      setDeleteServiceError(null);
+                                      setConfirmDeleteServiceId(service.id);
+                                    }}
+                                    className="w-full px-3 py-2.5 rounded-xl text-left text-xs font-medium text-rose-600 active:bg-rose-50 cursor-pointer whitespace-nowrap"
+                                  >
+                                    {t.org.menuDeleteService}
+                                  </button>
+                                </li>
+                              )}
                             </ul>
                           </motion.div>
                         )}
                       </AnimatePresence>
                     </div>
                   </div>
+
+                  {isConfirmingDelete && (
+                    <div className="pt-2.5 border-t border-slate-200/75 space-y-2">
+                      <p className="text-xs leading-relaxed text-slate-700">
+                        {t.org.deleteServiceConfirmText(service.name)}
+                      </p>
+
+                      {deleteServiceError && (
+                        <p role="alert" className="text-xs text-rose-600">
+                          {deleteServiceError}
+                        </p>
+                      )}
+
+                      <div className="flex items-center gap-5">
+                        <button
+                          type="button"
+                          disabled={isDeletingThis}
+                          onClick={() => {
+                            setConfirmDeleteServiceId(null);
+                            setDeleteServiceError(null);
+                          }}
+                          className="bg-transparent border-0 p-0 min-h-[40px] inline-flex items-center px-1 -ml-1 text-xs font-semibold text-red-600 active:text-red-700 whitespace-nowrap shrink-0 transition-colors cursor-pointer disabled:opacity-45"
+                        >
+                          {t.common.cancel}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isDeletingThis}
+                          onClick={() => void handleConfirmDeleteService(service.id)}
+                          className="bg-transparent border-0 p-0 min-h-[40px] inline-flex items-center gap-1.5 px-1 text-xs font-semibold text-blue-600 active:text-blue-700 whitespace-nowrap shrink-0 transition-colors cursor-pointer disabled:opacity-60"
+                        >
+                          {isDeletingThis && (
+                            <Loader2
+                              className="w-3 h-3 animate-spin"
+                              aria-hidden="true"
+                            />
+                          )}
+                          {t.common.accept}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}

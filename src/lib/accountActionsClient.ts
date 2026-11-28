@@ -85,6 +85,33 @@ export async function requestPurgeAllR2Images(): Promise<R2PurgeResponse> {
   return data as R2PurgeResponse;
 }
 
+export interface DeleteCoreServiceResponse {
+  ok: true;
+  deletedR2Count: number;
+}
+
+export async function requestDeleteCoreService(
+  serviceId: string,
+): Promise<DeleteCoreServiceResponse> {
+  const token = await getRequiredAccessToken();
+  const response = await fetch(resolveApiUrl('/api/account/services/delete'), {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ serviceId }),
+  });
+  const data = (await response.json().catch(() => ({}))) as Partial<DeleteCoreServiceResponse> & {
+    error?: string;
+  };
+  if (!response.ok || !data.ok) {
+    throw new Error(data.error || 'No se pudo eliminar el servicio.');
+  }
+  return data as DeleteCoreServiceResponse;
+}
+
 export async function requestPauseAllApis(): Promise<PauseAllApisResponse> {
   const token = await getRequiredAccessToken();
   const response = await fetch(resolveApiUrl('/api/account/pause-all-apis'), {

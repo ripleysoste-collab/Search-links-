@@ -20,6 +20,7 @@ export const STORE_PATH = '/mi-tienda';
 export const SCHEMA_PATH = '/esquema';
 export const VIEW_API_PATH = '/ver-api';
 export const TEST_ENDPOINT_PATH = '/probar-endpoint';
+export const TRAFFIC_PATH = '/trafico';
 export const SEARCH_IA_PATH = '/search-ia';
 
 export type AppRoute =
@@ -36,6 +37,7 @@ export type AppRoute =
   | { kind: 'schema'; slug?: string }
   | { kind: 'api-key'; slug?: string }
   | { kind: 'endpoint-test'; slug?: string }
+  | { kind: 'traffic'; slug?: string }
   | { kind: 'search-ia'; slug?: string };
 
 const PRIVACY_POLICY_ALIASES = new Set([
@@ -202,6 +204,12 @@ export function parseAppRoute(pathname: string): AppRoute {
     return { kind: 'endpoint-test', slug: decodeSlugSegment(firstSeg) };
   }
 
+  if (normalized === TRAFFIC_PATH || normalized.startsWith(`${TRAFFIC_PATH}/`)) {
+    const rest = normalized.slice(TRAFFIC_PATH.length).replace(/^\/+/, '');
+    const firstSeg = rest.split('/')[0];
+    return { kind: 'traffic', slug: decodeSlugSegment(firstSeg) };
+  }
+
   if (normalized === SEARCH_IA_PATH || normalized.startsWith(`${SEARCH_IA_PATH}/`)) {
     const rest = normalized.slice(SEARCH_IA_PATH.length).replace(/^\/+/, '');
     const firstSeg = rest.split('/')[0];
@@ -247,6 +255,10 @@ export function buildAppRoutePath(route: AppRoute): string {
       return route.slug
         ? `${TEST_ENDPOINT_PATH}/${encodeURIComponent(route.slug)}`
         : TEST_ENDPOINT_PATH;
+    case 'traffic':
+      return route.slug
+        ? `${TRAFFIC_PATH}/${encodeURIComponent(route.slug)}`
+        : TRAFFIC_PATH;
     case 'search-ia':
       return route.slug
         ? `${SEARCH_IA_PATH}/${encodeURIComponent(route.slug)}`
@@ -265,6 +277,7 @@ export function isProtectedAppRoute(route: AppRoute): boolean {
     route.kind === 'schema' ||
     route.kind === 'api-key' ||
     route.kind === 'endpoint-test' ||
+    route.kind === 'traffic' ||
     route.kind === 'search-ia'
   );
 }

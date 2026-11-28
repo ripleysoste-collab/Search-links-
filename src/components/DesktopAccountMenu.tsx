@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import type { User } from '@supabase/supabase-js';
-import { ArrowLeft, Calendar, Check, ChevronDown, Copy, FileArchive, Loader2, Mail, User as UserIcon, X } from 'lucide-react';
+import { ArrowLeft, Calendar, Check, ChevronDown, Copy, FileArchive, Loader2, Mail, MoreHorizontal, User as UserIcon, X } from 'lucide-react';
 
 import {
   DesktopOrganizationView,
@@ -22,6 +22,7 @@ import { ServerSecretKeyView } from './ServerSecretKeyView';
 import { ServiceApiKeyView } from './ServiceApiKeyView';
 import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
+import { ServiceTrafficView } from './ServiceTrafficView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -53,6 +54,7 @@ export type DesktopMenuView =
   | 'schema'
   | 'api-key'
   | 'endpoint-test'
+  | 'traffic'
   | 'language';
 
 interface DesktopAccountMenuProps {
@@ -62,6 +64,7 @@ interface DesktopAccountMenuProps {
   selectedSchemaServiceId: string | null;
   selectedApiKeyServiceId: string | null;
   selectedEndpointTestServiceId: string | null;
+  selectedTrafficServiceId: string | null;
   onViewChange: (nextView: DesktopMenuView, service?: OrganizationServiceItem) => void;
   user: User;
   orgProfile: OrganizationProfile;
@@ -73,6 +76,7 @@ interface DesktopAccountMenuProps {
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
+  onDeleteService?: (serviceId: string) => Promise<void>;
   onOpenDocumentation: (
     docId:
       | 'privacy'
@@ -129,6 +133,7 @@ export function DesktopAccountMenu({
   selectedSchemaServiceId,
   selectedApiKeyServiceId,
   selectedEndpointTestServiceId,
+  selectedTrafficServiceId,
   onViewChange,
   user,
   orgProfile,
@@ -140,6 +145,7 @@ export function DesktopAccountMenu({
   onOpenServiceChat,
   onRotateServiceKey,
   onToggleServiceActive,
+  onDeleteService,
   onOpenDocumentation,
   onClose,
   onSignOut,
@@ -166,6 +172,7 @@ export function DesktopAccountMenu({
   const [isTestingServer, setIsTestingServer] = useState(false);
   const [isHelpingSecret, setIsHelpingSecret] = useState(false);
   const [isHelpingApiKey, setIsHelpingApiKey] = useState(false);
+  const [trafficActionsMenuOpen, setTrafficActionsMenuOpen] = useState(false);
   const [isViewingServerUpdates, setIsViewingServerUpdates] = useState(false);
   const [isViewingSecretKey, setIsViewingSecretKey] = useState(false);
   const [selectedDesktopUpdate, setSelectedDesktopUpdate] =
@@ -226,7 +233,31 @@ export function DesktopAccountMenu({
     if (!open || view !== 'api-key') {
       setIsHelpingApiKey(false);
     }
+    if (!open || view !== 'traffic') {
+      setTrafficActionsMenuOpen(false);
+    }
   }, [open, view, serverConnState.autoSyncEnabled]);
+
+  useEffect(() => {
+    if (!trafficActionsMenuOpen) return;
+    const handleOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('[data-desktop-traffic-menu]')) {
+        setTrafficActionsMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setTrafficActionsMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('keydown', handleEscape);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [trafficActionsMenuOpen]);
 
   useEffect(() => {
     if (!open) {
@@ -255,6 +286,9 @@ export function DesktopAccountMenu({
 
   const selectedEndpointTestService =
     services.find((srv) => srv.id === selectedEndpointTestServiceId) ?? services[0] ?? null;
+
+  const selectedTrafficService =
+    services.find((srv) => srv.id === selectedTrafficServiceId) ?? services[0] ?? null;
 
   const activeSchemaInput = useMemo(
     () =>
@@ -308,6 +342,7 @@ export function DesktopAccountMenu({
     view === 'schema' ||
     view === 'api-key' ||
     view === 'endpoint-test' ||
+    view === 'traffic' ||
     view === 'language';
   const isServerConnected = serverConnState.autoSyncEnabled;
   const isDesktopServerTestActive =
@@ -350,9 +385,11 @@ export function DesktopAccountMenu({
                   ? t.org.menuViewApi
                   : view === 'endpoint-test'
                     ? t.org.menuTestEndpoint
-                    : view === 'language'
-                      ? t.menu.language
-                      : t.menu.account;
+                    : view === 'traffic'
+                      ? t.org.menuTraffic
+                      : view === 'language'
+                        ? t.menu.language
+                        : t.menu.account;
 
   const handleConfirmSignOut = async () => {
     if (signingOut) return;
@@ -385,9 +422,11 @@ export function DesktopAccountMenu({
                         ? t.org.menuViewApi
                         : view === 'endpoint-test'
                           ? t.org.menuTestEndpoint
-                          : view === 'language'
-                            ? t.menu.languagesTitle
-                            : t.menu.accountMenuAria
+                          : view === 'traffic'
+                            ? t.org.menuTraffic
+                            : view === 'language'
+                              ? t.menu.languagesTitle
+                              : t.menu.accountMenuAria
           }
           initial={
             shouldReduceMotion
@@ -515,7 +554,8 @@ export function DesktopAccountMenu({
                           onViewChange(
                             view === 'store' ||
                               view === 'api-key' ||
-                              view === 'endpoint-test'
+                              view === 'endpoint-test' ||
+                              view === 'traffic'
                               ? 'organization'
                               : view === 'advanced-settings'
                                 ? 'google-account'
@@ -527,7 +567,8 @@ export function DesktopAccountMenu({
                             ? t.connectServer.updatesBackToListAria
                             : view === 'store' ||
                                 view === 'api-key' ||
-                                view === 'endpoint-test'
+                                view === 'endpoint-test' ||
+                                view === 'traffic'
                               ? t.menu.backToOrgAria
                               : view === 'advanced-settings'
                                 ? t.menu.backToGoogleAccountAria
@@ -565,6 +606,47 @@ export function DesktopAccountMenu({
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {view === 'traffic' && (
+                    <div data-desktop-traffic-menu className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setTrafficActionsMenuOpen((prev) => !prev)}
+                        aria-haspopup="menu"
+                        aria-expanded={trafficActionsMenuOpen}
+                        aria-label={t.org.trafficActionsAria}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 cursor-pointer ${
+                          trafficActionsMenuOpen
+                            ? 'bg-slate-100 text-slate-900'
+                            : 'text-slate-400 hover:text-slate-900 hover:bg-slate-100/90'
+                        }`}
+                      >
+                        <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+                      </button>
+
+                      <AnimatePresence>
+                        {trafficActionsMenuOpen && (
+                          <motion.div
+                            role="menu"
+                            aria-label={t.org.trafficActionsAria}
+                            initial={
+                              shouldReduceMotion
+                                ? { opacity: 0 }
+                                : { opacity: 0, scale: 0.96, y: -4 }
+                            }
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={
+                              shouldReduceMotion
+                                ? { opacity: 0 }
+                                : { opacity: 0, scale: 0.96, y: -4 }
+                            }
+                            transition={{ duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+                            className="absolute right-0 top-full mt-2 w-44 min-h-[48px] rounded-2xl border border-slate-200/95 bg-white shadow-[0_18px_44px_-12px_rgba(15,23,42,0.24)] p-1 z-30"
+                          />
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+
                   {isDesktopServerUpdatesActive && selectedDesktopUpdate && (
                     <button
                       type="button"
@@ -833,12 +915,16 @@ export function DesktopAccountMenu({
                     onOpenEndpointTest={(service) => {
                       onViewChange('endpoint-test', service);
                     }}
+                    onOpenTraffic={(service) => {
+                      onViewChange('traffic', service);
+                    }}
                     onViewServiceHistory={onViewServiceHistory}
                     onOpenSchema={(service) => {
                       setSchemaCopied(false);
                       onViewChange('schema', service);
                     }}
                     onOpenServiceChat={onOpenServiceChat}
+                    onDeleteService={onDeleteService}
                   />
                 </motion.div>
               ) : view === 'connect-server' ? (
@@ -1003,6 +1089,20 @@ export function DesktopAccountMenu({
                 >
                   <ServiceEndpointTestView
                     service={selectedEndpointTestService}
+                    variant="desktop"
+                  />
+                </motion.div>
+              ) : view === 'traffic' && selectedTrafficService ? (
+                <motion.div
+                  key="desktop-traffic-view"
+                  initial={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, x: 16 }}
+                  transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+                  className="flex-1 min-h-0 bg-white flex flex-col"
+                >
+                  <ServiceTrafficView
+                    service={selectedTrafficService}
                     variant="desktop"
                   />
                 </motion.div>
@@ -1347,12 +1447,16 @@ export function DesktopAccountMenu({
                     onOpenEndpointTest={(service) => {
                       onViewChange('endpoint-test', service);
                     }}
+                    onOpenTraffic={(service) => {
+                      onViewChange('traffic', service);
+                    }}
                     onViewServiceHistory={onViewServiceHistory}
                     onOpenSchema={(service) => {
                       setSchemaCopied(false);
                       onViewChange('schema', service);
                     }}
                     onOpenServiceChat={onOpenServiceChat}
+                    onDeleteService={onDeleteService}
                   />
                 </motion.div>
               )}

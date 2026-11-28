@@ -280,6 +280,169 @@ export async function purgeAllUserR2Images(
   };
 }
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function deleteUserCoreService(
+  authUser: AuthenticatedRequestUser,
+  serviceId: string,
+): Promise<
+  | { ok: true; deletedR2Count: number }
+  | { ok: false; status: number; error: string }
+> {
+  const cleanServiceId = serviceId.trim();
+  if (!cleanServiceId) {
+    return {
+      ok: false,
+      status: 400,
+      error: 'Identificador de servicio inválido.',
+    };
+  }
+
+  // Local-only fallback services do not have a UUID in Supabase
+  if (!UUID_REGEX.test(cleanServiceId)) {
+    return { ok: true, deletedR2Count: 0 };
+  }
+
+  const userClient = createAuthenticatedUserClient(authUser.accessToken);
+  if (!userClient) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'Configuración de Supabase no disponible en el servidor.',
+    };
+  }
+
+  const [
+    { data: serviceRow, error: serviceFetchErr },
+    { data: productRows },
+    { data: keyRows },
+  ] = await Promise.all([
+    userClient
+      .from('servicios')
+      .select('id, public_slug, item_count')
+      .eq('id', cleanServiceId)
+      .eq('user_id', authUser.userId)
+      .maybeSingle(),
+    userClient
+      .from('servicio_productos')
+      .select('id, r2_key, image_url')
+      .eq('servicio_id', cleanServiceId)
+      .eq('user_id', authUser.userId),
+    userClient
+      .from('servicio_api_keys')
+      .select('key_hash')
+      .eq('servicio_id', cleanServiceId)
+      .eq('user_id', authUser.userId),
+  ]);
+
+  if (serviceFetchErr) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'No se pudo verificar el servicio en Supabase.',
+    };
+  }
+
+  if (!serviceRow) {
+    return { ok: true, deletedR2Count: 0 };
+  }
+
+  const productsList = Array.isArray(productRows) ? productRows : [];
+  const keyHashes = (Array.isArray(keyRows) ? keyRows : [])
+    .map((k) => (typeof k?.key_hash === 'string' ? k.key_hash.trim() : ''))
+    .filter(Boolean);
+
+  const r2Keys: string[] = [];
+  for (const prod of productsList) {
+    const key = extractSafeMediaKey(prod?.r2_key, prod?.image_url);
+    if (key) {
+      r2Keys.push(key);
+    }
+  }
+
+  const serviceItemCount =
+    typeof serviceRow.item_count === 'number' &&
+    Number.isFinite(serviceRow.item_count)
+      ? Math.max(0, Math.trunc(serviceRow.item_count))
+      : 0;
+  const purgedCatalogImages = Math.max(
+    serviceItemCount,
+    productsList.length,
+    r2Keys.length,
+  );
+
+  const deletedR2Count = await deleteImagesFromR2(r2Keys);
+
+  const { error: keysDelErr } = await userClient
+    .from('servicio_api_keys')
+    .delete()
+    .eq('servicio_id', cleanServiceId)
+    .eq('user_id', authUser.userId);
+  if (keysDelErr) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'No se pudieron eliminar las API Keys del servicio.',
+    };
+  }
+
+  const { error: prodDelErr } = await userClient
+    .from('servicio_productos')
+    .delete()
+    .eq('servicio_id', cleanServiceId)
+    .eq('user_id', authUser.userId);
+  if (prodDelErr) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'No se pudieron eliminar los productos del servicio.',
+    };
+  }
+
+  const { error: srvDelErr } = await userClient
+    .from('servicios')
+    .delete()
+    .eq('id', cleanServiceId)
+    .eq('user_id', authUser.userId);
+  if (srvDelErr) {
+    return {
+      ok: false,
+      status: 500,
+      error: 'No se pudo eliminar el servicio.',
+    };
+  }
+
+  const hasPlus =
+    hasImageBankPlusAccess(authUser.email, authUser.appMetadata) ||
+    isAdminTestEmail(authUser.email);
+
+  if (!hasPlus && purgedCatalogImages > 0) {
+    recordInMemoryR2PurgeLedger(authUser.email, purgedCatalogImages, false);
+    await userClient
+      .rpc('record_my_r2_purge_usage', {
+        p_purged_images: purgedCatalogImages,
+        p_has_plus: false,
+      })
+      .then(() => undefined, () => undefined);
+  }
+
+  if (keyHashes.length > 0) {
+    markExternalServerActiveForKeyHashes(keyHashes, false);
+  }
+  invalidateCoreCatalogCache(
+    typeof serviceRow.public_slug === 'string'
+      ? { slug: serviceRow.public_slug }
+      : undefined,
+  );
+  invalidateUserImageQuotaCache(authUser.userId);
+
+  return {
+    ok: true,
+    deletedR2Count,
+  };
+}
+
 export async function pauseAllUserApis(
   authUser: AuthenticatedRequestUser,
 ): Promise<

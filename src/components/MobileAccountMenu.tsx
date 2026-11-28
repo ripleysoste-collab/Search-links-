@@ -10,6 +10,7 @@ import {
   FileArchive,
   Loader2,
   Mail,
+  MoreHorizontal,
   User as UserIcon,
   X,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import { ServerSecretKeyView } from './ServerSecretKeyView';
 import { ServiceApiKeyView } from './ServiceApiKeyView';
 import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
+import { ServiceTrafficView } from './ServiceTrafficView';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
@@ -59,11 +61,12 @@ interface MobileAccountMenuProps {
   connectServerModalOpen: boolean;
   advancedSettingsModalOpen: boolean;
   panelOpen: boolean;
-  panelSubView: 'organization' | 'store' | 'api-key' | 'endpoint-test';
+  panelSubView: 'organization' | 'store' | 'api-key' | 'endpoint-test' | 'traffic';
   selectedStoreServiceId: string | null;
   selectedSchemaServiceId: string | null;
   selectedApiKeyServiceId: string | null;
   selectedEndpointTestServiceId: string | null;
+  selectedTrafficServiceId: string | null;
   user: User;
   orgProfile: OrganizationProfile;
   services: OrganizationServiceItem[];
@@ -74,6 +77,7 @@ interface MobileAccountMenuProps {
   onOpenServiceChat?: (service: OrganizationServiceItem) => void;
   onRotateServiceKey?: (serviceId: string) => Promise<string | null>;
   onToggleServiceActive?: (serviceId: string, nextActive: boolean) => Promise<void>;
+  onDeleteService?: (serviceId: string) => Promise<void>;
   onCloseMenu: () => void;
   onOpenAccountModal: () => void;
   onCloseAccountModal: () => void;
@@ -89,6 +93,7 @@ interface MobileAccountMenuProps {
   onOpenStore: (service: OrganizationServiceItem) => void;
   onOpenApiKey: (service: OrganizationServiceItem) => void;
   onOpenEndpointTest: (service: OrganizationServiceItem) => void;
+  onOpenTraffic: (service: OrganizationServiceItem) => void;
   onBackToOrganization: () => void;
   onOpenSchema: (service: OrganizationServiceItem) => void;
   onCloseSchema: () => void;
@@ -152,6 +157,7 @@ export function MobileAccountMenu({
   selectedSchemaServiceId,
   selectedApiKeyServiceId,
   selectedEndpointTestServiceId,
+  selectedTrafficServiceId,
   user,
   orgProfile,
   services,
@@ -162,6 +168,7 @@ export function MobileAccountMenu({
   onOpenServiceChat,
   onRotateServiceKey,
   onToggleServiceActive,
+  onDeleteService,
   onCloseMenu,
   onOpenAccountModal,
   onCloseAccountModal,
@@ -177,6 +184,7 @@ export function MobileAccountMenu({
   onOpenStore,
   onOpenApiKey,
   onOpenEndpointTest,
+  onOpenTraffic,
   onBackToOrganization,
   onOpenSchema,
   onCloseSchema,
@@ -207,6 +215,7 @@ export function MobileAccountMenu({
   const [mobileTestOpen, setMobileTestOpen] = useState(false);
   const [mobileSecretHelpOpen, setMobileSecretHelpOpen] = useState(false);
   const [mobileApiHelpOpen, setMobileApiHelpOpen] = useState(false);
+  const [mobileTrafficMenuOpen, setMobileTrafficMenuOpen] = useState(false);
   const [mobileUpdatesOpen, setMobileUpdatesOpen] = useState(false);
   const [mobileSecretKeyOpen, setMobileSecretKeyOpen] = useState(false);
   const swipeTouchRef = useRef<{
@@ -233,6 +242,9 @@ export function MobileAccountMenu({
 
   const selectedEndpointTestService =
     services.find((srv) => srv.id === selectedEndpointTestServiceId) ?? services[0] ?? null;
+
+  const selectedTrafficService =
+    services.find((srv) => srv.id === selectedTrafficServiceId) ?? services[0] ?? null;
 
   const selectedSchemaService = useMemo(
     () =>
@@ -334,7 +346,26 @@ export function MobileAccountMenu({
     if (!panelOpen || panelSubView !== 'api-key') {
       setMobileApiHelpOpen(false);
     }
+    if (!panelOpen || panelSubView !== 'traffic') {
+      setMobileTrafficMenuOpen(false);
+    }
   }, [panelOpen, panelSubView]);
+
+  useEffect(() => {
+    if (!mobileTrafficMenuOpen) return;
+    const handleOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest('[data-mobile-traffic-menu]')) {
+        setMobileTrafficMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutside);
+    window.addEventListener('touchstart', handleOutside);
+    return () => {
+      window.removeEventListener('mousedown', handleOutside);
+      window.removeEventListener('touchstart', handleOutside);
+    };
+  }, [mobileTrafficMenuOpen]);
 
   const handleCopyQuickServerFile = async () => {
     if (!activeQuickServerFile) return;
@@ -886,7 +917,9 @@ export function MobileAccountMenu({
                   ? t.org.menuViewApi
                   : panelSubView === 'endpoint-test'
                     ? t.org.menuTestEndpoint
-                    : t.menu.organization
+                    : panelSubView === 'traffic'
+                      ? t.org.menuTraffic
+                      : t.menu.organization
             }
             initial={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
             animate={shouldReduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
@@ -898,7 +931,8 @@ export function MobileAccountMenu({
               <div className="flex items-center gap-2 min-w-0">
                 {(panelSubView === 'store' ||
                   panelSubView === 'api-key' ||
-                  panelSubView === 'endpoint-test') && (
+                  panelSubView === 'endpoint-test' ||
+                  panelSubView === 'traffic') && (
                   <button
                     type="button"
                     onClick={onBackToOrganization}
@@ -915,22 +949,67 @@ export function MobileAccountMenu({
                       ? t.org.menuViewApi
                       : panelSubView === 'endpoint-test'
                         ? t.org.menuTestEndpoint
-                        : t.menu.organization}
+                        : panelSubView === 'traffic'
+                          ? t.org.menuTraffic
+                          : t.menu.organization}
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={onClosePanel}
-                aria-label={
-                  panelSubView === 'store'
-                    ? t.menu.closeStoreAria
-                    : t.menu.closeOrgAria
-                }
-                className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
-              >
-                <X className="w-4.5 h-4.5" aria-hidden="true" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {panelSubView === 'traffic' && (
+                  <div data-mobile-traffic-menu className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMobileTrafficMenuOpen((prev) => !prev)}
+                      aria-haspopup="menu"
+                      aria-expanded={mobileTrafficMenuOpen}
+                      aria-label={t.org.trafficActionsAria}
+                      className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                        mobileTrafficMenuOpen
+                          ? 'bg-slate-100 text-slate-950'
+                          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/90'
+                      }`}
+                    >
+                      <MoreHorizontal className="w-4.5 h-4.5" aria-hidden="true" />
+                    </button>
+
+                    <AnimatePresence>
+                      {mobileTrafficMenuOpen && (
+                        <motion.div
+                          role="menu"
+                          aria-label={t.org.trafficActionsAria}
+                          initial={
+                            shouldReduceMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, scale: 0.96, y: -4 }
+                          }
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={
+                            shouldReduceMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, scale: 0.96, y: -4 }
+                          }
+                          transition={{ duration: 0.14 }}
+                          className="absolute right-0 top-full mt-2 w-44 min-h-[48px] rounded-2xl border border-slate-200/95 bg-white shadow-[0_16px_40px_-12px_rgba(15,23,42,0.24)] p-1 z-30"
+                        />
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onClosePanel}
+                  aria-label={
+                    panelSubView === 'store'
+                      ? t.menu.closeStoreAria
+                      : t.menu.closeOrgAria
+                  }
+                  className="w-8 h-8 -mr-1 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 hover:bg-slate-100/90 transition-colors cursor-pointer shrink-0"
+                >
+                  <X className="w-4.5 h-4.5" aria-hidden="true" />
+                </button>
+              </div>
             </header>
 
             {panelSubView === 'store' && selectedStoreService ? (
@@ -951,6 +1030,11 @@ export function MobileAccountMenu({
                 service={selectedEndpointTestService}
                 variant="mobile"
               />
+            ) : panelSubView === 'traffic' && selectedTrafficService ? (
+              <ServiceTrafficView
+                service={selectedTrafficService}
+                variant="mobile"
+              />
             ) : (
               <MobileOrganizationView
                 orgProfile={orgProfile}
@@ -963,9 +1047,11 @@ export function MobileAccountMenu({
                 onOpenStore={onOpenStore}
                 onOpenApiKey={onOpenApiKey}
                 onOpenEndpointTest={onOpenEndpointTest}
+                onOpenTraffic={onOpenTraffic}
                 onViewServiceHistory={onViewServiceHistory}
                 onOpenSchema={onOpenSchema}
                 onOpenServiceChat={onOpenServiceChat}
+                onDeleteService={onDeleteService}
               />
             )}
           </motion.section>

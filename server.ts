@@ -31,6 +31,7 @@ import {
 } from './lib/planLimits.ts';
 import {
   buildClearQuotaCookiesHeaders,
+  deleteUserCoreService,
   getUserQuotaSummary,
   pauseAllUserApis,
   permanentlyDeleteUserAccount,
@@ -1039,6 +1040,28 @@ async function startServer() {
     }
     return res.json(result);
   });
+
+  app.post(
+    '/api/account/services/delete',
+    express.json({ limit: '16kb' }),
+    async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      const authUser = await verifySupabaseBearerUser(req.headers);
+      if (!authUser) {
+        return res.status(401).json({ error: 'No autorizado.' });
+      }
+      const rawServiceId =
+        typeof req.body?.serviceId === 'string' ? req.body.serviceId.trim() : '';
+      if (!rawServiceId) {
+        return res.status(400).json({ error: 'Falta el identificador del servicio.' });
+      }
+      const result = await deleteUserCoreService(authUser, rawServiceId);
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+      return res.json(result);
+    },
+  );
 
   app.post('/api/account/pause-all-apis', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
