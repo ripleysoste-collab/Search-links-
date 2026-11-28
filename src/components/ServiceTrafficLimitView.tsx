@@ -3,8 +3,14 @@ import { Check, X } from 'lucide-react';
 import type { OrganizationServiceItem } from './DesktopOrganizationView';
 import { useI18n } from '../lib/i18n';
 
+const FREE_PLAN_DEFAULT_PER_MINUTE = 20;
+const FREE_PLAN_DEFAULT_PER_HOUR = 150;
+const FREE_PLAN_DEFAULT_PER_DAY = 400;
+const FREE_PLAN_TOTAL_REQUESTS = 1000;
+
 interface ServiceTrafficLimitViewProps {
   service: OrganizationServiceItem;
+  totalAccountRequests: number;
   variant: 'desktop' | 'mobile';
 }
 
@@ -12,6 +18,7 @@ interface LimitInputBoxProps {
   id: string;
   label: string;
   value: string;
+  maxLimit: number;
   onChange: (nextValue: string) => void;
   variant: 'desktop' | 'mobile';
 }
@@ -20,6 +27,7 @@ function LimitInputBox({
   id,
   label,
   value,
+  maxLimit,
   onChange,
   variant,
 }: LimitInputBoxProps) {
@@ -27,8 +35,8 @@ function LimitInputBox({
     <div
       className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 focus-within:border-blue-500/75 focus-within:bg-white transition-colors flex flex-col justify-between ${
         variant === 'desktop'
-          ? 'px-4 py-4 min-h-[104px]'
-          : 'px-4 py-3.5 min-h-[94px]'
+          ? 'px-3.5 py-3.5 min-h-[100px]'
+          : 'px-4 py-3.5 min-h-[96px]'
       }`}
     >
       <label
@@ -45,36 +53,90 @@ function LimitInputBox({
         value={value}
         onChange={(e) => {
           const digitsOnly = e.target.value.replace(/[^\d]/g, '');
-          onChange(digitsOnly);
+          if (!digitsOnly) {
+            onChange('');
+            return;
+          }
+          const numeric = Math.min(maxLimit, Number(digitsOnly));
+          onChange(String(numeric));
         }}
-        placeholder="0"
+        onBlur={() => {
+          if (value === '') {
+            onChange(String(maxLimit));
+          }
+        }}
+        placeholder={String(maxLimit)}
         autoComplete="off"
         className={`w-full bg-transparent font-semibold tracking-tight text-slate-950 tabular-nums leading-none focus:outline-none mt-3 ${
-          variant === 'desktop' ? 'text-[26px]' : 'text-2xl'
+          variant === 'desktop' ? 'text-2xl' : 'text-2xl'
         }`}
       />
     </div>
   );
 }
 
+interface PlanAllowanceBoxProps {
+  label: string;
+  remainingValue: number;
+  variant: 'desktop' | 'mobile';
+}
+
+function PlanAllowanceBox({
+  label,
+  remainingValue,
+  variant,
+}: PlanAllowanceBoxProps) {
+  return (
+    <div
+      className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 flex flex-col justify-between ${
+        variant === 'desktop'
+          ? 'px-3.5 py-3.5 min-h-[100px]'
+          : 'px-4 py-3.5 min-h-[96px]'
+      }`}
+    >
+      <span className="text-xs font-medium text-slate-500 leading-snug">
+        {label}
+      </span>
+      <span className="text-2xl font-semibold tracking-tight text-slate-950 tabular-nums leading-none mt-3">
+        {remainingValue}
+      </span>
+    </div>
+  );
+}
+
 export function ServiceTrafficLimitView({
   service,
+  totalAccountRequests,
   variant,
 }: ServiceTrafficLimitViewProps) {
   const { t } = useI18n();
-  const [perMinuteLimit, setPerMinuteLimit] = useState('100');
-  const [perHourLimit, setPerHourLimit] = useState('1000');
-  const [dailyLimit, setDailyLimit] = useState('10000');
+  const [perMinuteLimit, setPerMinuteLimit] = useState(
+    String(FREE_PLAN_DEFAULT_PER_MINUTE),
+  );
+  const [perHourLimit, setPerHourLimit] = useState(
+    String(FREE_PLAN_DEFAULT_PER_HOUR),
+  );
+  const [dailyLimit, setDailyLimit] = useState(
+    String(FREE_PLAN_DEFAULT_PER_DAY),
+  );
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>(['']);
   const [savedNotice, setSavedNotice] = useState(false);
 
   useEffect(() => {
-    setPerMinuteLimit('100');
-    setPerHourLimit('1000');
-    setDailyLimit('10000');
+    setPerMinuteLimit(String(FREE_PLAN_DEFAULT_PER_MINUTE));
+    setPerHourLimit(String(FREE_PLAN_DEFAULT_PER_HOUR));
+    setDailyLimit(String(FREE_PLAN_DEFAULT_PER_DAY));
     setAllowedOrigins(['']);
     setSavedNotice(false);
   }, [service.id]);
+
+  const remainingFreePlanRequests = Math.max(
+    0,
+    FREE_PLAN_TOTAL_REQUESTS -
+      (Number.isFinite(totalAccountRequests)
+        ? Math.max(0, Math.trunc(totalAccountRequests))
+        : 0),
+  );
 
   const handleOriginChange = (index: number, nextValue: string) => {
     setAllowedOrigins((prev) =>
@@ -111,59 +173,43 @@ export function ServiceTrafficLimitView({
       className={`flex-1 min-h-0 bg-white overflow-y-auto ${containerPadding} flex flex-col justify-between gap-6`}
     >
       <div className="space-y-6">
-        {variant === 'desktop' ? (
-          <div className="grid grid-cols-3 gap-3.5">
-            <LimitInputBox
-              id={`traffic-limit-minute-${variant}-${service.id}`}
-              label={t.org.trafficLimitPerMinuteLabel}
-              value={perMinuteLimit}
-              onChange={setPerMinuteLimit}
-              variant="desktop"
-            />
-            <LimitInputBox
-              id={`traffic-limit-hour-${variant}-${service.id}`}
-              label={t.org.trafficLimitPerHourLabel}
-              value={perHourLimit}
-              onChange={setPerHourLimit}
-              variant="desktop"
-            />
-            <LimitInputBox
-              id={`traffic-limit-daily-${variant}-${service.id}`}
-              label={t.org.trafficLimitDailyLabel}
-              value={dailyLimit}
-              onChange={setDailyLimit}
-              variant="desktop"
-            />
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            <LimitInputBox
-              id={`traffic-limit-minute-${variant}-${service.id}`}
-              label={t.org.trafficLimitPerMinuteLabel}
-              value={perMinuteLimit}
-              onChange={setPerMinuteLimit}
-              variant="mobile"
-            />
-            <LimitInputBox
-              id={`traffic-limit-hour-${variant}-${service.id}`}
-              label={t.org.trafficLimitPerHourLabel}
-              value={perHourLimit}
-              onChange={setPerHourLimit}
-              variant="mobile"
-            />
-            <div className="col-span-2 flex justify-center">
-              <div className="w-[calc(50%-0.375rem)]">
-                <LimitInputBox
-                  id={`traffic-limit-daily-${variant}-${service.id}`}
-                  label={t.org.trafficLimitDailyLabel}
-                  value={dailyLimit}
-                  onChange={setDailyLimit}
-                  variant="mobile"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        <div
+          className={
+            variant === 'desktop'
+              ? 'grid grid-cols-4 gap-3'
+              : 'grid grid-cols-2 gap-3'
+          }
+        >
+          <LimitInputBox
+            id={`traffic-limit-minute-${variant}-${service.id}`}
+            label={t.org.trafficLimitPerMinuteLabel}
+            value={perMinuteLimit}
+            maxLimit={FREE_PLAN_DEFAULT_PER_MINUTE}
+            onChange={setPerMinuteLimit}
+            variant={variant}
+          />
+          <LimitInputBox
+            id={`traffic-limit-hour-${variant}-${service.id}`}
+            label={t.org.trafficLimitPerHourLabel}
+            value={perHourLimit}
+            maxLimit={FREE_PLAN_DEFAULT_PER_HOUR}
+            onChange={setPerHourLimit}
+            variant={variant}
+          />
+          <LimitInputBox
+            id={`traffic-limit-daily-${variant}-${service.id}`}
+            label={t.org.trafficLimitDailyLabel}
+            value={dailyLimit}
+            maxLimit={FREE_PLAN_DEFAULT_PER_DAY}
+            onChange={setDailyLimit}
+            variant={variant}
+          />
+          <PlanAllowanceBox
+            label={t.org.trafficLimitFreePlanRemainingLabel}
+            remainingValue={remainingFreePlanRequests}
+            variant={variant}
+          />
+        </div>
 
         <div className="space-y-2.5">
           <h3 className="text-xs font-medium text-slate-900">

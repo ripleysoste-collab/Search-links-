@@ -297,6 +297,20 @@ export function DesktopAccountMenu({
   const selectedTrafficLimitService =
     services.find((srv) => srv.id === selectedTrafficLimitServiceId) ?? services[0] ?? null;
 
+  const totalAccountRequests = useMemo(
+    () =>
+      services.reduce(
+        (sum, srv) =>
+          sum +
+          (typeof srv.requestsCount === 'number' &&
+          Number.isFinite(srv.requestsCount)
+            ? Math.max(0, Math.trunc(srv.requestsCount))
+            : 0),
+        0,
+      ),
+    [services],
+  );
+
   const activeSchemaInput = useMemo(
     () =>
       selectedSchemaService
@@ -1187,6 +1201,7 @@ export function DesktopAccountMenu({
                 >
                   <ServiceTrafficLimitView
                     service={selectedTrafficLimitService}
+                    totalAccountRequests={totalAccountRequests}
                     variant="desktop"
                   />
                 </motion.div>

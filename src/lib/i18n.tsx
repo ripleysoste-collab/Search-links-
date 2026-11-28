@@ -363,6 +363,7 @@ export interface TranslationDictionary {
     trafficLimitPerMinuteLabel: string;
     trafficLimitPerHourLabel: string;
     trafficLimitDailyLabel: string;
+    trafficLimitFreePlanRemainingLabel: string;
     trafficLimitQuickSecurityLabel: string;
     trafficLimitOriginPlaceholder: string;
     trafficLimitOriginAria: (index: number) => string;
@@ -587,6 +588,32 @@ export interface TranslationDictionary {
     unfreezeApisButton: string;
     unfreezeApisSuccess: (servicesCount: number) => string;
     actionErrorFallback: string;
+  };
+  plans: {
+    sectionAria: string;
+    sectionTitle: string;
+    perMonth: string;
+    free: {
+      cardAria: string;
+      name: string;
+      subtitle: string;
+      price: string;
+      features: string[];
+    };
+    plus: {
+      cardAria: string;
+      name: string;
+      subtitle: string;
+      price: string;
+      features: string[];
+    };
+    plusMax: {
+      cardAria: string;
+      name: string;
+      subtitle: string;
+      price: string;
+      features: string[];
+    };
   };
 }
 
@@ -1029,6 +1056,7 @@ const ES_DICTIONARY: TranslationDictionary = {
     trafficLimitPerMinuteLabel: 'Peticiones por minuto',
     trafficLimitPerHourLabel: 'Peticiones por hora',
     trafficLimitDailyLabel: 'Peticiones diarias',
+    trafficLimitFreePlanRemainingLabel: 'Plan gratuito',
     trafficLimitQuickSecurityLabel: 'Seguridad rápida',
     trafficLimitOriginPlaceholder: 'https://tu-servidor.com',
     trafficLimitOriginAria: (index) => `URL de origen permitida ${index}`,
@@ -1374,6 +1402,53 @@ const ES_DICTIONARY: TranslationDictionary = {
         ? `Se descongelaron ${count} ${count === 1 ? 'servicio' : 'servicios'} y todas tus APIs volvieron a funcionar.`
         : 'Todas tus APIs volvieron a funcionar.',
     actionErrorFallback: 'No se pudo completar la operación. Intenta nuevamente.',
+  },
+  plans: {
+    sectionAria: 'Planes disponibles',
+    sectionTitle: 'Planes',
+    perMonth: '/mes',
+    free: {
+      cardAria: 'Plan Gratuito',
+      name: 'Gratuito',
+      subtitle: 'Para probar',
+      price: '$0',
+      features: [
+        '20 imágenes',
+        '1,000 peticiones/mes',
+        '20/min · 150/h · 400/día',
+        'Banco público: 1 cada 3 min',
+        'Search IA: 5 al día',
+      ],
+    },
+    plus: {
+      cardAria: 'Plan Plus',
+      name: 'Plus',
+      subtitle: 'Con tu propio servidor',
+      price: '$10',
+      features: [
+        '80 imágenes',
+        'Conecta tu servidor',
+        'Peticiones ilimitadas en tu servidor',
+        '2 imágenes IA al día',
+        'Banco público: 5/min',
+        'Search IA: 15 al día',
+      ],
+    },
+    plusMax: {
+      cardAria: 'Plan Plus+',
+      name: 'Plus+',
+      subtitle: 'Nuestros servidores o el tuyo',
+      price: '$15',
+      features: [
+        '150 imágenes',
+        '25,000 peticiones/mes',
+        '120/min · 1,500/h · 5,000/día',
+        'Conecta tu servidor incluido',
+        '10 imágenes IA al día',
+        'Banco público: 15/min',
+        'Search IA: 50 al día',
+      ],
+    },
   },
 };
 
@@ -1818,6 +1893,7 @@ const EN_DICTIONARY: TranslationDictionary = {
     trafficLimitPerMinuteLabel: 'Requests per minute',
     trafficLimitPerHourLabel: 'Requests per hour',
     trafficLimitDailyLabel: 'Daily requests',
+    trafficLimitFreePlanRemainingLabel: 'Free plan',
     trafficLimitQuickSecurityLabel: 'Quick security',
     trafficLimitOriginPlaceholder: 'https://your-server.com',
     trafficLimitOriginAria: (index) => `Allowed origin URL ${index}`,
@@ -2162,6 +2238,53 @@ const EN_DICTIONARY: TranslationDictionary = {
         ? `Unfroze ${count} ${count === 1 ? 'service' : 'services'} and all your APIs are active again.`
         : 'All your APIs are active again.',
     actionErrorFallback: 'Could not complete the operation. Please try again.',
+  },
+  plans: {
+    sectionAria: 'Available plans',
+    sectionTitle: 'Plans',
+    perMonth: '/mo',
+    free: {
+      cardAria: 'Free Plan',
+      name: 'Free',
+      subtitle: 'To get started',
+      price: '$0',
+      features: [
+        '20 images',
+        '1,000 requests/mo',
+        '20/min · 150/h · 400/day',
+        'Public bank: 1 every 3 min',
+        'Search IA: 5/day',
+      ],
+    },
+    plus: {
+      cardAria: 'Plus Plan',
+      name: 'Plus',
+      subtitle: 'With your own server',
+      price: '$10',
+      features: [
+        '80 images',
+        'Connect your server',
+        'Unlimited requests on your server',
+        '2 AI images/day',
+        'Public bank: 5/min',
+        'Search IA: 15/day',
+      ],
+    },
+    plusMax: {
+      cardAria: 'Plus+ Plan',
+      name: 'Plus+',
+      subtitle: 'Our servers or yours',
+      price: '$15',
+      features: [
+        '150 images',
+        '25,000 requests/mo',
+        '120/min · 1,500/h · 5,000/day',
+        'Connect your server included',
+        '10 AI images/day',
+        'Public bank: 15/min',
+        'Search IA: 50/day',
+      ],
+    },
   },
 };
 
@@ -2607,6 +2730,7 @@ const PT_DICTIONARY: TranslationDictionary = {
     trafficLimitPerMinuteLabel: 'Requisições por minuto',
     trafficLimitPerHourLabel: 'Requisições por hora',
     trafficLimitDailyLabel: 'Requisições diárias',
+    trafficLimitFreePlanRemainingLabel: 'Plano gratuito',
     trafficLimitQuickSecurityLabel: 'Segurança rápida',
     trafficLimitOriginPlaceholder: 'https://seu-servidor.com',
     trafficLimitOriginAria: (index) => `URL de origem permitida ${index}`,
@@ -2952,6 +3076,53 @@ const PT_DICTIONARY: TranslationDictionary = {
         ? `${count} ${count === 1 ? 'serviço foi descongelado' : 'serviços foram descongelados'} e todas as suas APIs voltaram a funcionar.`
         : 'Todas as suas APIs voltaram a funcionar.',
     actionErrorFallback: 'Não foi possível concluir a operação. Tente novamente.',
+  },
+  plans: {
+    sectionAria: 'Planos disponíveis',
+    sectionTitle: 'Planos',
+    perMonth: '/mês',
+    free: {
+      cardAria: 'Plano Gratuito',
+      name: 'Gratuito',
+      subtitle: 'Para testar',
+      price: '$0',
+      features: [
+        '20 imagens',
+        '1.000 requisições/mês',
+        '20/min · 150/h · 400/dia',
+        'Banco público: 1 a cada 3 min',
+        'Search IA: 5/dia',
+      ],
+    },
+    plus: {
+      cardAria: 'Plano Plus',
+      name: 'Plus',
+      subtitle: 'Com seu próprio servidor',
+      price: '$10',
+      features: [
+        '80 imagens',
+        'Conecte seu servidor',
+        'Requisições ilimitadas no seu servidor',
+        '2 imagens IA/dia',
+        'Banco público: 5/min',
+        'Search IA: 15/dia',
+      ],
+    },
+    plusMax: {
+      cardAria: 'Plano Plus+',
+      name: 'Plus+',
+      subtitle: 'Nossos servidores ou o seu',
+      price: '$15',
+      features: [
+        '150 imagens',
+        '25.000 requisições/mês',
+        '120/min · 1.500/h · 5.000/dia',
+        'Conecte seu servidor incluído',
+        '10 imagens IA/dia',
+        'Banco público: 15/min',
+        'Search IA: 50/dia',
+      ],
+    },
   },
 };
 

@@ -13,6 +13,9 @@ export const GUEST_IMAGE_BANK_MAX_ATTEMPTS = 2;
 export const GUEST_IP_BLOCK_MS = 24 * 60 * 60 * 1000;
 export const FREE_PLAN_MAX_IMAGES = 20;
 export const FREE_PLAN_MAX_API_REQUESTS_MONTHLY = 1000;
+export const FREE_PLAN_MAX_REQUESTS_PER_MINUTE = 20;
+export const FREE_PLAN_MAX_REQUESTS_PER_HOUR = 150;
+export const FREE_PLAN_MAX_REQUESTS_PER_DAY = 400;
 export const GUEST_EXTRACT_COOKIE_NAME = 'sl_guest_ext';
 export const GUEST_IMAGE_BANK_COOKIE_NAME = 'sl_guest_img_bank';
 

@@ -22,6 +22,7 @@ import {
 } from './components/DualCatalogShowcase';
 import { MobileAccountMenu } from './components/MobileAccountMenu';
 import { LegalDocumentPage, type LegalDocId } from './components/LegalDocumentPage';
+import { PlansSection } from './components/PlansSection';
 import {
   IMAGE_BANK_PATH,
   type AppRoute,
@@ -3812,6 +3813,16 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Plans section: below showcase cards on mobile (2-col compact) and below landing sections on desktop */}
+      <PlansSection
+        visible={
+          !hasSearched &&
+          !isFileUploadFlow &&
+          !isExtracting &&
+          !isMobileImageBankActive
+        }
+      />
       </div>
 
       {/* Desktop-only push-docked right menu (expands 25% -> 50% rounded on account / organization views) */}

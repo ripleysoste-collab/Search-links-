@@ -260,6 +260,20 @@ export function MobileAccountMenu({
   const selectedTrafficLimitService =
     services.find((srv) => srv.id === selectedTrafficLimitServiceId) ?? services[0] ?? null;
 
+  const totalAccountRequests = useMemo(
+    () =>
+      services.reduce(
+        (sum, srv) =>
+          sum +
+          (typeof srv.requestsCount === 'number' &&
+          Number.isFinite(srv.requestsCount)
+            ? Math.max(0, Math.trunc(srv.requestsCount))
+            : 0),
+        0,
+      ),
+    [services],
+  );
+
   const selectedSchemaService = useMemo(
     () =>
       selectedSchemaServiceId
@@ -1118,6 +1132,7 @@ export function MobileAccountMenu({
             ) : panelSubView === 'traffic-limit' && selectedTrafficLimitService ? (
               <ServiceTrafficLimitView
                 service={selectedTrafficLimitService}
+                totalAccountRequests={totalAccountRequests}
                 variant="mobile"
               />
             ) : (
