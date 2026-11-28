@@ -4,7 +4,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   checkAndConsumeServiceTraffic,
   checkPreResolutionServiceTraffic,
+  hasFreshKeyHashTrafficHydration,
+  hydrateServiceTrafficLimitRuleFromDb,
+  markKeyHashRuleHydrated,
+  type PlanTier,
+  registerKeyHashServiceScope,
   registerServicePlanTier,
+  resolveServicePlanTier,
   resolveUserPlanTier,
 } from './planLimits.ts';
 
@@ -448,6 +454,139 @@ export function extractCoreRequestParams(
   };
 }
 
+async function ensureServiceTrafficRuleHydrated(
+  supabase: SupabaseClient,
+  keyHash: string,
+): Promise<void> {
+  if (!keyHash || hasFreshKeyHashTrafficHydration(keyHash)) {
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      'get_service_traffic_limits_by_key_hash',
+      { p_key_hash: keyHash },
+    );
+
+    if (!error) {
+      if (data && typeof data === 'object') {
+        const row = data as Record<string, unknown>;
+        const servicioId =
+          typeof row.servicio_id === 'string' ? row.servicio_id.trim() : '';
+        if (servicioId) {
+          registerKeyHashServiceScope(keyHash, servicioId);
+
+          const rawPlan =
+            typeof row.plan_tier === 'string' ? row.plan_tier.trim() : '';
+          const planTier: PlanTier | undefined =
+            rawPlan === 'free' || rawPlan === 'plus' || rawPlan === 'plus_max'
+              ? rawPlan
+              : undefined;
+          if (planTier) {
+            registerServicePlanTier(servicioId, planTier);
+          }
+
+          if (row.has_rule === true) {
+            hydrateServiceTrafficLimitRuleFromDb({
+              serviceId: servicioId,
+              planTier: planTier ?? resolveServicePlanTier(servicioId),
+              perMinuteLimit: Number(row.per_minute_limit),
+              perHourLimit: Number(row.per_hour_limit),
+              dailyLimit: Number(row.daily_limit),
+              allowedOrigins: Array.isArray(row.allowed_origins)
+                ? row.allowed_origins.filter(
+                    (entry): entry is string => typeof entry === 'string',
+                  )
+                : [],
+              updatedAt:
+                typeof row.updated_at === 'string' ? row.updated_at : '',
+            });
+          }
+
+          markKeyHashRuleHydrated(keyHash, servicioId);
+        }
+      }
+      return;
+    }
+
+    // Fallback when RPC hasn't been deployed yet, if admin client is configured
+    const admin = getSupabaseAdminClient();
+    if (!admin) return;
+
+    const { data: keyRow } = await admin
+      .from('servicio_api_keys')
+      .select('servicio_id, user_id')
+      .eq('key_hash', keyHash)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    const servicioId =
+      keyRow && typeof keyRow.servicio_id === 'string'
+        ? keyRow.servicio_id.trim()
+        : '';
+    if (!servicioId) return;
+
+    registerKeyHashServiceScope(keyHash, servicioId);
+
+    const [{ data: srvRow }, { data: limitRow }] = await Promise.all([
+      admin
+        .from('servicios')
+        .select('user_id, is_active')
+        .eq('id', servicioId)
+        .maybeSingle(),
+      admin
+        .from('servicio_limites')
+        .select(
+          'user_id, per_minute_limit, per_hour_limit, daily_limit, allowed_origins, updated_at',
+        )
+        .eq('servicio_id', servicioId)
+        .maybeSingle(),
+    ]);
+
+    if (srvRow && srvRow.is_active === false) return;
+
+    const ownerUserId =
+      (keyRow && typeof keyRow.user_id === 'string' && keyRow.user_id) ||
+      (srvRow && typeof srvRow.user_id === 'string' && srvRow.user_id) ||
+      '';
+
+    let resolvedTier: PlanTier | undefined;
+    if (ownerUserId) {
+      const { data: userRes } = await admin.auth.admin.getUserById(ownerUserId);
+      if (userRes?.user) {
+        resolvedTier = resolveUserPlanTier(
+          userRes.user.email,
+          userRes.user.app_metadata as Record<string, unknown> | undefined,
+        );
+        registerServicePlanTier(servicioId, resolvedTier, ownerUserId);
+      }
+    }
+
+    if (limitRow) {
+      hydrateServiceTrafficLimitRuleFromDb({
+        serviceId: servicioId,
+        userId:
+          typeof limitRow.user_id === 'string' ? limitRow.user_id : ownerUserId,
+        planTier: resolvedTier ?? resolveServicePlanTier(servicioId),
+        perMinuteLimit: Number(limitRow.per_minute_limit),
+        perHourLimit: Number(limitRow.per_hour_limit),
+        dailyLimit: Number(limitRow.daily_limit),
+        allowedOrigins: Array.isArray(limitRow.allowed_origins)
+          ? limitRow.allowed_origins.filter(
+              (entry): entry is string => typeof entry === 'string',
+            )
+          : [],
+        updatedAt:
+          typeof limitRow.updated_at === 'string' ? limitRow.updated_at : '',
+      });
+    }
+
+    markKeyHashRuleHydrated(keyHash, servicioId);
+  } catch {
+    // Non-fatal fallback if servicio_limites.sql hasn't been executed yet
+  }
+}
+
 export async function resolveSearchLinkCoreEndpoint(
   params: SearchLinkCoreQueryInput,
 ): Promise<
@@ -491,6 +630,10 @@ export async function resolveSearchLinkCoreEndpoint(
           'Este servicio está conectado a un servidor externo. Las peticiones de catálogo deben realizarse directamente a tu propio servidor.',
       };
     }
+  }
+
+  if (params.enforceTrafficRules) {
+    await ensureServiceTrafficRuleHydrated(supabase, keyHash);
   }
 
   const preCheck = checkPreResolutionServiceTraffic({

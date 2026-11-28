@@ -107,6 +107,11 @@ const userPlanTierMemory = new Map<string, PlanTier>();
 const servicePlanTierMemory = new Map<string, PlanTier>();
 const serviceOwnerUserMemory = new Map<string, string>();
 const serviceTrafficRuleMemory = new Map<string, ServiceTrafficLimitRule>();
+const keyHashRuleHydrationMemory = new Map<
+  string,
+  { serviceId: string; expiresAt: number }
+>();
+const KEY_HASH_RULE_HYDRATION_TTL_MS = 30_000;
 
 interface DeletedAccountLedgerFallback {
   freeImagesUsed: number;
@@ -939,6 +944,129 @@ export function saveServiceTrafficLimitRule(input: {
   }
   serviceTrafficRuleMemory.set(input.serviceId, rule);
   return rule;
+}
+
+export function registerKeyHashServiceScope(
+  keyHash: string,
+  serviceId: string,
+): void {
+  const cleanHash = keyHash.trim();
+  const cleanService = serviceId.trim();
+  if (!cleanHash || !cleanService) return;
+  if (keyHashToServiceScope.size >= 10000) {
+    const oldestKey = keyHashToServiceScope.keys().next().value;
+    if (oldestKey) keyHashToServiceScope.delete(oldestKey);
+  }
+  keyHashToServiceScope.set(cleanHash, cleanService);
+}
+
+export function hasFreshKeyHashTrafficHydration(keyHash: string): boolean {
+  const cleanHash = keyHash.trim();
+  if (!cleanHash) return false;
+  const entry = keyHashRuleHydrationMemory.get(cleanHash);
+  if (!entry) return false;
+  if (entry.expiresAt <= Date.now()) {
+    keyHashRuleHydrationMemory.delete(cleanHash);
+    return false;
+  }
+  return true;
+}
+
+export function markKeyHashRuleHydrated(
+  keyHash: string,
+  serviceId: string,
+): void {
+  const cleanHash = keyHash.trim();
+  const cleanService = serviceId.trim();
+  if (!cleanHash || !cleanService) return;
+  if (keyHashRuleHydrationMemory.size >= 10000) {
+    const oldest = keyHashRuleHydrationMemory.keys().next().value;
+    if (oldest) keyHashRuleHydrationMemory.delete(oldest);
+  }
+  keyHashRuleHydrationMemory.set(cleanHash, {
+    serviceId: cleanService,
+    expiresAt: Date.now() + KEY_HASH_RULE_HYDRATION_TTL_MS,
+  });
+}
+
+export function invalidateServiceLimitHydrationCache(serviceId?: string): void {
+  const target = serviceId?.trim();
+  if (!target) {
+    keyHashRuleHydrationMemory.clear();
+    return;
+  }
+  for (const [hash, entry] of keyHashRuleHydrationMemory.entries()) {
+    if (entry.serviceId === target) {
+      keyHashRuleHydrationMemory.delete(hash);
+    }
+  }
+}
+
+export function hydrateServiceTrafficLimitRuleFromDb(input: {
+  serviceId: string;
+  userId?: string;
+  planTier?: PlanTier;
+  perMinuteLimit: number;
+  perHourLimit: number;
+  dailyLimit: number;
+  allowedOrigins: string[];
+  updatedAt?: string;
+}): ServiceTrafficLimitRule {
+  const resolvedTier = input.planTier ?? resolveServicePlanTier(input.serviceId);
+  registerServicePlanTier(input.serviceId, resolvedTier, input.userId);
+  const limits = getPlanLimitsForTier(resolvedTier);
+  const existing = serviceTrafficRuleMemory.get(input.serviceId);
+
+  const normalizedOrigins: string[] = [];
+  for (const raw of input.allowedOrigins) {
+    const norm = normalizeAllowedOriginInput(raw);
+    if (norm && !normalizedOrigins.includes(norm)) {
+      normalizedOrigins.push(norm);
+    }
+  }
+
+  const rule: ServiceTrafficLimitRule = {
+    serviceId: input.serviceId,
+    userId: input.userId || existing?.userId || '',
+    planTier: resolvedTier,
+    perMinuteLimit: clampRuleLimit(
+      input.perMinuteLimit,
+      limits.maxRequestsPerMinute,
+      limits.maxRequestsPerMinute,
+    ),
+    perHourLimit: clampRuleLimit(
+      input.perHourLimit,
+      limits.maxRequestsPerHour,
+      limits.maxRequestsPerHour,
+    ),
+    dailyLimit: clampRuleLimit(
+      input.dailyLimit,
+      limits.maxRequestsPerDay,
+      limits.maxRequestsPerDay,
+    ),
+    allowedOrigins: normalizedOrigins,
+    updatedAt: input.updatedAt || existing?.updatedAt || '',
+  };
+
+  if (serviceTrafficRuleMemory.size >= 10000) {
+    const oldest = serviceTrafficRuleMemory.keys().next().value;
+    if (oldest) serviceTrafficRuleMemory.delete(oldest);
+  }
+  serviceTrafficRuleMemory.set(input.serviceId, rule);
+  return rule;
+}
+
+export function invalidateServiceTrafficLimitRuleMemory(
+  serviceId?: string,
+): void {
+  const target = serviceId?.trim();
+  if (!target) {
+    serviceTrafficRuleMemory.clear();
+    keyHashRuleHydrationMemory.clear();
+    return;
+  }
+  serviceTrafficRuleMemory.delete(target);
+  invalidateServiceLimitHydrationCache(target);
 }
 
 export function getCurrentMonthKey(): string {

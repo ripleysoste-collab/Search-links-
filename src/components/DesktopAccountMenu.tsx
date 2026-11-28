@@ -1190,6 +1190,8 @@ export function DesktopAccountMenu({
                 >
                   <ServiceTrafficView
                     service={selectedTrafficService}
+                    totalAccountRequests={totalAccountRequests}
+                    planTier={planTier}
                     variant="desktop"
                   />
                 </motion.div>

@@ -12,6 +12,9 @@ import {
   getServiceTrafficLimitRule,
   GUEST_EXTRACT_COOKIE_NAME,
   GUEST_IMAGE_BANK_COOKIE_NAME,
+  hydrateServiceTrafficLimitRuleFromDb,
+  invalidateServiceLimitHydrationCache,
+  invalidateServiceTrafficLimitRuleMemory,
   invalidateUserImageQuotaCache,
   isAdminTestEmail,
   normalizeAllowedOriginInput,
@@ -281,6 +284,11 @@ export async function purgeAllUserR2Images(
   if (keyHashes.length > 0) {
     markExternalServerActiveForKeyHashes(keyHashes, false);
   }
+  for (const srv of servicesList) {
+    if (typeof srv?.id === 'string' && srv.id) {
+      invalidateServiceTrafficLimitRuleMemory(srv.id);
+    }
+  }
   invalidateCoreCatalogCache();
   invalidateUserImageQuotaCache(authUser.userId);
 
@@ -445,6 +453,7 @@ export async function deleteUserCoreService(
   if (keyHashes.length > 0) {
     markExternalServerActiveForKeyHashes(keyHashes, false);
   }
+  invalidateServiceTrafficLimitRuleMemory(cleanServiceId);
   invalidateCoreCatalogCache(
     typeof serviceRow.public_slug === 'string'
       ? { slug: serviceRow.public_slug }
@@ -828,6 +837,11 @@ export async function permanentlyDeleteUserAccount(
   if (keyHashes.length > 0) {
     markExternalServerActiveForKeyHashes(keyHashes, false);
   }
+  for (const srv of servicesList) {
+    if (typeof srv?.id === 'string' && srv.id) {
+      invalidateServiceTrafficLimitRuleMemory(srv.id);
+    }
+  }
   invalidateCoreCatalogCache();
   clearUserVerificationCacheByUserId(authUser.userId);
 
@@ -864,6 +878,15 @@ async function verifyOwnedServiceId(
   }
 }
 
+function isMissingServicioLimitesError(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (error.code === 'PGRST205' || error.code === '42P01') return true;
+  const msg = (error.message || '').toLowerCase();
+  return msg.includes('servicio_limites') && msg.includes('does not exist');
+}
+
 export async function getServiceTrafficLimitsForUser(
   authUser: AuthenticatedRequestUser,
   serviceId: string,
@@ -886,6 +909,57 @@ export async function getServiceTrafficLimitsForUser(
   }
   const planTier = resolveUserPlanTier(authUser.email, authUser.appMetadata);
   const planLimits = getPlanLimitsForTier(planTier);
+
+  if (UUID_REGEX.test(cleanId)) {
+    const userClient = createAuthenticatedUserClient(authUser.accessToken);
+    if (userClient) {
+      try {
+        const { data, error } = await userClient
+          .from('servicio_limites')
+          .select(
+            'per_minute_limit, per_hour_limit, daily_limit, allowed_origins, updated_at',
+          )
+          .eq('servicio_id', cleanId)
+          .eq('user_id', authUser.userId)
+          .maybeSingle();
+
+        if (error) {
+          if (!isMissingServicioLimitesError(error)) {
+            return {
+              ok: false,
+              status: 500,
+              error: 'No se pudieron consultar los límites de tráfico en Supabase.',
+            };
+          }
+        } else if (data) {
+          const rule = hydrateServiceTrafficLimitRuleFromDb({
+            serviceId: cleanId,
+            userId: authUser.userId,
+            planTier,
+            perMinuteLimit: Number(data.per_minute_limit),
+            perHourLimit: Number(data.per_hour_limit),
+            dailyLimit: Number(data.daily_limit),
+            allowedOrigins: Array.isArray(data.allowed_origins)
+              ? data.allowed_origins.filter(
+                  (entry): entry is string => typeof entry === 'string',
+                )
+              : [],
+            updatedAt:
+              typeof data.updated_at === 'string' ? data.updated_at : '',
+          });
+          return {
+            ok: true,
+            planTier,
+            planLimits,
+            rule,
+          };
+        }
+      } catch {
+        // Fall through to in-memory/default rule if transient failure
+      }
+    }
+  }
+
   const rule = getServiceTrafficLimitRule(cleanId, authUser.userId, planTier);
   return {
     ok: true,
@@ -935,20 +1009,109 @@ export async function saveServiceTrafficLimitsForUser(
           'Ingresa URLs válidas con http:// o https:// en Seguridad rápida.',
       };
     }
-    normalizedOrigins.push(normalized);
+    if (!normalizedOrigins.includes(normalized)) {
+      normalizedOrigins.push(normalized);
+    }
   }
 
   const planTier = resolveUserPlanTier(authUser.email, authUser.appMetadata);
   const planLimits = getPlanLimitsForTier(planTier);
-  const rule = saveServiceTrafficLimitRule({
-    serviceId: cleanId,
-    userId: authUser.userId,
-    planTier,
-    perMinuteLimit: input.perMinuteLimit,
-    perHourLimit: input.perHourLimit,
-    dailyLimit: input.dailyLimit,
-    allowedOrigins: normalizedOrigins,
-  });
+
+  const clampedMinute = Math.max(
+    1,
+    Math.min(
+      planLimits.maxRequestsPerMinute,
+      Number.isFinite(input.perMinuteLimit)
+        ? Math.trunc(input.perMinuteLimit)
+        : planLimits.maxRequestsPerMinute,
+    ),
+  );
+  const clampedHour = Math.max(
+    1,
+    Math.min(
+      planLimits.maxRequestsPerHour,
+      Number.isFinite(input.perHourLimit)
+        ? Math.trunc(input.perHourLimit)
+        : planLimits.maxRequestsPerHour,
+    ),
+  );
+  const clampedDay = Math.max(
+    1,
+    Math.min(
+      planLimits.maxRequestsPerDay,
+      Number.isFinite(input.dailyLimit)
+        ? Math.trunc(input.dailyLimit)
+        : planLimits.maxRequestsPerDay,
+    ),
+  );
+
+  let persistedUpdatedAt: string | undefined;
+
+  if (UUID_REGEX.test(cleanId)) {
+    const userClient = createAuthenticatedUserClient(authUser.accessToken);
+    if (!userClient) {
+      return {
+        ok: false,
+        status: 500,
+        error: 'Configuración de Supabase no disponible en el servidor.',
+      };
+    }
+
+    const { data: upsertedRow, error: upsertErr } = await userClient
+      .from('servicio_limites')
+      .upsert(
+        {
+          servicio_id: cleanId,
+          user_id: authUser.userId,
+          per_minute_limit: clampedMinute,
+          per_hour_limit: clampedHour,
+          daily_limit: clampedDay,
+          allowed_origins: normalizedOrigins,
+        },
+        { onConflict: 'servicio_id' },
+      )
+      .select(
+        'per_minute_limit, per_hour_limit, daily_limit, allowed_origins, updated_at',
+      )
+      .maybeSingle();
+
+    if (upsertErr) {
+      if (!isMissingServicioLimitesError(upsertErr)) {
+        return {
+          ok: false,
+          status: 500,
+          error: `No se pudieron guardar los límites en Supabase: ${upsertErr.message}`,
+        };
+      }
+      // Graceful fallback to RAM if servicio_limites.sql hasn't been executed yet
+    } else if (upsertedRow && typeof upsertedRow.updated_at === 'string') {
+      persistedUpdatedAt = upsertedRow.updated_at;
+    }
+  }
+
+  const rule = persistedUpdatedAt
+    ? hydrateServiceTrafficLimitRuleFromDb({
+        serviceId: cleanId,
+        userId: authUser.userId,
+        planTier,
+        perMinuteLimit: clampedMinute,
+        perHourLimit: clampedHour,
+        dailyLimit: clampedDay,
+        allowedOrigins: normalizedOrigins,
+        updatedAt: persistedUpdatedAt,
+      })
+    : saveServiceTrafficLimitRule({
+        serviceId: cleanId,
+        userId: authUser.userId,
+        planTier,
+        perMinuteLimit: clampedMinute,
+        perHourLimit: clampedHour,
+        dailyLimit: clampedDay,
+        allowedOrigins: normalizedOrigins,
+      });
+
+  invalidateServiceLimitHydrationCache(cleanId);
+  invalidateCoreCatalogCache();
 
   return {
     ok: true,

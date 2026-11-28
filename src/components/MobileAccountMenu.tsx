@@ -1130,6 +1130,8 @@ export function MobileAccountMenu({
             ) : panelSubView === 'traffic' && selectedTrafficService ? (
               <ServiceTrafficView
                 service={selectedTrafficService}
+                totalAccountRequests={totalAccountRequests}
+                planTier={planTier}
                 variant="mobile"
               />
             ) : panelSubView === 'traffic-limit' && selectedTrafficLimitService ? (

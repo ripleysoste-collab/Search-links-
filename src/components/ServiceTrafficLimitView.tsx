@@ -23,6 +23,7 @@ interface LimitInputBoxProps {
   maxLimit: number;
   onChange: (nextValue: string) => void;
   variant: 'desktop' | 'mobile';
+  glowDelay: string;
 }
 
 function LimitInputBox({
@@ -32,48 +33,58 @@ function LimitInputBox({
   maxLimit,
   onChange,
   variant,
+  glowDelay,
 }: LimitInputBoxProps) {
   return (
-    <div
-      className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 focus-within:border-blue-500/75 focus-within:bg-white transition-colors flex flex-col justify-between ${
-        variant === 'desktop'
-          ? 'px-3.5 py-3.5 min-h-[100px]'
-          : 'px-4 py-3.5 min-h-[96px]'
-      }`}
-    >
-      <label
-        htmlFor={id}
-        className="text-xs font-medium text-slate-500 leading-snug cursor-pointer"
-      >
-        {label}
-      </label>
-      <input
-        id={id}
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={value}
-        onChange={(e) => {
-          const digitsOnly = e.target.value.replace(/[^\d]/g, '');
-          if (!digitsOnly) {
-            onChange('');
-            return;
-          }
-          const numeric = Math.min(maxLimit, Number(digitsOnly));
-          onChange(String(numeric));
-        }}
-        onBlur={() => {
-          if (value === '') {
-            onChange(String(maxLimit));
-            return;
-          }
-          const numeric = Math.max(1, Math.min(maxLimit, Number(value) || maxLimit));
-          onChange(String(numeric));
-        }}
-        placeholder={String(maxLimit)}
-        autoComplete="off"
-        className="w-full bg-transparent font-semibold tracking-tight text-slate-950 tabular-nums leading-none focus:outline-none mt-3 text-2xl"
+    <div className="traffic-card-shell relative rounded-2xl p-[1px] overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="traffic-card-glow"
+        style={{ animationDelay: glowDelay }}
       />
+      <div
+        className={`relative z-10 h-full w-full rounded-[15px] bg-white flex flex-col justify-between ${
+          variant === 'desktop'
+            ? 'px-3.5 py-3.5 min-h-[100px]'
+            : 'px-4 py-3.5 min-h-[96px]'
+        }`}
+      >
+        <label
+          htmlFor={id}
+          className="text-xs font-medium text-slate-500 leading-snug cursor-pointer"
+        >
+          {label}
+        </label>
+        <input
+          id={id}
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={value}
+          onChange={(e) => {
+            const digitsOnly = e.target.value.replace(/[^\d]/g, '');
+            if (!digitsOnly) {
+              onChange('');
+              return;
+            }
+            const numeric = Math.min(maxLimit, Number(digitsOnly));
+            onChange(String(numeric));
+          }}
+          onBlur={() => {
+            if (value === '') {
+              onChange(String(maxLimit));
+              return;
+            }
+            const numeric = Math.max(1, Math.min(maxLimit, Number(value) || maxLimit));
+            onChange(String(numeric));
+          }}
+          placeholder={String(maxLimit)}
+          autoComplete="off"
+          className={`w-full bg-transparent font-semibold tracking-tight text-slate-950 tabular-nums leading-none focus:outline-none mt-3 ${
+            variant === 'desktop' ? 'text-2xl' : 'text-2xl'
+          }`}
+        />
+      </div>
     </div>
   );
 }
@@ -82,27 +93,36 @@ interface PlanAllowanceBoxProps {
   label: string;
   remainingValue: number;
   variant: 'desktop' | 'mobile';
+  glowDelay: string;
 }
 
 function PlanAllowanceBox({
   label,
   remainingValue,
   variant,
+  glowDelay,
 }: PlanAllowanceBoxProps) {
   return (
-    <div
-      className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 flex flex-col justify-between ${
-        variant === 'desktop'
-          ? 'px-3.5 py-3.5 min-h-[100px]'
-          : 'px-4 py-3.5 min-h-[96px]'
-      }`}
-    >
-      <span className="text-xs font-medium text-slate-500 leading-snug">
-        {label}
-      </span>
-      <span className="text-2xl font-semibold tracking-tight text-slate-950 tabular-nums leading-none mt-3">
-        {remainingValue}
-      </span>
+    <div className="traffic-card-shell relative rounded-2xl p-[1px] overflow-hidden">
+      <div
+        aria-hidden="true"
+        className="traffic-card-glow"
+        style={{ animationDelay: glowDelay }}
+      />
+      <div
+        className={`relative z-10 h-full w-full rounded-[15px] bg-white flex flex-col justify-between ${
+          variant === 'desktop'
+            ? 'px-3.5 py-3.5 min-h-[100px]'
+            : 'px-4 py-3.5 min-h-[96px]'
+        }`}
+      >
+        <span className="text-xs font-medium text-slate-500 leading-snug">
+          {label}
+        </span>
+        <span className="text-2xl font-semibold tracking-tight text-slate-950 tabular-nums leading-none mt-3">
+          {remainingValue}
+        </span>
+      </div>
     </div>
   );
 }
@@ -274,8 +294,8 @@ export function ServiceTrafficLimitView({
     variant === 'desktop' ? 'py-2.5' : 'min-h-[46px] py-2';
   const removeButtonClass =
     variant === 'desktop'
-      ? 'w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400'
-      : 'w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 active:text-slate-950 active:bg-slate-200/60 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400';
+      ? 'w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400'
+      : 'w-9 h-9 rounded-xl flex items-center justify-center text-slate-500 active:text-slate-950 active:bg-slate-100 transition-colors cursor-pointer shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400';
 
   return (
     <div
@@ -286,7 +306,7 @@ export function ServiceTrafficLimitView({
           className={
             variant === 'desktop'
               ? 'grid grid-cols-4 gap-3'
-              : 'grid grid-cols-2 gap-3'
+              : 'grid grid-cols-2 gap-3.5'
           }
         >
           <LimitInputBox
@@ -299,6 +319,7 @@ export function ServiceTrafficLimitView({
               setPerMinuteLimit(val);
             }}
             variant={variant}
+            glowDelay="0s"
           />
           <LimitInputBox
             id={`traffic-limit-hour-${variant}-${service.id}`}
@@ -310,6 +331,7 @@ export function ServiceTrafficLimitView({
               setPerHourLimit(val);
             }}
             variant={variant}
+            glowDelay="-1.6s"
           />
           <LimitInputBox
             id={`traffic-limit-daily-${variant}-${service.id}`}
@@ -321,11 +343,13 @@ export function ServiceTrafficLimitView({
               setDailyLimit(val);
             }}
             variant={variant}
+            glowDelay="-3.2s"
           />
           <PlanAllowanceBox
             label={planRemainingLabel}
             remainingValue={remainingPlanRequests}
             variant={variant}
+            glowDelay="-4.8s"
           />
         </div>
 
@@ -338,31 +362,40 @@ export function ServiceTrafficLimitView({
             {allowedOrigins.map((originUrl, index) => (
               <div
                 key={`origin-row-${index}`}
-                className={`rounded-2xl border border-slate-200/90 bg-slate-50/75 flex items-center gap-1.5 px-3.5 focus-within:border-blue-500/75 focus-within:bg-white transition-colors ${originBoxHeightClass}`}
+                className="traffic-card-shell relative rounded-2xl p-[1px] overflow-hidden"
               >
-                <input
-                  id={`traffic-limit-origin-${variant}-${service.id}-${index}`}
-                  type="url"
-                  value={originUrl}
-                  onChange={(e) => handleOriginChange(index, e.target.value)}
-                  placeholder={t.org.trafficLimitOriginPlaceholder}
-                  aria-label={t.org.trafficLimitOriginAria(index + 1)}
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  className="flex-1 min-w-0 bg-transparent font-mono text-xs text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:outline-none"
+                <div
+                  aria-hidden="true"
+                  className="traffic-card-glow"
+                  style={{ animationDelay: `${-((index % 4) * 1.5)}s` }}
                 />
-                {allowedOrigins.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveOrigin(index)}
-                    aria-label={t.org.trafficLimitRemoveOriginAria}
-                    className={removeButtonClass}
-                  >
-                    <X className="w-3.5 h-3.5" aria-hidden="true" />
-                  </button>
-                )}
+                <div
+                  className={`relative z-10 w-full rounded-[15px] bg-white flex items-center gap-1.5 px-3.5 ${originBoxHeightClass}`}
+                >
+                  <input
+                    id={`traffic-limit-origin-${variant}-${service.id}-${index}`}
+                    type="url"
+                    value={originUrl}
+                    onChange={(e) => handleOriginChange(index, e.target.value)}
+                    placeholder={t.org.trafficLimitOriginPlaceholder}
+                    aria-label={t.org.trafficLimitOriginAria(index + 1)}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    className="flex-1 min-w-0 bg-transparent font-mono text-xs text-slate-800 placeholder:font-sans placeholder:text-slate-400 focus:outline-none"
+                  />
+                  {allowedOrigins.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveOrigin(index)}
+                      aria-label={t.org.trafficLimitRemoveOriginAria}
+                      className={removeButtonClass}
+                    >
+                      <X className="w-3.5 h-3.5" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
