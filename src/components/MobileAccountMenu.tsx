@@ -31,6 +31,7 @@ import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { ServiceTrafficView } from './ServiceTrafficView';
 import { ServiceTrafficLimitView } from './ServiceTrafficLimitView';
+import type { PlanTier } from '../lib/accountActionsClient';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { MobileJsonEditorModal } from './MobileJsonEditorModal';
 import {
@@ -126,6 +127,7 @@ interface MobileAccountMenuProps {
   hasR2Images: boolean;
   hasActiveApis: boolean;
   hasPausedApis: boolean;
+  planTier?: PlanTier;
 }
 
 function getUserDisplayInfo(
@@ -209,6 +211,7 @@ export function MobileAccountMenu({
   hasR2Images,
   hasActiveApis,
   hasPausedApis,
+  planTier = 'free',
 }: MobileAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
@@ -1133,6 +1136,7 @@ export function MobileAccountMenu({
               <ServiceTrafficLimitView
                 service={selectedTrafficLimitService}
                 totalAccountRequests={totalAccountRequests}
+                planTier={planTier}
                 variant="mobile"
               />
             ) : (

@@ -32,10 +32,12 @@ import {
 import {
   buildClearQuotaCookiesHeaders,
   deleteUserCoreService,
+  getServiceTrafficLimitsForUser,
   getUserQuotaSummary,
   pauseAllUserApis,
   permanentlyDeleteUserAccount,
   purgeAllUserR2Images,
+  saveServiceTrafficLimitsForUser,
   unfreezeAllUserApis,
 } from './lib/accountActions.ts';
 import {
@@ -937,7 +939,10 @@ async function startServer() {
     const slugParam =
       typeof req.params.slug === 'string' ? req.params.slug.trim() : undefined;
     const params = extractCoreRequestParams(req.originalUrl, req.headers, slugParam);
-    const result = await resolveSearchLinkCoreEndpoint(params);
+    const result = await resolveSearchLinkCoreEndpoint({
+      ...params,
+      enforceTrafficRules: true,
+    });
 
     if (!result.ok) {
       return res.status(result.status).json({
@@ -1056,6 +1061,60 @@ async function startServer() {
         return res.status(400).json({ error: 'Falta el identificador del servicio.' });
       }
       const result = await deleteUserCoreService(authUser, rawServiceId);
+      if (!result.ok) {
+        return res.status(result.status).json({ error: result.error });
+      }
+      return res.json(result);
+    },
+  );
+
+  app.get('/api/account/services/traffic-limits', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const authUser = await verifySupabaseBearerUser(req.headers);
+    if (!authUser) {
+      return res.status(401).json({ error: 'No autorizado.' });
+    }
+    const rawServiceId =
+      typeof req.query?.serviceId === 'string' ? req.query.serviceId.trim() : '';
+    const result = await getServiceTrafficLimitsForUser(authUser, rawServiceId);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error });
+    }
+    return res.json(result);
+  });
+
+  app.post(
+    '/api/account/services/traffic-limits',
+    express.json({ limit: '16kb' }),
+    async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      const authUser = await verifySupabaseBearerUser(req.headers);
+      if (!authUser) {
+        return res.status(401).json({ error: 'No autorizado.' });
+      }
+      const body = (req.body || {}) as {
+        serviceId?: unknown;
+        perMinuteLimit?: unknown;
+        perHourLimit?: unknown;
+        dailyLimit?: unknown;
+        allowedOrigins?: unknown;
+      };
+      const serviceId =
+        typeof body.serviceId === 'string' ? body.serviceId.trim() : '';
+      const perMinuteLimit = Number(body.perMinuteLimit);
+      const perHourLimit = Number(body.perHourLimit);
+      const dailyLimit = Number(body.dailyLimit);
+      const allowedOrigins = Array.isArray(body.allowedOrigins)
+        ? body.allowedOrigins.filter((item): item is string => typeof item === 'string')
+        : [];
+
+      const result = await saveServiceTrafficLimitsForUser(authUser, {
+        serviceId,
+        perMinuteLimit,
+        perHourLimit,
+        dailyLimit,
+        allowedOrigins,
+      });
       if (!result.ok) {
         return res.status(result.status).json({ error: result.error });
       }

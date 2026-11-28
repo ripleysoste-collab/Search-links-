@@ -19,6 +19,51 @@ export const FREE_PLAN_MAX_REQUESTS_PER_DAY = 400;
 export const GUEST_EXTRACT_COOKIE_NAME = 'sl_guest_ext';
 export const GUEST_IMAGE_BANK_COOKIE_NAME = 'sl_guest_img_bank';
 
+export type PlanTier = 'free' | 'plus' | 'plus_max';
+
+export interface PlanLimitsSpec {
+  maxImages: number;
+  maxApiRequestsMonthly: number;
+  maxRequestsPerMinute: number;
+  maxRequestsPerHour: number;
+  maxRequestsPerDay: number;
+}
+
+export const PLAN_LIMITS_BY_TIER: Record<PlanTier, PlanLimitsSpec> = {
+  free: {
+    maxImages: FREE_PLAN_MAX_IMAGES,
+    maxApiRequestsMonthly: FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
+    maxRequestsPerMinute: FREE_PLAN_MAX_REQUESTS_PER_MINUTE,
+    maxRequestsPerHour: FREE_PLAN_MAX_REQUESTS_PER_HOUR,
+    maxRequestsPerDay: FREE_PLAN_MAX_REQUESTS_PER_DAY,
+  },
+  plus: {
+    maxImages: 80,
+    maxApiRequestsMonthly: FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
+    maxRequestsPerMinute: FREE_PLAN_MAX_REQUESTS_PER_MINUTE,
+    maxRequestsPerHour: FREE_PLAN_MAX_REQUESTS_PER_HOUR,
+    maxRequestsPerDay: FREE_PLAN_MAX_REQUESTS_PER_DAY,
+  },
+  plus_max: {
+    maxImages: 150,
+    maxApiRequestsMonthly: 25000,
+    maxRequestsPerMinute: 120,
+    maxRequestsPerHour: 1500,
+    maxRequestsPerDay: 5000,
+  },
+};
+
+export interface ServiceTrafficLimitRule {
+  serviceId: string;
+  userId: string;
+  planTier: PlanTier;
+  perMinuteLimit: number;
+  perHourLimit: number;
+  dailyLimit: number;
+  allowedOrigins: string[];
+  updatedAt: string;
+}
+
 export interface AuthenticatedRequestUser {
   userId: string;
   email: string;
@@ -54,7 +99,14 @@ const guestImageBankMemory = new Map<string, GuestExtractRecord>();
 const accountImageMemory = new Map<string, AccountImageTracker>();
 const verifiedTokenCache = new Map<string, VerifiedTokenCacheEntry>();
 const monthlyApiCounterMemory = new Map<string, number>();
+const minuteApiCounterMemory = new Map<string, number>();
+const hourApiCounterMemory = new Map<string, number>();
+const dayApiCounterMemory = new Map<string, number>();
 const keyHashToServiceScope = new Map<string, string>();
+const userPlanTierMemory = new Map<string, PlanTier>();
+const servicePlanTierMemory = new Map<string, PlanTier>();
+const serviceOwnerUserMemory = new Map<string, string>();
+const serviceTrafficRuleMemory = new Map<string, ServiceTrafficLimitRule>();
 
 interface DeletedAccountLedgerFallback {
   freeImagesUsed: number;
@@ -689,16 +741,442 @@ export function unmarkFreeAccountImageConsumed(
   tracker.recentKeys.delete(uniqueKey);
 }
 
+export function getPlanLimitsForTier(planTier: PlanTier): PlanLimitsSpec {
+  return PLAN_LIMITS_BY_TIER[planTier] ?? PLAN_LIMITS_BY_TIER.free;
+}
+
+export function resolveUserPlanTier(
+  email?: string | null,
+  appMetadata?: Record<string, unknown> | null,
+): PlanTier {
+  const rawPlan =
+    typeof appMetadata?.plan === 'string'
+      ? appMetadata.plan.trim().toLowerCase()
+      : '';
+  const rawTier =
+    typeof appMetadata?.tier === 'string'
+      ? appMetadata.tier.trim().toLowerCase()
+      : '';
+  const candidate = rawPlan || rawTier;
+
+  if (
+    candidate === 'plus_max' ||
+    candidate === 'plus+' ||
+    candidate === 'plus-max' ||
+    candidate === 'plus_mas' ||
+    candidate === 'max' ||
+    candidate === 'pro'
+  ) {
+    return 'plus_max';
+  }
+  if (candidate === 'plus') {
+    return 'plus';
+  }
+  if (candidate === 'free' || candidate === 'gratuito') {
+    return 'free';
+  }
+
+  const cleanEmail = (email || '').trim().toLowerCase();
+  if (cleanEmail && isAdminTestEmail(cleanEmail)) {
+    return 'plus_max';
+  }
+
+  const extraPlusEmails = (process.env.PLUS_PLAN_EMAILS || '')
+    .trim()
+    .split(',')
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean);
+  if (cleanEmail && extraPlusEmails.includes(cleanEmail)) {
+    return 'plus';
+  }
+
+  return 'free';
+}
+
+export function registerUserPlanTier(userId: string, planTier: PlanTier): void {
+  if (!userId) return;
+  if (userPlanTierMemory.size >= 10000) {
+    const oldest = userPlanTierMemory.keys().next().value;
+    if (oldest) userPlanTierMemory.delete(oldest);
+  }
+  userPlanTierMemory.set(userId, planTier);
+}
+
+export function registerServicePlanTier(
+  serviceId: string,
+  planTier: PlanTier,
+  userId?: string,
+): void {
+  if (!serviceId) return;
+  if (servicePlanTierMemory.size >= 10000) {
+    const oldest = servicePlanTierMemory.keys().next().value;
+    if (oldest) servicePlanTierMemory.delete(oldest);
+  }
+  servicePlanTierMemory.set(serviceId, planTier);
+  if (userId) {
+    if (serviceOwnerUserMemory.size >= 10000) {
+      const oldest = serviceOwnerUserMemory.keys().next().value;
+      if (oldest) serviceOwnerUserMemory.delete(oldest);
+    }
+    serviceOwnerUserMemory.set(serviceId, userId);
+    registerUserPlanTier(userId, planTier);
+  }
+}
+
+export function resolveServicePlanTier(scopeId: string): PlanTier {
+  const direct = servicePlanTierMemory.get(scopeId);
+  if (direct) return direct;
+  const ownerId = serviceOwnerUserMemory.get(scopeId);
+  if (ownerId) {
+    const userTier = userPlanTierMemory.get(ownerId);
+    if (userTier) return userTier;
+  }
+  return 'free';
+}
+
+export function normalizeAllowedOriginInput(rawUrl: string): string | null {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    return parsed.origin.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function clampRuleLimit(value: number, maxLimit: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  const truncated = Math.trunc(value);
+  if (truncated < 1) return 1;
+  return Math.min(truncated, maxLimit);
+}
+
+export function getServiceTrafficLimitRule(
+  serviceId: string,
+  userId: string,
+  planTier: PlanTier,
+): ServiceTrafficLimitRule {
+  registerServicePlanTier(serviceId, planTier, userId);
+  const limits = getPlanLimitsForTier(planTier);
+  const existing = serviceTrafficRuleMemory.get(serviceId);
+  if (!existing) {
+    return {
+      serviceId,
+      userId,
+      planTier,
+      perMinuteLimit: limits.maxRequestsPerMinute,
+      perHourLimit: limits.maxRequestsPerHour,
+      dailyLimit: limits.maxRequestsPerDay,
+      allowedOrigins: [],
+      updatedAt: '',
+    };
+  }
+  return {
+    serviceId,
+    userId,
+    planTier,
+    perMinuteLimit: clampRuleLimit(
+      existing.perMinuteLimit,
+      limits.maxRequestsPerMinute,
+      limits.maxRequestsPerMinute,
+    ),
+    perHourLimit: clampRuleLimit(
+      existing.perHourLimit,
+      limits.maxRequestsPerHour,
+      limits.maxRequestsPerHour,
+    ),
+    dailyLimit: clampRuleLimit(
+      existing.dailyLimit,
+      limits.maxRequestsPerDay,
+      limits.maxRequestsPerDay,
+    ),
+    allowedOrigins: existing.allowedOrigins,
+    updatedAt: existing.updatedAt,
+  };
+}
+
+export function saveServiceTrafficLimitRule(input: {
+  serviceId: string;
+  userId: string;
+  planTier: PlanTier;
+  perMinuteLimit: number;
+  perHourLimit: number;
+  dailyLimit: number;
+  allowedOrigins: string[];
+}): ServiceTrafficLimitRule {
+  registerServicePlanTier(input.serviceId, input.planTier, input.userId);
+  const limits = getPlanLimitsForTier(input.planTier);
+  const rule: ServiceTrafficLimitRule = {
+    serviceId: input.serviceId,
+    userId: input.userId,
+    planTier: input.planTier,
+    perMinuteLimit: clampRuleLimit(
+      input.perMinuteLimit,
+      limits.maxRequestsPerMinute,
+      limits.maxRequestsPerMinute,
+    ),
+    perHourLimit: clampRuleLimit(
+      input.perHourLimit,
+      limits.maxRequestsPerHour,
+      limits.maxRequestsPerHour,
+    ),
+    dailyLimit: clampRuleLimit(
+      input.dailyLimit,
+      limits.maxRequestsPerDay,
+      limits.maxRequestsPerDay,
+    ),
+    allowedOrigins: Array.from(new Set(input.allowedOrigins)),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (serviceTrafficRuleMemory.size >= 10000) {
+    const oldest = serviceTrafficRuleMemory.keys().next().value;
+    if (oldest) serviceTrafficRuleMemory.delete(oldest);
+  }
+  serviceTrafficRuleMemory.set(input.serviceId, rule);
+  return rule;
+}
+
 export function getCurrentMonthKey(): string {
   return new Date().toISOString().slice(0, 7); // YYYY-MM
+}
+
+function getCurrentDayKey(): string {
+  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function getCurrentHourKey(): string {
+  return new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+}
+
+function getCurrentMinuteKey(): string {
+  return new Date().toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+}
+
+function pruneWindowCounterMap(map: Map<string, number>, activePrefix: string) {
+  if (map.size <= 10000) return;
+  for (const key of map.keys()) {
+    if (!key.startsWith(`${activePrefix}:`)) {
+      map.delete(key);
+    }
+  }
 }
 
 export function isMonthlyApiQuotaExceeded(keyHash: string): boolean {
   const scopeId = keyHashToServiceScope.get(keyHash);
   if (!scopeId) return false;
+  const tier = resolveServicePlanTier(scopeId);
+  const limit = getPlanLimitsForTier(tier).maxApiRequestsMonthly;
   const month = getCurrentMonthKey();
   const used = monthlyApiCounterMemory.get(`${month}:${scopeId}`) ?? 0;
-  return used >= FREE_PLAN_MAX_API_REQUESTS_MONTHLY;
+  return used >= limit;
+}
+
+export function checkPreResolutionServiceTraffic(input: {
+  keyHash: string;
+  requestOrigin?: string | null;
+  enforceTrafficRules?: boolean;
+}): { allowed: true } | { allowed: false; status: 403 | 429; error: string } {
+  const scopeId = keyHashToServiceScope.get(input.keyHash);
+  if (!scopeId) return { allowed: true };
+
+  const tier = resolveServicePlanTier(scopeId);
+  const tierLimits = getPlanLimitsForTier(tier);
+  const rule = serviceTrafficRuleMemory.get(scopeId);
+
+  if (
+    input.enforceTrafficRules &&
+    rule &&
+    rule.allowedOrigins.length > 0
+  ) {
+    const normalizedReqOrigin = input.requestOrigin
+      ? normalizeAllowedOriginInput(input.requestOrigin)
+      : null;
+    if (!normalizedReqOrigin || !rule.allowedOrigins.includes(normalizedReqOrigin)) {
+      return {
+        allowed: false,
+        status: 403,
+        error:
+          'Acceso bloqueado por Seguridad rápida: el origen de esta petición no está autorizado.',
+      };
+    }
+  }
+
+  const perMinuteCap = rule
+    ? Math.min(rule.perMinuteLimit, tierLimits.maxRequestsPerMinute)
+    : tierLimits.maxRequestsPerMinute;
+  const perHourCap = rule
+    ? Math.min(rule.perHourLimit, tierLimits.maxRequestsPerHour)
+    : tierLimits.maxRequestsPerHour;
+  const perDayCap = rule
+    ? Math.min(rule.dailyLimit, tierLimits.maxRequestsPerDay)
+    : tierLimits.maxRequestsPerDay;
+
+  const month = getCurrentMonthKey();
+  const day = getCurrentDayKey();
+  const hour = getCurrentHourKey();
+  const minute = getCurrentMinuteKey();
+
+  if ((monthlyApiCounterMemory.get(`${month}:${scopeId}`) ?? 0) >= tierLimits.maxApiRequestsMonthly) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite mensual alcanzado: tu plan incluye hasta ${tierLimits.maxApiRequestsMonthly.toLocaleString('es-ES')} peticiones API por mes.`,
+    };
+  }
+  if ((dayApiCounterMemory.get(`${day}:${scopeId}`) ?? 0) >= perDayCap) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite diario alcanzado (${perDayCap} peticiones/día).`,
+    };
+  }
+  if ((hourApiCounterMemory.get(`${hour}:${scopeId}`) ?? 0) >= perHourCap) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite por hora alcanzado (${perHourCap} peticiones/h).`,
+    };
+  }
+  if ((minuteApiCounterMemory.get(`${minute}:${scopeId}`) ?? 0) >= perMinuteCap) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite por minuto alcanzado (${perMinuteCap} peticiones/min).`,
+    };
+  }
+
+  return { allowed: true };
+}
+
+export function checkAndConsumeServiceTraffic(input: {
+  scopeId: string;
+  keyHash: string;
+  dbMonthlyRequestsHint?: number;
+  requestOrigin?: string | null;
+  enforceTrafficRules?: boolean;
+}):
+  | { allowed: true; used: number; limit: number }
+  | { allowed: false; status: 403 | 429; error: string; used: number; limit: number } {
+  const { scopeId, keyHash } = input;
+  if (keyHashToServiceScope.size >= 10000) {
+    const oldestKey = keyHashToServiceScope.keys().next().value;
+    if (oldestKey) keyHashToServiceScope.delete(oldestKey);
+  }
+  keyHashToServiceScope.set(keyHash, scopeId);
+
+  const tier = resolveServicePlanTier(scopeId);
+  const tierLimits = getPlanLimitsForTier(tier);
+  const rule = serviceTrafficRuleMemory.get(scopeId);
+
+  if (
+    input.enforceTrafficRules &&
+    rule &&
+    rule.allowedOrigins.length > 0
+  ) {
+    const normalizedReqOrigin = input.requestOrigin
+      ? normalizeAllowedOriginInput(input.requestOrigin)
+      : null;
+    if (!normalizedReqOrigin || !rule.allowedOrigins.includes(normalizedReqOrigin)) {
+      return {
+        allowed: false,
+        status: 403,
+        error:
+          'Acceso bloqueado por Seguridad rápida: el origen de esta petición no está autorizado.',
+        used: 0,
+        limit: tierLimits.maxApiRequestsMonthly,
+      };
+    }
+  }
+
+  const perMinuteCap = rule
+    ? Math.min(rule.perMinuteLimit, tierLimits.maxRequestsPerMinute)
+    : tierLimits.maxRequestsPerMinute;
+  const perHourCap = rule
+    ? Math.min(rule.perHourLimit, tierLimits.maxRequestsPerHour)
+    : tierLimits.maxRequestsPerHour;
+  const perDayCap = rule
+    ? Math.min(rule.dailyLimit, tierLimits.maxRequestsPerDay)
+    : tierLimits.maxRequestsPerDay;
+
+  const month = getCurrentMonthKey();
+  const day = getCurrentDayKey();
+  const hour = getCurrentHourKey();
+  const minute = getCurrentMinuteKey();
+
+  const monthKey = `${month}:${scopeId}`;
+  const dayKey = `${day}:${scopeId}`;
+  const hourKey = `${hour}:${scopeId}`;
+  const minuteKey = `${minute}:${scopeId}`;
+
+  const currentMonth = Math.max(
+    monthlyApiCounterMemory.get(monthKey) ?? 0,
+    Math.max(0, Math.trunc(input.dbMonthlyRequestsHint ?? 0)),
+  );
+  if (currentMonth >= tierLimits.maxApiRequestsMonthly) {
+    monthlyApiCounterMemory.set(monthKey, currentMonth);
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite mensual alcanzado: tu plan incluye hasta ${tierLimits.maxApiRequestsMonthly.toLocaleString('es-ES')} peticiones API por mes.`,
+      used: currentMonth,
+      limit: tierLimits.maxApiRequestsMonthly,
+    };
+  }
+
+  const currentDay = dayApiCounterMemory.get(dayKey) ?? 0;
+  if (currentDay >= perDayCap) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite diario alcanzado (${perDayCap} peticiones/día).`,
+      used: currentMonth,
+      limit: tierLimits.maxApiRequestsMonthly,
+    };
+  }
+
+  const currentHour = hourApiCounterMemory.get(hourKey) ?? 0;
+  if (currentHour >= perHourCap) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite por hora alcanzado (${perHourCap} peticiones/h).`,
+      used: currentMonth,
+      limit: tierLimits.maxApiRequestsMonthly,
+    };
+  }
+
+  const currentMinute = minuteApiCounterMemory.get(minuteKey) ?? 0;
+  if (currentMinute >= perMinuteCap) {
+    return {
+      allowed: false,
+      status: 429,
+      error: `Límite por minuto alcanzado (${perMinuteCap} peticiones/min).`,
+      used: currentMonth,
+      limit: tierLimits.maxApiRequestsMonthly,
+    };
+  }
+
+  const nextMonth = currentMonth + 1;
+  monthlyApiCounterMemory.set(monthKey, nextMonth);
+  dayApiCounterMemory.set(dayKey, currentDay + 1);
+  hourApiCounterMemory.set(hourKey, currentHour + 1);
+  minuteApiCounterMemory.set(minuteKey, currentMinute + 1);
+
+  pruneWindowCounterMap(monthlyApiCounterMemory, month);
+  pruneWindowCounterMap(dayApiCounterMemory, day);
+  pruneWindowCounterMap(hourApiCounterMemory, hour);
+  pruneWindowCounterMap(minuteApiCounterMemory, minute);
+
+  return {
+    allowed: true,
+    used: nextMonth,
+    limit: tierLimits.maxApiRequestsMonthly,
+  };
 }
 
 export function recordAndCheckMonthlyApiQuota(
@@ -706,40 +1184,15 @@ export function recordAndCheckMonthlyApiQuota(
   keyHash: string,
   dbRequestsHint = 0,
 ): { allowed: boolean; used: number; limit: number } {
-  const month = getCurrentMonthKey();
-  if (keyHashToServiceScope.size >= 10000) {
-    const oldestKey = keyHashToServiceScope.keys().next().value;
-    if (oldestKey) keyHashToServiceScope.delete(oldestKey);
-  }
-  keyHashToServiceScope.set(keyHash, scopeId);
-  const counterKey = `${month}:${scopeId}`;
-  const currentMem = monthlyApiCounterMemory.get(counterKey) ?? 0;
-  const currentUsed = Math.max(currentMem, Math.max(0, Math.trunc(dbRequestsHint)));
-
-  if (currentUsed >= FREE_PLAN_MAX_API_REQUESTS_MONTHLY) {
-    monthlyApiCounterMemory.set(counterKey, currentUsed);
-    return {
-      allowed: false,
-      used: currentUsed,
-      limit: FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
-    };
-  }
-
-  const nextUsed = currentUsed + 1;
-  monthlyApiCounterMemory.set(counterKey, nextUsed);
-
-  if (monthlyApiCounterMemory.size > 10000) {
-    for (const k of monthlyApiCounterMemory.keys()) {
-      if (!k.startsWith(`${month}:`)) {
-        monthlyApiCounterMemory.delete(k);
-      }
-    }
-  }
-
+  const res = checkAndConsumeServiceTraffic({
+    scopeId,
+    keyHash,
+    dbMonthlyRequestsHint: dbRequestsHint,
+  });
   return {
-    allowed: true,
-    used: nextUsed,
-    limit: FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
+    allowed: res.allowed,
+    used: res.used,
+    limit: res.limit,
   };
 }
 

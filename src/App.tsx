@@ -77,6 +77,7 @@ import {
 } from './lib/mappingQueueClient';
 import {
   fetchAccountQuotaSummary,
+  type PlanTier,
   requestClearBrowserData,
   requestDeleteAccountPermanently,
   requestDeleteCoreService,
@@ -254,6 +255,7 @@ export default function App() {
   });
   const [orgServices, setOrgServices] = useState<OrganizationServiceItem[]>([]);
   const [carriedFreeImagesUsed, setCarriedFreeImagesUsed] = useState(0);
+  const [accountPlanTier, setAccountPlanTier] = useState<PlanTier>('free');
   const [activeChatServiceId, setActiveChatServiceId] = useState<string | null>(
     null,
   );
@@ -522,6 +524,7 @@ export default function App() {
       });
       setOrgServices([]);
       setCarriedFreeImagesUsed(0);
+      setAccountPlanTier('free');
       return;
     }
 
@@ -585,6 +588,9 @@ export default function App() {
 
       if (quotaSummary) {
         setCarriedFreeImagesUsed(quotaSummary.carriedFreeImagesUsed);
+        if (quotaSummary.planTier) {
+          setAccountPlanTier(quotaSummary.planTier);
+        }
       }
 
       if (!orgMissing) {
@@ -3969,6 +3975,7 @@ export default function App() {
           hasR2Images={hasR2Images}
           hasActiveApis={hasActiveApis}
           hasPausedApis={hasPausedApis}
+          planTier={accountPlanTier}
         />
       )}
 
@@ -4045,6 +4052,7 @@ export default function App() {
           hasR2Images={hasR2Images}
           hasActiveApis={hasActiveApis}
           hasPausedApis={hasPausedApis}
+          planTier={accountPlanTier}
         />
       )}
 

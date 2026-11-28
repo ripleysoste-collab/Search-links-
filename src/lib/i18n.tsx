@@ -364,12 +364,16 @@ export interface TranslationDictionary {
     trafficLimitPerHourLabel: string;
     trafficLimitDailyLabel: string;
     trafficLimitFreePlanRemainingLabel: string;
+    trafficLimitPlusPlanRemainingLabel: string;
+    trafficLimitPlusMaxPlanRemainingLabel: string;
     trafficLimitQuickSecurityLabel: string;
     trafficLimitOriginPlaceholder: string;
     trafficLimitOriginAria: (index: number) => string;
     trafficLimitRemoveOriginAria: string;
     trafficLimitAddAnotherUrl: string;
     trafficLimitSaveBtn: string;
+    trafficLimitSavingBtn: string;
+    trafficLimitInvalidOriginError: string;
   };
   store: {
     emptyDescDesktop: string;
@@ -1057,12 +1061,17 @@ const ES_DICTIONARY: TranslationDictionary = {
     trafficLimitPerHourLabel: 'Peticiones por hora',
     trafficLimitDailyLabel: 'Peticiones diarias',
     trafficLimitFreePlanRemainingLabel: 'Plan gratuito',
+    trafficLimitPlusPlanRemainingLabel: 'Plan Plus',
+    trafficLimitPlusMaxPlanRemainingLabel: 'Plan Plus+',
     trafficLimitQuickSecurityLabel: 'Seguridad rápida',
     trafficLimitOriginPlaceholder: 'https://tu-servidor.com',
     trafficLimitOriginAria: (index) => `URL de origen permitida ${index}`,
     trafficLimitRemoveOriginAria: 'Quitar URL',
     trafficLimitAddAnotherUrl: 'Agregar otra URL',
     trafficLimitSaveBtn: 'Guardar',
+    trafficLimitSavingBtn: 'Guardando…',
+    trafficLimitInvalidOriginError:
+      'Ingresa URLs válidas con http:// o https:// en Seguridad rápida.',
     menuDeleteService: 'Eliminar',
     deleteServiceConfirmText: (name) =>
       `¿Eliminar "${name}"? Se borrarán su API Key y productos publicados de forma permanente.`,
@@ -1894,12 +1903,17 @@ const EN_DICTIONARY: TranslationDictionary = {
     trafficLimitPerHourLabel: 'Requests per hour',
     trafficLimitDailyLabel: 'Daily requests',
     trafficLimitFreePlanRemainingLabel: 'Free plan',
+    trafficLimitPlusPlanRemainingLabel: 'Plus plan',
+    trafficLimitPlusMaxPlanRemainingLabel: 'Plus+ plan',
     trafficLimitQuickSecurityLabel: 'Quick security',
     trafficLimitOriginPlaceholder: 'https://your-server.com',
     trafficLimitOriginAria: (index) => `Allowed origin URL ${index}`,
     trafficLimitRemoveOriginAria: 'Remove URL',
     trafficLimitAddAnotherUrl: 'Add another URL',
     trafficLimitSaveBtn: 'Save',
+    trafficLimitSavingBtn: 'Saving…',
+    trafficLimitInvalidOriginError:
+      'Enter valid URLs starting with http:// or https:// in Quick security.',
     menuDeleteService: 'Delete',
     deleteServiceConfirmText: (name) =>
       `Delete "${name}"? Its API Key and published products will be permanently deleted.`,
@@ -2731,12 +2745,17 @@ const PT_DICTIONARY: TranslationDictionary = {
     trafficLimitPerHourLabel: 'Requisições por hora',
     trafficLimitDailyLabel: 'Requisições diárias',
     trafficLimitFreePlanRemainingLabel: 'Plano gratuito',
+    trafficLimitPlusPlanRemainingLabel: 'Plano Plus',
+    trafficLimitPlusMaxPlanRemainingLabel: 'Plano Plus+',
     trafficLimitQuickSecurityLabel: 'Segurança rápida',
     trafficLimitOriginPlaceholder: 'https://seu-servidor.com',
     trafficLimitOriginAria: (index) => `URL de origem permitida ${index}`,
     trafficLimitRemoveOriginAria: 'Remover URL',
     trafficLimitAddAnotherUrl: 'Adicionar outra URL',
     trafficLimitSaveBtn: 'Salvar',
+    trafficLimitSavingBtn: 'Salvando…',
+    trafficLimitInvalidOriginError:
+      'Insira URLs válidas começando com http:// ou https:// em Segurança rápida.',
     menuDeleteService: 'Excluir',
     deleteServiceConfirmText: (name) =>
       `Excluir "${name}"? Sua API Key e produtos publicados serão excluídos permanentemente.`,

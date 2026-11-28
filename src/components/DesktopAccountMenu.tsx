@@ -24,6 +24,7 @@ import { ServiceApiHelpView } from './ServiceApiHelpView';
 import { ServiceEndpointTestView } from './ServiceEndpointTestView';
 import { ServiceTrafficView } from './ServiceTrafficView';
 import { ServiceTrafficLimitView } from './ServiceTrafficLimitView';
+import type { PlanTier } from '../lib/accountActionsClient';
 import { AdvancedSettingsView } from './AdvancedSettingsView';
 import { LIGHT_TOKEN_CLASSES, tokenizeJsonLine } from './MobileJsonEditorModal';
 import {
@@ -101,6 +102,7 @@ interface DesktopAccountMenuProps {
   hasR2Images: boolean;
   hasActiveApis: boolean;
   hasPausedApis: boolean;
+  planTier?: PlanTier;
 }
 
 function getUserDisplayInfo(
@@ -161,6 +163,7 @@ export function DesktopAccountMenu({
   hasR2Images,
   hasActiveApis,
   hasPausedApis,
+  planTier = 'free',
 }: DesktopAccountMenuProps) {
   const shouldReduceMotion = useReducedMotion();
   const { locale, source, countryCode, setManualLocale, t } = useI18n();
@@ -1202,6 +1205,7 @@ export function DesktopAccountMenu({
                   <ServiceTrafficLimitView
                     service={selectedTrafficLimitService}
                     totalAccountRequests={totalAccountRequests}
+                    planTier={planTier}
                     variant="desktop"
                   />
                 </motion.div>

@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check, Loader2, X } from 'lucide-react';
 import type { OrganizationServiceItem } from './DesktopOrganizationView';
+import {
+  CLIENT_PLAN_LIMITS_BY_TIER,
+  fetchServiceTrafficLimits,
+  saveServiceTrafficLimits,
+  type PlanTier,
+} from '../lib/accountActionsClient';
 import { useI18n } from '../lib/i18n';
-
-const FREE_PLAN_DEFAULT_PER_MINUTE = 20;
-const FREE_PLAN_DEFAULT_PER_HOUR = 150;
-const FREE_PLAN_DEFAULT_PER_DAY = 400;
-const FREE_PLAN_TOTAL_REQUESTS = 1000;
 
 interface ServiceTrafficLimitViewProps {
   service: OrganizationServiceItem;
   totalAccountRequests: number;
+  planTier: PlanTier;
   variant: 'desktop' | 'mobile';
 }
 
@@ -63,13 +65,14 @@ function LimitInputBox({
         onBlur={() => {
           if (value === '') {
             onChange(String(maxLimit));
+            return;
           }
+          const numeric = Math.max(1, Math.min(maxLimit, Number(value) || maxLimit));
+          onChange(String(numeric));
         }}
         placeholder={String(maxLimit)}
         autoComplete="off"
-        className={`w-full bg-transparent font-semibold tracking-tight text-slate-950 tabular-nums leading-none focus:outline-none mt-3 ${
-          variant === 'desktop' ? 'text-2xl' : 'text-2xl'
-        }`}
+        className="w-full bg-transparent font-semibold tracking-tight text-slate-950 tabular-nums leading-none focus:outline-none mt-3 text-2xl"
       />
     </div>
   );
@@ -104,60 +107,166 @@ function PlanAllowanceBox({
   );
 }
 
+function isValidHttpUrl(raw: string): boolean {
+  try {
+    const parsed = new URL(raw.trim());
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 export function ServiceTrafficLimitView({
   service,
   totalAccountRequests,
+  planTier,
   variant,
 }: ServiceTrafficLimitViewProps) {
   const { t } = useI18n();
+  const [activePlanTier, setActivePlanTier] = useState<PlanTier>(planTier);
+  const activeLimits = CLIENT_PLAN_LIMITS_BY_TIER[activePlanTier];
+
   const [perMinuteLimit, setPerMinuteLimit] = useState(
-    String(FREE_PLAN_DEFAULT_PER_MINUTE),
+    String(activeLimits.maxRequestsPerMinute),
   );
   const [perHourLimit, setPerHourLimit] = useState(
-    String(FREE_PLAN_DEFAULT_PER_HOUR),
+    String(activeLimits.maxRequestsPerHour),
   );
   const [dailyLimit, setDailyLimit] = useState(
-    String(FREE_PLAN_DEFAULT_PER_DAY),
+    String(activeLimits.maxRequestsPerDay),
   );
   const [allowedOrigins, setAllowedOrigins] = useState<string[]>(['']);
+  const [saving, setSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    setPerMinuteLimit(String(FREE_PLAN_DEFAULT_PER_MINUTE));
-    setPerHourLimit(String(FREE_PLAN_DEFAULT_PER_HOUR));
-    setDailyLimit(String(FREE_PLAN_DEFAULT_PER_DAY));
+    setActivePlanTier(planTier);
+  }, [planTier]);
+
+  useEffect(() => {
+    let active = true;
+    const defaults = CLIENT_PLAN_LIMITS_BY_TIER[planTier];
+    setPerMinuteLimit(String(defaults.maxRequestsPerMinute));
+    setPerHourLimit(String(defaults.maxRequestsPerHour));
+    setDailyLimit(String(defaults.maxRequestsPerDay));
     setAllowedOrigins(['']);
     setSavedNotice(false);
-  }, [service.id]);
+    setSaveError(null);
 
-  const remainingFreePlanRequests = Math.max(
+    void fetchServiceTrafficLimits(service.id).then((res) => {
+      if (!active || !res) return;
+      setActivePlanTier(res.planTier);
+      setPerMinuteLimit(String(res.rule.perMinuteLimit));
+      setPerHourLimit(String(res.rule.perHourLimit));
+      setDailyLimit(String(res.rule.dailyLimit));
+      setAllowedOrigins(
+        res.rule.allowedOrigins.length > 0 ? res.rule.allowedOrigins : [''],
+      );
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [service.id, planTier]);
+
+  const remainingPlanRequests = Math.max(
     0,
-    FREE_PLAN_TOTAL_REQUESTS -
+    activeLimits.maxApiRequestsMonthly -
       (Number.isFinite(totalAccountRequests)
         ? Math.max(0, Math.trunc(totalAccountRequests))
         : 0),
   );
 
+  const planRemainingLabel =
+    activePlanTier === 'plus_max'
+      ? t.org.trafficLimitPlusMaxPlanRemainingLabel
+      : activePlanTier === 'plus'
+        ? t.org.trafficLimitPlusPlanRemainingLabel
+        : t.org.trafficLimitFreePlanRemainingLabel;
+
   const handleOriginChange = (index: number, nextValue: string) => {
+    setSaveError(null);
     setAllowedOrigins((prev) =>
       prev.map((item, idx) => (idx === index ? nextValue : item)),
     );
   };
 
   const handleAddOrigin = () => {
+    setSaveError(null);
     setAllowedOrigins((prev) => [...prev, '']);
   };
 
   const handleRemoveOrigin = (index: number) => {
+    setSaveError(null);
     setAllowedOrigins((prev) => {
       if (prev.length <= 1) return [''];
       return prev.filter((_, idx) => idx !== index);
     });
   };
 
-  const handleSave = () => {
-    setSavedNotice(true);
-    window.setTimeout(() => setSavedNotice(false), 1400);
+  const handleSave = async () => {
+    if (saving) return;
+    setSaveError(null);
+
+    const cleanedOrigins = allowedOrigins
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    for (const entry of cleanedOrigins) {
+      if (!isValidHttpUrl(entry)) {
+        setSaveError(t.org.trafficLimitInvalidOriginError);
+        return;
+      }
+    }
+
+    const parsedMin = Math.max(
+      1,
+      Math.min(
+        activeLimits.maxRequestsPerMinute,
+        Number(perMinuteLimit) || activeLimits.maxRequestsPerMinute,
+      ),
+    );
+    const parsedHour = Math.max(
+      1,
+      Math.min(
+        activeLimits.maxRequestsPerHour,
+        Number(perHourLimit) || activeLimits.maxRequestsPerHour,
+      ),
+    );
+    const parsedDay = Math.max(
+      1,
+      Math.min(
+        activeLimits.maxRequestsPerDay,
+        Number(dailyLimit) || activeLimits.maxRequestsPerDay,
+      ),
+    );
+
+    setSaving(true);
+    try {
+      const saved = await saveServiceTrafficLimits({
+        serviceId: service.id,
+        perMinuteLimit: parsedMin,
+        perHourLimit: parsedHour,
+        dailyLimit: parsedDay,
+        allowedOrigins: cleanedOrigins,
+      });
+      setActivePlanTier(saved.planTier);
+      setPerMinuteLimit(String(saved.rule.perMinuteLimit));
+      setPerHourLimit(String(saved.rule.perHourLimit));
+      setDailyLimit(String(saved.rule.dailyLimit));
+      setAllowedOrigins(
+        saved.rule.allowedOrigins.length > 0 ? saved.rule.allowedOrigins : [''],
+      );
+      setSavedNotice(true);
+      window.setTimeout(() => setSavedNotice(false), 1600);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : t.org.trafficLimitInvalidOriginError,
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const containerPadding = variant === 'desktop' ? 'px-8 py-7' : 'px-5 py-5';
@@ -184,29 +293,38 @@ export function ServiceTrafficLimitView({
             id={`traffic-limit-minute-${variant}-${service.id}`}
             label={t.org.trafficLimitPerMinuteLabel}
             value={perMinuteLimit}
-            maxLimit={FREE_PLAN_DEFAULT_PER_MINUTE}
-            onChange={setPerMinuteLimit}
+            maxLimit={activeLimits.maxRequestsPerMinute}
+            onChange={(val) => {
+              setSaveError(null);
+              setPerMinuteLimit(val);
+            }}
             variant={variant}
           />
           <LimitInputBox
             id={`traffic-limit-hour-${variant}-${service.id}`}
             label={t.org.trafficLimitPerHourLabel}
             value={perHourLimit}
-            maxLimit={FREE_PLAN_DEFAULT_PER_HOUR}
-            onChange={setPerHourLimit}
+            maxLimit={activeLimits.maxRequestsPerHour}
+            onChange={(val) => {
+              setSaveError(null);
+              setPerHourLimit(val);
+            }}
             variant={variant}
           />
           <LimitInputBox
             id={`traffic-limit-daily-${variant}-${service.id}`}
             label={t.org.trafficLimitDailyLabel}
             value={dailyLimit}
-            maxLimit={FREE_PLAN_DEFAULT_PER_DAY}
-            onChange={setDailyLimit}
+            maxLimit={activeLimits.maxRequestsPerDay}
+            onChange={(val) => {
+              setSaveError(null);
+              setDailyLimit(val);
+            }}
             variant={variant}
           />
           <PlanAllowanceBox
-            label={t.org.trafficLimitFreePlanRemainingLabel}
-            remainingValue={remainingFreePlanRequests}
+            label={planRemainingLabel}
+            remainingValue={remainingPlanRequests}
             variant={variant}
           />
         </div>
@@ -260,19 +378,32 @@ export function ServiceTrafficLimitView({
               {t.org.trafficLimitAddAnotherUrl}
             </button>
           </div>
+
+          {saveError && (
+            <p className="text-xs text-rose-600 leading-snug" role="alert">
+              {saveError}
+            </p>
+          )}
         </div>
       </div>
 
       <div className="pt-4 border-t border-slate-200/75 shrink-0">
         <button
           type="button"
-          onClick={handleSave}
-          className={`w-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 ${
+          onClick={() => void handleSave()}
+          disabled={saving}
+          className={`w-full rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] disabled:opacity-70 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600/40 ${
             variant === 'mobile' ? 'min-h-[48px] py-3' : 'py-3'
           }`}
         >
-          {savedNotice && <Check className="w-4 h-4 stroke-[2.5]" aria-hidden="true" />}
-          <span>{t.org.trafficLimitSaveBtn}</span>
+          {saving ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : savedNotice ? (
+            <Check className="w-4 h-4 stroke-[2.5]" aria-hidden="true" />
+          ) : null}
+          <span>
+            {saving ? t.org.trafficLimitSavingBtn : t.org.trafficLimitSaveBtn}
+          </span>
         </button>
       </div>
     </div>

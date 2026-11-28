@@ -8,12 +8,21 @@ import {
   FREE_PLAN_MAX_IMAGES,
   getCurrentMonthKey,
   getMonthlyApiRequestsForServiceScope,
+  getPlanLimitsForTier,
+  getServiceTrafficLimitRule,
   GUEST_EXTRACT_COOKIE_NAME,
   GUEST_IMAGE_BANK_COOKIE_NAME,
   invalidateUserImageQuotaCache,
   isAdminTestEmail,
+  normalizeAllowedOriginInput,
+  type PlanLimitsSpec,
+  type PlanTier,
   recordInMemoryDeletedAccountLedger,
   recordInMemoryR2PurgeLedger,
+  registerUserPlanTier,
+  resolveUserPlanTier,
+  saveServiceTrafficLimitRule,
+  type ServiceTrafficLimitRule,
   type AuthenticatedRequestUser,
 } from './planLimits.ts';
 import { deleteImagesFromR2, isValidMediaKey } from './r2Storage.ts';
@@ -75,6 +84,8 @@ export interface UserQuotaSummary {
   ok: true;
   isAdmin: boolean;
   hasPlusAccess: boolean;
+  planTier: PlanTier;
+  planLimits: PlanLimitsSpec;
   activeImagesCount: number;
   carriedFreeImagesUsed: number;
   totalFreeImagesUsed: number;
@@ -86,10 +97,12 @@ export async function getUserQuotaSummary(
   authUser: AuthenticatedRequestUser,
 ): Promise<UserQuotaSummary> {
   const isAdmin = isAdminTestEmail(authUser.email);
-  const hasPlusAccess = hasImageBankPlusAccess(
-    authUser.email,
-    authUser.appMetadata,
-  );
+  const planTier = resolveUserPlanTier(authUser.email, authUser.appMetadata);
+  const planLimits = getPlanLimitsForTier(planTier);
+  registerUserPlanTier(authUser.userId, planTier);
+  const hasPlusAccess =
+    planTier !== 'free' ||
+    hasImageBankPlusAccess(authUser.email, authUser.appMetadata);
   const [activeImagesCount, ledger] = await Promise.all([
     fetchUserActiveDbImageCount(authUser),
     fetchUserFreeUsageLedger(authUser),
@@ -98,13 +111,15 @@ export async function getUserQuotaSummary(
   const totalFreeImagesUsed = isAdmin
     ? activeImagesCount
     : activeImagesCount + carriedFreeImagesUsed;
-  const freeLimit = isAdmin ? 50 : FREE_PLAN_MAX_IMAGES;
+  const freeLimit = isAdmin ? planLimits.maxImages : FREE_PLAN_MAX_IMAGES;
   const remainingFreeImages = Math.max(0, freeLimit - totalFreeImagesUsed);
 
   return {
     ok: true,
     isAdmin,
     hasPlusAccess,
+    planTier,
+    planLimits,
     activeImagesCount,
     carriedFreeImagesUsed,
     totalFreeImagesUsed,
@@ -821,5 +836,124 @@ export async function permanentlyDeleteUserAccount(
     deletedR2Count,
     authDeleted,
     carriedPlan: hasPlus ? 'plus' : 'free',
+  };
+}
+
+async function verifyOwnedServiceId(
+  authUser: AuthenticatedRequestUser,
+  serviceId: string,
+): Promise<boolean> {
+  const cleanId = serviceId.trim();
+  if (!cleanId) return false;
+  const userClient = createAuthenticatedUserClient(authUser.accessToken);
+  if (!userClient) return true;
+  try {
+    const { data, error } = await userClient
+      .from('servicios')
+      .select('id')
+      .eq('id', cleanId)
+      .eq('user_id', authUser.userId)
+      .maybeSingle();
+    if (error) {
+      // Allow local/transient fallback if table is not yet synced
+      return error.code === 'PGRST205' || error.message.includes('servicios');
+    }
+    return Boolean(data?.id);
+  } catch {
+    return false;
+  }
+}
+
+export async function getServiceTrafficLimitsForUser(
+  authUser: AuthenticatedRequestUser,
+  serviceId: string,
+): Promise<
+  | {
+      ok: true;
+      planTier: PlanTier;
+      planLimits: PlanLimitsSpec;
+      rule: ServiceTrafficLimitRule;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  const cleanId = serviceId.trim();
+  if (!cleanId) {
+    return { ok: false, status: 400, error: 'Falta el identificador del servicio.' };
+  }
+  const owned = await verifyOwnedServiceId(authUser, cleanId);
+  if (!owned) {
+    return { ok: false, status: 404, error: 'Servicio no encontrado.' };
+  }
+  const planTier = resolveUserPlanTier(authUser.email, authUser.appMetadata);
+  const planLimits = getPlanLimitsForTier(planTier);
+  const rule = getServiceTrafficLimitRule(cleanId, authUser.userId, planTier);
+  return {
+    ok: true,
+    planTier,
+    planLimits,
+    rule,
+  };
+}
+
+export async function saveServiceTrafficLimitsForUser(
+  authUser: AuthenticatedRequestUser,
+  input: {
+    serviceId: string;
+    perMinuteLimit: number;
+    perHourLimit: number;
+    dailyLimit: number;
+    allowedOrigins: string[];
+  },
+): Promise<
+  | {
+      ok: true;
+      planTier: PlanTier;
+      planLimits: PlanLimitsSpec;
+      rule: ServiceTrafficLimitRule;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  const cleanId = input.serviceId.trim();
+  if (!cleanId) {
+    return { ok: false, status: 400, error: 'Falta el identificador del servicio.' };
+  }
+  const owned = await verifyOwnedServiceId(authUser, cleanId);
+  if (!owned) {
+    return { ok: false, status: 404, error: 'Servicio no encontrado.' };
+  }
+
+  const normalizedOrigins: string[] = [];
+  for (const rawEntry of input.allowedOrigins) {
+    const trimmed = typeof rawEntry === 'string' ? rawEntry.trim() : '';
+    if (!trimmed) continue;
+    const normalized = normalizeAllowedOriginInput(trimmed);
+    if (!normalized) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          'Ingresa URLs válidas con http:// o https:// en Seguridad rápida.',
+      };
+    }
+    normalizedOrigins.push(normalized);
+  }
+
+  const planTier = resolveUserPlanTier(authUser.email, authUser.appMetadata);
+  const planLimits = getPlanLimitsForTier(planTier);
+  const rule = saveServiceTrafficLimitRule({
+    serviceId: cleanId,
+    userId: authUser.userId,
+    planTier,
+    perMinuteLimit: input.perMinuteLimit,
+    perHourLimit: input.perHourLimit,
+    dailyLimit: input.dailyLimit,
+    allowedOrigins: normalizedOrigins,
+  });
+
+  return {
+    ok: true,
+    planTier,
+    planLimits,
+    rule,
   };
 }

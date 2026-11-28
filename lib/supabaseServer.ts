@@ -2,9 +2,10 @@ import crypto from 'node:crypto';
 import type { IncomingHttpHeaders } from 'node:http';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
-  FREE_PLAN_MAX_API_REQUESTS_MONTHLY,
-  isMonthlyApiQuotaExceeded,
-  recordAndCheckMonthlyApiQuota,
+  checkAndConsumeServiceTraffic,
+  checkPreResolutionServiceTraffic,
+  registerServicePlanTier,
+  resolveUserPlanTier,
 } from './planLimits.ts';
 
 let cachedServerClient: SupabaseClient | null = null;
@@ -353,6 +354,8 @@ export interface SearchLinkCoreQueryInput {
   limit?: number;
   offset?: number;
   bypassExternalServerCheck?: boolean;
+  requestOrigin?: string | null;
+  enforceTrafficRules?: boolean;
 }
 
 function sha256HexServer(input: string): string {
@@ -366,6 +369,20 @@ function getHeaderSingle(
   const raw = headers[name.toLowerCase()];
   if (Array.isArray(raw)) return (raw[0] || '').trim();
   return typeof raw === 'string' ? raw.trim() : '';
+}
+
+function extractRequestOriginHeader(
+  headers: IncomingHttpHeaders,
+): string | null {
+  const directOrigin = getHeaderSingle(headers, 'origin');
+  if (directOrigin) return directOrigin;
+  const referer = getHeaderSingle(headers, 'referer');
+  if (!referer) return null;
+  try {
+    return new URL(referer).origin;
+  } catch {
+    return null;
+  }
 }
 
 export function extractCoreRequestParams(
@@ -427,6 +444,7 @@ export function extractCoreRequestParams(
     offset: Number.isFinite(rawOffset)
       ? Math.max(Math.trunc(rawOffset), 0)
       : 0,
+    requestOrigin: extractRequestOriginHeader(headers),
   };
 }
 
@@ -475,11 +493,16 @@ export async function resolveSearchLinkCoreEndpoint(
     }
   }
 
-  if (isMonthlyApiQuotaExceeded(keyHash)) {
+  const preCheck = checkPreResolutionServiceTraffic({
+    keyHash,
+    requestOrigin: params.requestOrigin,
+    enforceTrafficRules: params.enforceTrafficRules,
+  });
+  if (!preCheck.allowed) {
     return {
       ok: false,
-      status: 429,
-      error: `Límite mensual alcanzado: el plan gratuito incluye hasta ${FREE_PLAN_MAX_API_REQUESTS_MONTHLY} peticiones API por mes.`,
+      status: preCheck.status,
+      error: preCheck.error,
     };
   }
 
@@ -499,12 +522,17 @@ export async function resolveSearchLinkCoreEndpoint(
   const now = Date.now();
   const cached = coreCatalogCache.get(cacheKey);
   if (cached && cached.expiresAt > now) {
-    const quota = recordAndCheckMonthlyApiQuota(cached.scopeId, keyHash);
-    if (!quota.allowed) {
+    const traffic = checkAndConsumeServiceTraffic({
+      scopeId: cached.scopeId,
+      keyHash,
+      requestOrigin: params.requestOrigin,
+      enforceTrafficRules: params.enforceTrafficRules,
+    });
+    if (!traffic.allowed) {
       return {
         ok: false,
-        status: 429,
-        error: `Límite mensual alcanzado: el plan gratuito incluye hasta ${FREE_PLAN_MAX_API_REQUESTS_MONTHLY} peticiones API por mes.`,
+        status: traffic.status,
+        error: traffic.error,
       };
     }
     return {
@@ -535,12 +563,17 @@ export async function resolveSearchLinkCoreEndpoint(
       const legacy = await fetchCatalogByApiKey(trimmedKey);
       if (legacy.ok) {
         const legacyScope = `legacy:${keyHash.slice(0, 16)}`;
-        const quota = recordAndCheckMonthlyApiQuota(legacyScope, keyHash);
-        if (!quota.allowed) {
+        const traffic = checkAndConsumeServiceTraffic({
+          scopeId: legacyScope,
+          keyHash,
+          requestOrigin: params.requestOrigin,
+          enforceTrafficRules: params.enforceTrafficRules,
+        });
+        if (!traffic.allowed) {
           return {
             ok: false,
-            status: 429,
-            error: `Límite mensual alcanzado: el plan gratuito incluye hasta ${FREE_PLAN_MAX_API_REQUESTS_MONTHLY} peticiones API por mes.`,
+            status: traffic.status,
+            error: traffic.error,
           };
         }
         return legacy;
@@ -583,6 +616,31 @@ export async function resolveSearchLinkCoreEndpoint(
     (Array.isArray(catalogosList) && catalogosList[0]?.id) ||
     `key:${keyHash.slice(0, 16)}`;
 
+  if (record.servicio?.id) {
+    const admin = getSupabaseAdminClient();
+    if (admin) {
+      try {
+        const { data: srvOwner } = await admin
+          .from('servicios')
+          .select('user_id')
+          .eq('id', record.servicio.id)
+          .maybeSingle();
+        if (srvOwner && typeof srvOwner.user_id === 'string' && srvOwner.user_id) {
+          const { data: userRes } = await admin.auth.admin.getUserById(srvOwner.user_id);
+          if (userRes?.user) {
+            const resolvedTier = resolveUserPlanTier(
+              userRes.user.email,
+              userRes.user.app_metadata as Record<string, unknown> | undefined,
+            );
+            registerServicePlanTier(record.servicio.id, resolvedTier, srvOwner.user_id);
+          }
+        }
+      } catch {
+        // Ignore admin lookup errors gracefully
+      }
+    }
+  }
+
   let carriedMonthlyApiHint = 0;
   try {
     const { data: ledgerApiCount, error: ledgerApiErr } = await supabase.rpc(
@@ -600,16 +658,18 @@ export async function resolveSearchLinkCoreEndpoint(
     carriedMonthlyApiHint = 0;
   }
 
-  const quota = recordAndCheckMonthlyApiQuota(
+  const traffic = checkAndConsumeServiceTraffic({
     scopeId,
     keyHash,
-    carriedMonthlyApiHint,
-  );
-  if (!quota.allowed) {
+    dbMonthlyRequestsHint: carriedMonthlyApiHint,
+    requestOrigin: params.requestOrigin,
+    enforceTrafficRules: params.enforceTrafficRules,
+  });
+  if (!traffic.allowed) {
     return {
       ok: false,
-      status: 429,
-      error: `Límite mensual alcanzado: el plan gratuito incluye hasta ${FREE_PLAN_MAX_API_REQUESTS_MONTHLY} peticiones API por mes.`,
+      status: traffic.status,
+      error: traffic.error,
     };
   }
 

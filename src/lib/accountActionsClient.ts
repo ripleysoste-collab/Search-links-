@@ -1,10 +1,64 @@
 import { resolveApiUrl } from './apiConfig';
 import { getSupabaseAccessToken } from './supabaseClient';
 
+export type PlanTier = 'free' | 'plus' | 'plus_max';
+
+export interface PlanLimitsSpec {
+  maxImages: number;
+  maxApiRequestsMonthly: number;
+  maxRequestsPerMinute: number;
+  maxRequestsPerHour: number;
+  maxRequestsPerDay: number;
+}
+
+export const CLIENT_PLAN_LIMITS_BY_TIER: Record<PlanTier, PlanLimitsSpec> = {
+  free: {
+    maxImages: 20,
+    maxApiRequestsMonthly: 1000,
+    maxRequestsPerMinute: 20,
+    maxRequestsPerHour: 150,
+    maxRequestsPerDay: 400,
+  },
+  plus: {
+    maxImages: 80,
+    maxApiRequestsMonthly: 1000,
+    maxRequestsPerMinute: 20,
+    maxRequestsPerHour: 150,
+    maxRequestsPerDay: 400,
+  },
+  plus_max: {
+    maxImages: 150,
+    maxApiRequestsMonthly: 25000,
+    maxRequestsPerMinute: 120,
+    maxRequestsPerHour: 1500,
+    maxRequestsPerDay: 5000,
+  },
+};
+
+export interface ServiceTrafficLimitRule {
+  serviceId: string;
+  userId: string;
+  planTier: PlanTier;
+  perMinuteLimit: number;
+  perHourLimit: number;
+  dailyLimit: number;
+  allowedOrigins: string[];
+  updatedAt: string;
+}
+
+export interface ServiceTrafficLimitsResponse {
+  ok: true;
+  planTier: PlanTier;
+  planLimits: PlanLimitsSpec;
+  rule: ServiceTrafficLimitRule;
+}
+
 export interface AccountQuotaSummary {
   ok: boolean;
   isAdmin: boolean;
   hasPlusAccess: boolean;
+  planTier?: PlanTier;
+  planLimits?: PlanLimitsSpec;
   activeImagesCount: number;
   carriedFreeImagesUsed: number;
   totalFreeImagesUsed: number;
@@ -63,6 +117,62 @@ export async function fetchAccountQuotaSummary(): Promise<AccountQuotaSummary | 
   } catch {
     return null;
   }
+}
+
+export async function fetchServiceTrafficLimits(
+  serviceId: string,
+): Promise<ServiceTrafficLimitsResponse | null> {
+  try {
+    const token = await getSupabaseAccessToken();
+    if (!token || !serviceId.trim()) return null;
+    const response = await fetch(
+      resolveApiUrl(
+        `/api/account/services/traffic-limits?serviceId=${encodeURIComponent(serviceId.trim())}`,
+      ),
+      {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: 'no-store',
+      },
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as ServiceTrafficLimitsResponse;
+    return data?.ok ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveServiceTrafficLimits(input: {
+  serviceId: string;
+  perMinuteLimit: number;
+  perHourLimit: number;
+  dailyLimit: number;
+  allowedOrigins: string[];
+}): Promise<ServiceTrafficLimitsResponse> {
+  const token = await getRequiredAccessToken();
+  const response = await fetch(
+    resolveApiUrl('/api/account/services/traffic-limits'),
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  const data = (await response.json().catch(() => ({}))) as Partial<ServiceTrafficLimitsResponse> & {
+    error?: string;
+  };
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || 'No se pudieron guardar los límites de tráfico.');
+  }
+  return data as ServiceTrafficLimitsResponse;
 }
 
 export async function requestPurgeAllR2Images(): Promise<R2PurgeResponse> {
